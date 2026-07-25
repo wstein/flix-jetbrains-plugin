@@ -1,0 +1,76 @@
+<idea-plugin>
+    <!-- Module descriptors use <dependencies><plugin id="..."/></dependencies> for external-plugin
+         deps -- classic <depends> tags are explicitly disallowed here (confirmed against
+         https://plugins.jetbrains.com/docs/intellij/modular-plugins.html). LSP4IJ is kept for both
+         LSP and DAP (rather than switching the LSP half to the native intellij.platform.lsp module
+         this scaffold originally suggested) since DAP debugging has no native-platform equivalent
+         at all -- using one mechanism for both is simpler than mixing two, and LSP4IJ is already
+         fully verified working from the single-module prototype. TextMate is declared as a plain
+         (non-optional) dependency here: module descriptors have no equivalent of the root
+         plugin.xml's <depends optional="true" config-file="..."> pattern, and TextMate support
+         ships with the IDE itself in practice, so the risk of it being unavailable is negligible. -->
+    <dependencies>
+        <module name="intellij.platform.backend"/>
+        <module name="intellij.platform.kernel.backend"/>
+        <module name="flix.jetbrains.plugin.shared"/>
+        <plugin id="com.redhat.devtools.lsp4ij"/>
+        <plugin id="org.jetbrains.plugins.textmate"/>
+    </dependencies>
+
+    <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
+
+        <server id="flixLanguageServer"
+                name="Flix Language Server"
+                factoryClass="dev.wstein.flixplugin.FlixLanguageServerFactory">
+            <description><![CDATA[
+            The Flix "Plain-LSP" server (<code>flix lsp</code>), resolved from the open project's
+            <code>flix-vendor-*.jar</code> (or <code>$FLIX_FORK_JAR</code>), the same way
+            <code>scripts/flix-fork</code> does.
+            ]]></description>
+        </server>
+
+        <!-- fileNamePatternMapping (rather than languageMapping/fileTypeMapping) is used
+             deliberately: it's the mapping LSP4IJ's own docs recommend when the plugin doesn't
+             register an IntelliJ FileType/Language for the extension, and it's the one that
+             doesn't disable TextMate-based syntax coloration. -->
+        <fileNamePatternMapping patterns="*.flix"
+                                serverId="flixLanguageServer"
+                                languageId="flix"/>
+
+        <debugAdapterServer id="flixDebugAdapter"
+                            name="Flix (--Xdebug attach)"
+                            factoryClass="dev.wstein.flixplugin.FlixDebugAdapterDescriptorFactory">
+            <description><![CDATA[
+            Attaches to a Flix program started with <code>--Xdebug</code>
+            (<code>JAVA_TOOL_OPTIONS=-agentlib:jdwp=...</code>), translating JDI to DAP via the
+            bundled <code>FlixDebugAdapter.java</code> -- the identical adapter this project's VS
+            Code extension uses, started here with its "--port" socket transport instead of stdio
+            since LSP4IJ's DAP client only ever connects to a debug adapter over a socket.
+            <p><b>After creating a "Flix (--Xdebug attach)" run configuration, you must add a
+            <code>*.flix</code> mapping to it on the "Mappings" tab before breakpoints in .flix
+            files are recognized</b> -- LSP4IJ has no plugin.xml-level file mapping for DAP servers
+            (unlike its LSP fileNamePatternMapping above), only this per-run-configuration UI
+            step.</p>
+            ]]></description>
+        </debugAdapterServer>
+
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <textmate.bundleProvider implementation="dev.wstein.flixplugin.FlixTextMateBundleProvider"/>
+    </extensions>
+
+    <!-- Registers the "flix.runMain" LSP command the Flix language server attaches to the "Run"
+         CodeLens above def main(). LSP4IJ maps LSP commands to IntelliJ actions 1:1 by id (see
+         docs/DeveloperGuide.md#lsp-commands); without this the CodeLens fails with "Missing
+         'flix.runMain' command... needs to be contributed by an IntelliJ plugin". Registered here
+         (backend) alongside everything else rather than split into frontend, since LSP4IJ itself
+         is not known to be split-mode-modularized -- unverified assumption, revisit if the CodeLens
+         click doesn't dispatch correctly under split mode. -->
+    <actions>
+        <action id="flix.runMain"
+                class="dev.wstein.flixplugin.FlixRunMainAction"
+                text="Flix: Run Main"
+                description="Runs `flix run` for the project (bound to the Flix language server's &quot;Run&quot; CodeLens above def main())"/>
+    </actions>
+</idea-plugin>

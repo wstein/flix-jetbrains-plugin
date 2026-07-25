@@ -1,0 +1,31 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>dev.wstein.flix-jetbrains-plugin</id>
+
+    <!-- Public plugin name should be written in Title Case.
+     Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
+    <name>Flix</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor url="https://github.com/wstein/flix-lab">wstein</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
+    <description><![CDATA[
+        <p>Flix language support and <code>--Xdebug</code> JDWP breakpoint debugging for the
+        <a href="https://github.com/wstein/flix-fork">wstein/flix-fork</a> Flix compiler build.</p>
+        <p>Reuses the exact same <code>flix lsp</code> language server the official VS Code
+        extension downloads (no reimplementation of completion/diagnostics/hover), and the exact
+        same <code>FlixDebugAdapter.java</code> DAP&#8596;JDI bridge as the
+        <a href="https://github.com/wstein/flix-lab">flix-lab</a> project's VS Code debug adapter,
+        via <a href="https://plugins.jetbrains.com/plugin/23257-lsp4ij">LSP4IJ</a>'s generic LSP
+        and DAP clients.</p>
+    ]]></description>
+
+    <content>
+        <module name="flix.jetbrains.plugin.shared" loading="required"/>
+        <module name="flix.jetbrains.plugin.frontend"/>
+        <module name="flix.jetbrains.plugin.backend"/>
+    </content>
+</idea-plugin>

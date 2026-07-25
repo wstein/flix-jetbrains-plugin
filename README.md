@@ -1,292 +1,167 @@
-# Flix-jetbrains-plugin
+# Flix (IntelliJ Plugin)
 
-[![Twitter Follow](https://img.shields.io/badge/follow-%40JBPlatform-1DA1F2?logo=twitter)](https://twitter.com/JBPlatform)
-[![Developers Forum](https://img.shields.io/badge/JetBrains%20Platform-Join-blue)][jb:forum]
+Flix language support and `--Xdebug` JDWP breakpoint debugging for the
+[wstein/flix-fork](https://github.com/wstein/flix-fork) Flix compiler build, for IntelliJ-based
+IDEs. Companion to [flix-lab](https://github.com/wstein/flix-lab)'s VS Code tooling: this plugin
+reuses the exact same `flix lsp` language server the official VS Code extension downloads (no
+reimplementation of completion/diagnostics/hover), and the exact same `FlixDebugAdapter.java`
+DAP↔JDI bridge as flix-lab's VS Code debug adapter, via [LSP4IJ][lsp4ij]'s generic LSP and DAP
+clients.
 
-## Connect repository to GitHub
+## Why LSP4IJ, not the native LSP API
 
-1. [Create a new repository](https://github.com/new) on GitHub.
-2. Run the following commands to initialize and push this project to the repository created in step 1:
+IntelliJ's own native LSP Client API (opened up to all users in the 2025.3 unified distribution)
+covers language features, but has no DAP equivalent. LSP4IJ's generic DAP client is the only
+generic path into IntelliJ's debugger for a custom, non-JVM-native protocol like DAP today, so
+LSP4IJ is used for both LSP and DAP here rather than mixing two different mechanisms.
 
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<username>/<repository>.git
-git push -u origin main
-```
+## What works, and what's still unverified
 
-3. Configure publishing [secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets) in the GitHub repository settings:
+- **Language features (LSP)**: live-verified against a real `runIde` session -- syntax
+  highlighting, diagnostics, and completion via `flix lsp`, working through LSP4IJ.
+- **Debugging (DAP)**: live-verified end-to-end -- attach to a `--Xdebug`-suspended target,
+  breakpoints resolve and hit, `evaluate` (dotted-path expressions) works, and the shared
+  `FlixDebugAdapter.java` pretty-prints Flix records/tagged unions instead of showing raw JVM
+  identities. Getting here required finding and fixing two real bugs in LSP4IJ's dispatch model
+  (not just wiring mistakes) -- see `FlixDebugAdapterDescriptor`'s javadoc and
+  `isDebuggableFile()`'s javadoc for the specifics: LSP4IJ picks the literal DAP command
+  (`launch`/`attach`) from `getDebugMode()` alone, and the Mappings-tab file association is never
+  consulted unless a descriptor explicitly checks `DAPRunConfigurationOptions`.
+- **`flix.runMain` CodeLens**: live-verified -- clicking "Run" above `def main()` in the editor now
+  runs `flix run` and shows output in a console, instead of failing with "Missing 'flix.runMain'
+  command... needs to be contributed by an IntelliJ plugin".
+- **Bundled TextMate fallback grammar**: derived directly from `flix-fork`'s real lexer
+  (`language/ast/TokenKind.scala`, `language/phase/Lexer.scala`), auto-registered via the real
+  `com.intellij.textmate.bundleProvider` extension point. Built and packaged correctly; **not yet
+  live-verified** that it actually renders highlighting in a running session.
+- **Split Mode**: this plugin was ported into the generator's frontend/backend/shared
+  content-module split with `splitMode = true`. Everything currently lives in the **backend**
+  module (LSP4IJ is not known to be split-mode-modularized itself, and none of our extension
+  points have an obvious frontend/backend line to draw); frontend is a placeholder. **Not yet
+  live-verified running as an actual split frontend+backend process pair** -- only single-process
+  `runIde`-equivalent builds have been confirmed so far.
 
-| Secret                 | Description                                                                                                |
-|------------------------|------------------------------------------------------------------------------------------------------------|
-| `PUBLISH_TOKEN`        | JetBrains Marketplace token — [generate here](https://plugins.jetbrains.com/author/me/tokens)              |
-| `CERTIFICATE_CHAIN`    | Plugin signing certificate chain ([docs](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html)) |
-| `PRIVATE_KEY`          | Plugin signing private key                                                                                 |
-| `PRIVATE_KEY_PASSWORD` | Password for the private key                                                                               |
+## One-time setup per project
 
-## Overview
+1. **Language features**: open a `.flix` file; LSP4IJ should offer to start the "Flix Language
+   Server" automatically. Requires a `flix-vendor-*.jar` in the project root (or `$FLIX_FORK_JAR`
+   set), the same convention `flix-lab/scripts/flix-fork` uses.
+2. **Debugging**: Run → Edit Configurations → + → Debug Adapter Protocol → Server tab, select
+   "Flix (--Xdebug attach)" → **Mappings tab, add `*.flix`** (required; LSP4IJ has no
+   plugin.xml-level file mapping for DAP servers, only this per-run-configuration UI step) →
+   Configuration tab, set Debug mode to Attach with the JDWP host/port your `--Xdebug` process is
+   listening on (defaults to `localhost:5005`).
 
-This repository implements a modular IntelliJ Platform plugin.
-It uses content modules as a unit of functionality that the plugin consists of.
-Content modules are split into:
-- `frontend` - UI code
-- `backend` - stateful business logic
-- `shared`
+## Relationship to flix-lab
 
-Frontend communicates with the backend through RPC.
-
-This structure allows to:
-- separate UI code from business logic
-- implement features in a way they work natively in **[split mode][docs:remote-dev]** just like in the ordinary monolithic IDE
-- keep the plugin code cleaner
-
-## Demo Functionality
-
-The sample plugin adds a `ModularPlugin` tool window with a chat-style UI implemented with the Swing framework.
+The embedded DAP server (`backend/src/main/resources/dap/FlixDebugAdapter.java`) and the TextMate
+grammar are **vendored copies**, not referenced by relative path -- this plugin lives in its own
+repo rather than as a subdirectory of `flix-lab`, so the "single source of truth via relative path"
+arrangement the original single-module prototype used doesn't carry over. If `flix-lab`'s
+`debug-adapter/src/FlixDebugAdapter.java` changes, this copy needs to be manually re-synced; there
+is currently no automation for that.
 
 ## Plugin structure
 
-A generated project contains the following content structure:
+This repository implements a modular IntelliJ Platform plugin using content modules:
 
 ```
 .
 ├── .github/                GitHub Workflows, issue templates, and Dependabot configuration
-├── .qodana
-│   └── profiles
-│       └── plugin.yaml     Qodana plugin inspections profile
+├── .qodana/profiles/       Qodana plugin inspections profile
 ├── .run/                   Predefined Run/Debug Configurations
-├── backend/                Backend module – business logic
-│   ├── build.gradle.kts    Backend dependencies
-│   └── src/main/
-│       ├── kotlin/         Kotlin production sources
-│       └── resources/      flix.jetbrains.plugin.backend.xml
-├── frontend/               Frontend module – UI and presentation
-│   ├── build.gradle.kts    Frontend dependencies
-│   └── src/main/
-│       ├── kotlin/         Kotlin production sources
-│       └── resources/      flix.jetbrains.plugin.frontend.xml
-├── shared/                 Shared module – cross-boundary contracts
-│   ├── build.gradle.kts    Shared dependencies
-│   └── src/main/
-│       ├── kotlin/         Kotlin production sources
-│       └── resources/      flix.jetbrains.plugin.shared.xml
-├── gradle/
-│   ├── wrapper/            Gradle Wrapper
-│   └── libs.versions.toml  Version catalog
-├── src
-│   └── main
-│       └── resources/
-│           └── META-INF/   Plugin configuration file and logo
-├── .gitignore              Git ignoring rules
-├── build.gradle.kts        Root build – assembles the final plugin
-├── gradle.properties       Gradle configuration properties
-├── gradlew                 *nix Gradle Wrapper script
-├── gradlew.bat             Windows Gradle Wrapper script
-├── qodana.yml              Qodana code inspections configuration
-└── settings.gradle.kts     Gradle project settings
+├── backend/                Backend module -- everything currently lives here
+│   ├── build.gradle.kts    LSP4IJ + TextMate dependencies
+│   └── src/
+│       ├── main/
+│       │   ├── java/dev/wstein/flixplugin/   Flix*.java (LSP factory, DAP descriptor, run action, ...)
+│       │   └── resources/
+│       │       ├── dap/FlixDebugAdapter.java         vendored DAP server
+│       │       ├── textmate-bundle/                  vendored fallback grammar
+│       │       └── flix.jetbrains.plugin.backend.xml module descriptor
+│       └── test/java/dev/wstein/flixplugin/  FlixForkTest
+├── frontend/                Frontend module -- placeholder, no genuinely frontend-only UI yet
+├── shared/                  Shared module -- empty, no cross-boundary RPC contracts needed
+├── src/main/resources/META-INF/plugin.xml   Root descriptor, declares the content modules
+├── build.gradle.kts        Root build -- assembles the final plugin, splitMode = true
+├── gradle.properties
+└── settings.gradle.kts
 ```
 
-> [!NOTE]
-> To use Java in your plugin, create the appropriate `/src/main/java` directory within the desired module.
+### Module dependency syntax
 
-The plugin logo is placed in `src/main/resources/META-INF/pluginIcon.svg`.
-See [Plugin Logo][docs:logo] for more information and logo requirements.
+Content module descriptors (`flix.jetbrains.plugin.backend.xml` etc.) use
+`<dependencies><plugin id="..."/></dependencies>` for external-plugin dependencies -- the classic
+`<depends>` tag from the root `plugin.xml` is explicitly disallowed inside a module descriptor
+(confirmed against the [Modular Plugins][docs:modular-plugins] documentation).
 
-### Module Layout
+## Build
 
-- `root project` assembles the final plugin, declares the main IntelliJ Platform dependency, enables split mode, and includes the `shared`, `frontend`, and `backend` plugin modules in the final distribution.
-- `shared` contains contracts that both sides must understand: RPC interfaces, DTOs, serializers, and shared model types. Put a cross-boundary API here.
-- `frontend` contains UI-only code and presentation logic: the tool window registration, Swing UI, view models, and the frontend adapter that talks to the backend via RPC.
-- `backend` contains project-level services and business logic: access to project, file system, and external processes, message creation, response generation, and the RPC implementation exposed to the frontend.
-
-## Build script
-
-The root [build.gradle.kts][file:build.gradle.kts] assembles the final plugin and applies the following Gradle plugins:
-
-| Plugin                             | Description                                                                      |
-|------------------------------------|----------------------------------------------------------------------------------|
-| `org.jetbrains.kotlin.jvm`         | Adds Kotlin support                                                              |
-| `org.jetbrains.changelog`          | Simplifies patching the [CHANGELOG.md][file:CHANGELOG.md] file                   |
-| `org.jetbrains.intellij.platform`  | The [IntelliJ Platform Gradle Plugin][docs:intellij-platform-gradle-plugin-docs] |
-
-The `intellijPlatform` dependencies block selects the IDE to compile against:
-
-```kotlin
-intellijIdea("2025.3.5")
+```console
+./gradlew buildPlugin
 ```
 
-See [Target Versions][docs:target-version] for more information.
+Produces `build/distributions/flix.jetbrains.plugin-<version>.zip`.
 
-The `intellijPlatform` dependencies block also contains a dependency on the platform testing framework:
+## Test
 
-```kotlin
-testFramework(TestFrameworkType.Platform)
+```console
+./gradlew test
 ```
 
-See [Testing][docs:testing] for more information
-
-## Plugin configuration files
-
-The root [plugin.xml][file:plugin.xml] file located in `src/main/resources/META-INF` provides general information about the plugin, its dependencies, and references the per-module plugin descriptors.
-
-Each module ships its own plugin descriptor in its `src/main/resources/` directory:
-- `flix.jetbrains.plugin.backend.xml` – registers backend extensions and services
-- `flix.jetbrains.plugin.frontend.xml` – registers frontend extensions and tool windows
-- `flix.jetbrains.plugin.shared.xml` – registers shared extensions and interfaces
-
-You can read more about plugin configuration files in the [Plugin Configuration File][docs:plugin.xml] section of our documentation.
-
-### Plugin ID and name
-
-Generated plugin ID and name may require adjustment.
-
-These values are generated based on _Group ID_ and _Artifact ID_ provided in the IDE Plugin wizard.
-It is recommended to review `<id>` and `<name>` elements in the plugin.xml file, and adjust them if needed.
-
-Please note that Gradle properties `rootProject.name` and `project.group` don't need to match the `<id>` and `<name>` elements.
-There is no IntelliJ Platform-related reason they should as they serve different functions.
-
-## Remote Development Ready Architecture
-
-The demo is intentionally split so that the UI stays frontend-only and the business logic stays backend-only.
-This ensures optimal UX in the remote development scenario where the IDE has separate frontend and backend processes.
-This is what we call **Split Mode**.
-
-A high-level overview of the plugin structure:
-- a UI for a chat with an AI assistant natively rendered in the frontend IDE in split mode
-- data transfer between the frontend and backend via RPC
-- RPC implementation in the backend IDE is capable of touching any backend entities and APIs like a file system
-
-A more detailed explanation of how it is implemented:
-1. The frontend registers the tool window and creates `ChatViewModel`.
-2. `ChatViewModel` depends on the frontend-facing `ChatRepositoryApi` abstraction instead of directly depending on backend services.
-3. `FrontendChatRepositoryModel` implements that abstraction by calling the shared `ChatRepositoryRpcApi` and collecting the backend message `Flow`.
-4. The shared module defines `ChatRepositoryRpcApi` plus the DTOs used to cross the RPC boundary.
-5. The backend registers `BackendRpcApiProvider`, which exposes `BackendChatRepositoryRpcApi` as the RPC implementation.
-6. `BackendChatRepositoryRpcApi` resolves the backend project from `ProjectId` and delegates to `BackendChatRepositoryModel`.
-7. `BackendChatRepositoryModel` owns the mutable message list and the demo response generation logic.
-
-This separation keeps the frontend focused on rendering, local UI state, and interaction handling, while the backend owns project-scoped state and logic that should execute on the backend side in split mode.
+`FlixForkTest` uses `HeavyPlatformTestCase` (a project backed by real files on disk), not the
+lighter `BasePlatformTestCase` (an in-memory VFS project) -- `FlixFork.resolveJar` does plain
+`java.io`/`java.nio.file` calls against `project.getBasePath()`, which only resolve against a real
+directory.
 
 ## Predefined Run/Debug configurations
 
-Within the default project structure, there is a `.run` directory provided containing predefined *Run/Debug configurations* that expose corresponding Gradle tasks:
+| Configuration name               | Description                                                                 |
+|-----------------------------------|------------------------------------------------------------------------------|
+| Run IDE with Plugin (Frontend)   | Runs `:runIdeFrontend`. Use the *Debug* icon for plugin debugging.          |
+| Run IDE with Plugin (Backend)    | Runs `:runIdeBackend`. Use the *Debug* icon for plugin debugging.           |
+| Run IDE with Plugin (Split Mode) | Runs both simultaneously to launch the plugin in split mode.                |
 
-| Configuration name               | Description                                                                                                                                                      |
-|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Run IDE with Plugin (Frontend)   | Runs [`:runIdeFrontend`][docs:intellij-platform-gradle-plugin-runIde] IntelliJ Platform Gradle Plugin task. Use the *Debug* icon for plugin debugging.           |
-| Run IDE with Plugin (Backend)    | Runs [`:runIdeBackend`][docs:intellij-platform-gradle-plugin-runIde] IntelliJ Platform Gradle Plugin task. Use the *Debug* icon for plugin debugging.            |
-| Run IDE with Plugin (Split Mode) | Runs both *Run IDE (Backend)* and *Run IDE (Frontend)* configurations simultaneously to launch the plugin in split mode.                                         |
+## Install (sideload, not Marketplace-listed)
 
-> [!NOTE]
-> You can find the logs from the running task in the `idea.log` tab.
+No JetBrains Marketplace listing currently -- consistent with `flix-lab`'s VS Code extension being
+`"private": true` / sideloaded. Install the built zip manually via Settings/Preferences → Plugins →
+gear icon → Install Plugin from Disk...
 
-## Publishing the plugin
+You'll also need [LSP4IJ][lsp4ij] installed from the Marketplace (it's a `<plugin>` dependency of
+the backend module; IntelliJ should prompt for it).
 
-> [!TIP]
-> Make sure to follow all guidelines listed in [Publishing a Plugin][docs:publishing] to follow all recommended and required steps.
+## GitHub Actions / Qodana / Dependabot
 
-Releasing a plugin to [JetBrains Marketplace](https://plugins.jetbrains.com) is a straightforward operation that uses the `publishPlugin` Gradle task provided by the [intellij-platform-gradle-plugin][gh:intellij-platform-gradle-plugin].
+Generator-provided scaffolding, unmodified: [Build](.github/workflows/build.yml) and
+[Release](.github/workflows/release.yml) workflows, [issue templates](.github/ISSUE_TEMPLATE/),
+[Dependabot config](.github/dependabot.yml), and a Qodana inspections profile
+(`.qodana/profiles/plugin.yaml`, run locally via `./gradlew qodanaScan`, requires Docker). None of
+these have been exercised yet (no CI run, no Qodana scan) -- they're present and should work per
+the generator's defaults, but that's unverified.
 
-You can also upload the plugin to the [JetBrains Plugin Repository](https://plugins.jetbrains.com/plugin/upload) manually via UI.
+## Known gaps
 
-## GitHub Integration
-
-### GitHub Actions
-
-The project includes [GitHub Actions][https://docs.github.com/en/actions] workflows for automated CI/CD:
-
-| Workflow | Trigger | Description |
-|---|---|---|
-| [Build](.github/workflows/build.yml) | Push / PR | Builds, tests, and verifies the plugin; creates a draft release |
-| [Release](.github/workflows/release.yml) | GitHub Release | Publishes the plugin to JetBrains Marketplace |
-
-### GitHub issue templates
-
-The project includes GitHub issue templates:
-- [Bug Report](.github/ISSUE_TEMPLATE/bug-report.yml)
-- [Feature Request](.github/ISSUE_TEMPLATE/feature-request.yml)
-
-See [Syntax for issue forms](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms).
-
-### Dependabot
-
-[Dependabot configuration](.github/dependabot.yml) file enables tracking outdated or vulnerable dependencies.
-
-## Qodana Code Inspections
-
-> Running Qodana locally requires [Docker](https://www.docker.com/).
-
-Qodana integration adds the possibility of inspecting the plugin code against the same inspections that are available in JetBrains IDEs.
-
-This plugin project declares a Qodana inspections profile: `.qodana/profiles/plugin.yaml`.
-It is referenced in the `qodana.yml` configuration file.
-
-The profile includes the default profiles of JetBrains IDEs and all inspections from the **Plugin DevKit** category.
-
-See more about [Qodana inspection profiles](https://www.jetbrains.com/help/qodana/inspection-profiles.html).
-
-### Qodana Gradle Plugin
-
-To run Qodana code inspections locally
-1. Make sure that Docker is running.
-2. Run the `qodanaScan` Gradle task in the project root:
-   ```
-   ./gradlew qodanaScan
-   ```
-
-It generates results in `build/qodana/results/`.
-To view the results open one of:
-- `qodana.sarif.json` - opens the results in the IDE
-- `report/index.html` - to see the report in the browser
-
-See more information about [Gradle integration](https://www.jetbrains.com/help/qodana/quick-start.html#quickstart-gradle-plugin).
-
-### Qodana GitHub Action
-
-The Code Inspection GitHub Action invokes Qodana analysis on GitHub on push to the main branch and when a PR is opened.
-The PR analysis includes only the newly introduced issues.
-
-Results can be viewed in the workflow results in the **Qodana for JVM** tab.
-They are also automatically posted in the PR comment.
+- TextMate fallback grammar highlighting: built and packaged, not live-verified.
+- Split Mode: ported to the architecture, not live-verified running as separate frontend/backend
+  processes.
+- `FlixDebugAdapter`'s `evaluate` DAP request only supports dotted-path field/variable lookups, not
+  arbitrary expressions.
+- No automated re-sync mechanism for the vendored `FlixDebugAdapter.java`/TextMate grammar copies
+  against `flix-lab`.
+- No formatter or linter is currently configured for this repo (Qodana provides static analysis,
+  but that's a separate, heavier tool, not a fast local lint/format step).
 
 ## Useful links
 
 - [IntelliJ Platform SDK Plugin SDK][docs]
-- [IntelliJ Platform Gradle Plugin Documentation][docs:intellij-platform-gradle-plugin-docs]
-- [IntelliJ Platform Explorer][jb:ipe]
-- [JetBrains Marketplace Quality Guidelines][jb:quality-guidelines]
-- [IntelliJ Platform UI Guidelines][jb:ui-guidelines]
-- [JetBrains Marketplace Paid Plugins][jb:paid-plugins]
-- [IntelliJ SDK Code Samples][gh:code-samples]
-- [Remote Development / Split Mode][docs:remote-dev]
+- [Modular Plugins (content modules)][docs:modular-plugins]
+- [LSP4IJ][lsp4ij]
+- [flix-lab][flix-lab] -- the VS Code side of this tooling
+- [wstein/flix-fork][flix-fork] -- the Flix compiler build this targets
 
 [docs]: https://plugins.jetbrains.com/docs/intellij
-[docs:logo]: https://plugins.jetbrains.com/docs/intellij/plugin-icon-file.html?from=IJPluginReadmeFile
-[docs:plugin.xml]: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html?from=IJPluginReadmeFile
-[docs:publishing]: https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginReadmeFile
-[docs:remote-dev]: https://plugins.jetbrains.com/docs/intellij/plugin-content-modules.html?from=IJPluginReadmeFile
-[docs:target-version]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html?from=IJPluginReadmeFile#target-versions
-[docs:testing]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html?from=IJPluginReadmeFile#testing
-[docs:intellij-platform-gradle-plugin-docs]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html?from=IJPluginReadmeFile
-[docs:intellij-platform-gradle-plugin-runIde]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html?from=IJPluginReadmeFile#runIde
-[docs:intellij-platform-gradle-plugin-verifyPlugin]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html?from=IJPluginReadmeFile#verifyPlugin
-
-[file:build.gradle.kts]: ./build.gradle.kts
-[file:CHANGELOG.md]: ./CHANGELOG.md
-[file:gradle.properties]: ./gradle.properties
-[file:plugin.xml]: ./src/main/resources/META-INF/plugin.xml
-
-[gh:code-samples]: https://github.com/JetBrains/intellij-sdk-code-samples
-[gh:intellij-platform-gradle-plugin]: https://github.com/JetBrains/intellij-platform-gradle-plugin
-
-[gradle:lifecycle-tasks]: https://docs.gradle.org/current/userguide/java_plugin.html#lifecycle_tasks
-
-[jb:github]: https://github.com/JetBrains/.github/blob/main/profile/README.md
-[jb:forum]: https://platform.jetbrains.com/
-[jb:quality-guidelines]: https://plugins.jetbrains.com/docs/marketplace/quality-guidelines.html
-[jb:paid-plugins]: https://plugins.jetbrains.com/docs/marketplace/paid-plugins-marketplace.html
-[jb:ipe]: https://jb.gg/ipe
-[jb:ui-guidelines]: https://jetbrains.github.io/ui
+[docs:modular-plugins]: https://plugins.jetbrains.com/docs/intellij/modular-plugins.html
+[lsp4ij]: https://plugins.jetbrains.com/plugin/23257-lsp4ij
+[flix-lab]: https://github.com/wstein/flix-lab
+[flix-fork]: https://github.com/wstein/flix-fork

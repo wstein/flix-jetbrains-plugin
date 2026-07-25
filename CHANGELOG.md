@@ -19,3 +19,16 @@
 - Ported from a single-module prototype (in `flix-lab/jetbrains-plugin/`) into this repo's
   frontend/backend/shared split-mode content-module layout; removed the generator's sample RPC
   chat-demo code.
+
+### Fixed
+
+- An XML comment containing `--` in `flix.jetbrains.plugin.frontend.xml` made the entire plugin
+  fail to load ("Cannot load ... contains invalid plugin descriptor") in both backend and frontend
+  processes under Split Mode. `verifyPluginProjectConfiguration`/`buildPlugin` do not catch this
+  class of error; only an actual `runIdeSplitMode` session did.
+
+### Verified
+
+- Language features, `--Xdebug` DAP debugging, and `flix.runMain` all confirmed working end-to-end
+  under `./gradlew runIdeSplitMode` (real split frontend + backend processes, not just a
+  single-process `runIde`).

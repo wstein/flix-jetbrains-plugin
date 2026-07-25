@@ -1,10 +1,10 @@
 <idea-plugin>
     <!-- Module descriptors use <dependencies><plugin id="..."/></dependencies> for external-plugin
-         deps -- classic <depends> tags are explicitly disallowed here (confirmed against
+         deps; classic <depends> tags are explicitly disallowed here (confirmed against
          https://plugins.jetbrains.com/docs/intellij/modular-plugins.html). LSP4IJ is kept for both
-         LSP and DAP (rather than switching the LSP half to the native intellij.platform.lsp module
-         this scaffold originally suggested) since DAP debugging has no native-platform equivalent
-         at all -- using one mechanism for both is simpler than mixing two, and LSP4IJ is already
+         LSP and DAP, rather than switching the LSP half to the native intellij.platform.lsp module
+         this scaffold originally suggested, since DAP debugging has no native-platform equivalent
+         at all; using one mechanism for both is simpler than mixing two, and LSP4IJ is already
          fully verified working from the single-module prototype. TextMate is declared as a plain
          (non-optional) dependency here: module descriptors have no equivalent of the root
          plugin.xml's <depends optional="true" config-file="..."> pattern, and TextMate support
@@ -65,7 +65,7 @@
          docs/DeveloperGuide.md#lsp-commands); without this the CodeLens fails with "Missing
          'flix.runMain' command... needs to be contributed by an IntelliJ plugin". Registered here
          (backend) alongside everything else rather than split into frontend, since LSP4IJ itself
-         is not known to be split-mode-modularized -- unverified assumption, revisit if the CodeLens
+         is not known to be split-mode-modularized; unverified assumption, revisit if the CodeLens
          click doesn't dispatch correctly under split mode. -->
     <actions>
         <action id="flix.runMain"

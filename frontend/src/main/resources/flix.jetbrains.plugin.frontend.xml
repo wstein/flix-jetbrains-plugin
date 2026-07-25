@@ -1,6 +1,6 @@
 <idea-plugin>
     <!-- No frontend-specific extensions yet: everything (LSP4IJ server/DAP registration, TextMate
-         bundle, flix.runMain action) currently lives in the backend module -- see
+         bundle, flix.runMain action) currently lives in the backend module; see
          backend/src/main/resources/flix.jetbrains.plugin.backend.xml for why. This module is a
          placeholder for future genuinely frontend-only UI (e.g. a Datalog proof-tree tool window). -->
     <dependencies>

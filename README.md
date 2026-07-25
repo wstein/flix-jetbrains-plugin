@@ -32,14 +32,26 @@ LSP4IJ is used for both LSP and DAP here rather than mixing two different mechan
   command... needs to be contributed by an IntelliJ plugin".
 - **Bundled TextMate fallback grammar**: derived directly from `flix-fork`'s real lexer
   (`language/ast/TokenKind.scala`, `language/phase/Lexer.scala`), auto-registered via the real
-  `com.intellij.textmate.bundleProvider` extension point. Built and packaged correctly; **not yet
-  live-verified** that it actually renders highlighting in a running session.
-- **Split Mode**: this plugin was ported into the generator's frontend/backend/shared
-  content-module split with `splitMode = true`. Everything currently lives in the **backend**
-  module (LSP4IJ is not known to be split-mode-modularized itself, and none of our extension
-  points have an obvious frontend/backend line to draw); frontend is a placeholder. **Not yet
-  live-verified running as an actual split frontend+backend process pair** -- only single-process
-  `runIde`-equivalent builds have been confirmed so far.
+  `com.intellij.textmate.bundleProvider` extension point. Live-verified rendering `.flix` syntax
+  highlighting under `./gradlew runIdeSplitMode`.
+- **Split Mode**: live-verified running as an actual split frontend+backend process pair
+  (`./gradlew runIdeSplitMode`) -- all of the above (LSP, DAP debugging, `flix.runMain`) confirmed
+  working with everything registered in the backend module and the frontend acting as a thin
+  client. One real bug found and fixed getting here: an XML comment containing `--` in
+  `flix.jetbrains.plugin.frontend.xml` made the *entire plugin* fail to load on both sides ("Cannot
+  load ... contains invalid plugin descriptor") -- `verifyPluginProjectConfiguration`/`buildPlugin`
+  both passed anyway, so this class of error is only caught by an actual IDE session, not the build.
+
+## Known limitation: attach-only debugging
+
+There's no "click Debug on this file" support -- the toolbar's generic "Current File" run/debug
+widget does nothing useful for `.flix` files. `FlixDebugAdapterDescriptor` only implements DAP
+*attach* semantics: it connects to a `--Xdebug` JVM you've already started suspended and waiting
+(e.g. via a shell script or a run task). There's no `RunConfigurationProducer` recognizing `.flix`
+files, and `FlixDebugAdapter.java` has no code path for actually launching a Flix program with JDWP
+enabled itself. Building that would mean a real new feature -- a run-configuration producer plus
+teaching the adapter to spawn `flix run` with the right JDWP flags itself, essentially merging
+`flix.runMain`'s "run the program" logic with the attach flow -- not a quick fix.
 
 ## One-time setup per project
 
@@ -142,9 +154,7 @@ the generator's defaults, but that's unverified.
 
 ## Known gaps
 
-- TextMate fallback grammar highlighting: built and packaged, not live-verified.
-- Split Mode: ported to the architecture, not live-verified running as separate frontend/backend
-  processes.
+- No "click Debug on this file" (launch-mode) support -- see the dedicated section above.
 - `FlixDebugAdapter`'s `evaluate` DAP request only supports dotted-path field/variable lookups, not
   arbitrary expressions.
 - No automated re-sync mechanism for the vendored `FlixDebugAdapter.java`/TextMate grammar copies

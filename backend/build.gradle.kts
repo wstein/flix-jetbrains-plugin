@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+
 dependencies {
     intellijPlatform {
         bundledModule("intellij.platform.kernel.backend")
@@ -16,7 +18,16 @@ dependencies {
         // classpath for FlixTextMateBundleProvider, which registers the bundled fallback grammar
         // via the real com.intellij.textmate.bundleProvider extension point.
         bundledPlugin("org.jetbrains.plugins.textmate")
+
+        // The root project's testFramework(Platform) declaration doesn't propagate to this
+        // module's own test source set -- needed here directly for FlixForkTest's
+        // BasePlatformTestCase fixture.
+        testFramework(TestFrameworkType.Platform)
     }
+
+    // BasePlatformTestCase extends JUnit 3-style junit.framework.TestCase; testFramework(Platform)
+    // provides the IntelliJ test fixtures but not JUnit itself.
+    testImplementation("junit:junit:4.13.2")
 
     implementation(project(":shared"))
 }

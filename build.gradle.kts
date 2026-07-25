@@ -34,3 +34,21 @@ intellijPlatform {
     splitMode = true
     pluginInstallationTarget = SplitModeAware.PluginInstallationTarget.BOTH
 }
+
+// See scripts/sync-debug-adapter.sh for what these actually do and why the vendored copy under
+// backend/src/main/resources/dap/ needs this at all (two separate, non-remote-linked repos).
+tasks.register<Exec>("checkDebugAdapterSync") {
+    group = "verification"
+    description = "Fails if backend/.../dap/FlixDebugAdapter.java has drifted from flix-lab's canonical copy."
+    commandLine("scripts/sync-debug-adapter.sh", "--check")
+}
+
+tasks.register<Exec>("syncDebugAdapter") {
+    group = "other"
+    description = "Re-syncs backend/.../dap/FlixDebugAdapter.java from flix-lab's canonical copy."
+    commandLine("scripts/sync-debug-adapter.sh")
+}
+
+// Deliberately NOT wired into the standard `check`/`build` lifecycle: it requires flix-lab as a
+// sibling checkout, which won't exist for CI (no remote configured for either repo yet) or for
+// anyone else cloning just this repo. Run `./gradlew checkDebugAdapterSync` manually.

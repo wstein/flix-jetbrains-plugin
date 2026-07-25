@@ -66,12 +66,23 @@ teaching the adapter to spawn `flix run` with the right JDWP flags itself, essen
 
 ## Relationship to flix-lab
 
-The embedded DAP server (`backend/src/main/resources/dap/FlixDebugAdapter.java`) and the TextMate
-grammar are **vendored copies**, not referenced by relative path -- this plugin lives in its own
-repo rather than as a subdirectory of `flix-lab`, so the "single source of truth via relative path"
-arrangement the original single-module prototype used doesn't carry over. If `flix-lab`'s
-`debug-adapter/src/FlixDebugAdapter.java` changes, this copy needs to be manually re-synced; there
-is currently no automation for that.
+The embedded DAP server (`backend/src/main/resources/dap/FlixDebugAdapter.java`) is a **vendored
+copy** of `flix-lab/debug-adapter/src/FlixDebugAdapter.java` -- the same file the VS Code extension
+uses, not a fork -- rather than referenced by relative path, since this plugin lives in its own repo
+instead of as a subdirectory of `flix-lab`. The TextMate grammar has no equivalent second copy to
+drift from: this repo is its only home (the frozen `flix-lab/jetbrains-plugin/` prototype's copy is
+historical, not maintained).
+
+```console
+./gradlew checkDebugAdapterSync   # fails if the vendored copy has drifted
+./gradlew syncDebugAdapter        # re-syncs it from flix-lab
+```
+
+Both assume `flix-lab` is checked out as a sibling directory (`FLIX_LAB_DIR` env var to override) --
+see [scripts/sync-debug-adapter.sh](scripts/sync-debug-adapter.sh). Neither task is wired into the
+default `check`/`build` lifecycle: neither repo has a git remote configured yet, so there's no CI
+runner that could check out both and run it. Once `flix-lab` is pushed, the `--check` mode is ready
+to drop into a GitHub Actions job that checks out both repos.
 
 ## Plugin structure
 

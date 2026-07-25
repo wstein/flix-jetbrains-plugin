@@ -19,6 +19,10 @@
 - Ported from a single-module prototype (in `flix-lab/jetbrains-plugin/`) into this repo's
   frontend/backend/shared split-mode content-module layout; removed the generator's sample RPC
   chat-demo code.
+- `evaluate` (via the vendored `FlixDebugAdapter.java`, re-synced from `flix-lab`) now supports
+  method calls with literal arguments and array indexing in addition to dotted-path field access.
+- `scripts/sync-debug-adapter.sh` plus the `checkDebugAdapterSync`/`syncDebugAdapter` Gradle tasks
+  replace manually copying the vendored `FlixDebugAdapter.java` from `flix-lab`.
 
 ### Fixed
 

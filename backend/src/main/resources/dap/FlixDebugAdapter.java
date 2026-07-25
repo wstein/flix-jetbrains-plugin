@@ -516,10 +516,13 @@ public class FlixDebugAdapter {
         sendResponse(req, true, body);
     }
 
-    /** Supports a dotted-path expression against the given frame's locals, e.g. "classes" or
-     * "classes.v0" -- enough for watches/hover to drill into a value without needing a real
-     * expression language (no arithmetic, calls, or indexing). Requires a frameId; this adapter
-     * has no notion of a global/REPL scope to evaluate against. */
+    /** Supports a small expression subset against the given frame's locals: dotted field access,
+     * method calls with literal int/string/bool/null arguments, and integer array indexing --
+     * e.g. "classes.v0", "tree.forEach(1)", "items[0].value". Not a real expression language: no
+     * operators, and call arguments must be literals, not sub-expressions -- a full evaluator
+     * would mean compiling arbitrary Flix source against the running program, which is a
+     * different-scale problem (effectively embedding a Flix compiler in the adapter) than this is
+     * trying to solve. Requires a frameId; this adapter has no notion of a global/REPL scope. */
     private void onEvaluate(Map<String, Object> req, Map<String, Object> args) throws IncompatibleThreadStateException {
         Object frameIdObj = args.get("frameId");
         if (frameIdObj == null) {
@@ -538,19 +541,29 @@ public class FlixDebugAdapter {
         }
         StackFrame sf = thread.frame(loc[1]);
         String expression = String.valueOf(args.get("expression")).trim();
-        String[] segments = expression.split("\\.");
+
+        String rootName;
+        List<Step> steps;
+        try {
+            Map.Entry<String, List<Step>> parsed = PathParser.parse(expression);
+            rootName = parsed.getKey();
+            steps = parsed.getValue();
+        } catch (IllegalArgumentException e) {
+            sendErrorResponse(req, "cannot parse expression: " + e.getMessage());
+            return;
+        }
 
         Value current;
         try {
             LocalVariable lv = null;
             for (LocalVariable candidate : sf.visibleVariables()) {
-                if (candidate.name().equals(segments[0])) {
+                if (candidate.name().equals(rootName)) {
                     lv = candidate;
                     break;
                 }
             }
             if (lv == null) {
-                sendErrorResponse(req, "no such variable: " + segments[0]);
+                sendErrorResponse(req, "no such variable: " + rootName);
                 return;
             }
             current = sf.getValue(lv);
@@ -559,17 +572,17 @@ public class FlixDebugAdapter {
             return;
         }
 
-        for (int i = 1; i < segments.length; i++) {
-            if (!(current instanceof ObjectReference or)) {
-                sendErrorResponse(req, "cannot access field '" + segments[i] + "' on a non-object value");
+        for (Step step : steps) {
+            try {
+                current = switch (step.kind) {
+                    case FIELD -> applyField(current, step.name);
+                    case CALL -> applyCall(current, step.name, step.args, thread);
+                    case INDEX -> applyIndex(current, step.index);
+                };
+            } catch (EvaluateException e) {
+                sendErrorResponse(req, e.getMessage());
                 return;
             }
-            Field f = or.referenceType().fieldByName(segments[i]);
-            if (f == null) {
-                sendErrorResponse(req, "no such field: " + segments[i]);
-                return;
-            }
-            current = or.getValue(f);
         }
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -577,6 +590,235 @@ public class FlixDebugAdapter {
         body.put("type", current == null ? "null" : current.type().name());
         body.put("variablesReference", registerRef(current));
         sendResponse(req, true, body);
+    }
+
+    /** A step's error message is already phrased to show the user directly, unlike the raw JDI
+     * exceptions it wraps. */
+    private static final class EvaluateException extends Exception {
+        EvaluateException(String message) {
+            super(message);
+        }
+    }
+
+    private static Value applyField(Value current, String name) throws EvaluateException {
+        if (!(current instanceof ObjectReference or)) {
+            throw new EvaluateException("cannot access field '" + name + "' on a non-object value");
+        }
+        Field f = or.referenceType().fieldByName(name);
+        if (f == null) {
+            throw new EvaluateException("no such field: " + name);
+        }
+        return or.getValue(f);
+    }
+
+    private static Value applyIndex(Value current, int index) throws EvaluateException {
+        if (!(current instanceof ArrayReference ar)) {
+            throw new EvaluateException("cannot index a non-array value with []");
+        }
+        if (index < 0 || index >= ar.length()) {
+            throw new EvaluateException("index " + index + " out of bounds for array of length " + ar.length());
+        }
+        return ar.getValue(index);
+    }
+
+    private Value applyCall(Value current, String methodName, List<Object> literalArgs, ThreadReference thread)
+            throws EvaluateException {
+        if (!(current instanceof ObjectReference or)) {
+            throw new EvaluateException("cannot call '" + methodName + "' on a non-object value");
+        }
+        List<Method> candidates = or.referenceType().methodsByName(methodName);
+        Method method = candidates.stream()
+                .filter(m -> m.argumentTypeNames().size() == literalArgs.size())
+                .findFirst()
+                .orElse(null);
+        if (method == null) {
+            throw new EvaluateException(candidates.isEmpty()
+                    ? "no such method: " + methodName
+                    : "no overload of '" + methodName + "' takes " + literalArgs.size() + " argument(s)");
+        }
+        List<Value> jdiArgs = new ArrayList<>();
+        for (Object literal : literalArgs) {
+            jdiArgs.add(mirrorLiteral(literal));
+        }
+        try {
+            // INVOKE_SINGLE_THREADED: only the invoking thread runs during the call, matching how
+            // most Java debuggers evaluate expressions -- otherwise arbitrary other threads could
+            // run (and hit breakpoints, mutate shared state, etc.) as a side effect of a watch.
+            return or.invokeMethod(thread, method, jdiArgs, ObjectReference.INVOKE_SINGLE_THREADED);
+        } catch (InvocationException e) {
+            throw new EvaluateException("'" + methodName + "' threw: " + formatValue(e.exception()));
+        } catch (Exception e) {
+            throw new EvaluateException("failed to invoke '" + methodName + "': " + e);
+        }
+    }
+
+    private Value mirrorLiteral(Object literal) {
+        if (literal == null) return null;
+        if (literal instanceof Integer n) return vm.mirrorOf(n);
+        if (literal instanceof String s) return vm.mirrorOf(s);
+        if (literal instanceof Boolean b) return vm.mirrorOf(b);
+        throw new IllegalStateException("unexpected literal type: " + literal.getClass());
+    }
+
+    private enum StepKind {FIELD, CALL, INDEX}
+
+    private static final class Step {
+        final StepKind kind;
+        final String name;
+        final List<Object> args;
+        final int index;
+
+        private Step(StepKind kind, String name, List<Object> args, int index) {
+            this.kind = kind;
+            this.name = name;
+            this.args = args;
+            this.index = index;
+        }
+
+        static Step field(String name) {
+            return new Step(StepKind.FIELD, name, null, 0);
+        }
+
+        static Step call(String name, List<Object> args) {
+            return new Step(StepKind.CALL, name, args, 0);
+        }
+
+        static Step index(int index) {
+            return new Step(StepKind.INDEX, null, null, index);
+        }
+    }
+
+    /** Hand-rolled parser for onEvaluate's expression subset: {@code root(.field|.call(args)|[int])*}
+     * where args are comma-separated int/string/true/false/null literals. Throws
+     * IllegalArgumentException with a position-annotated, user-facing message on anything else. */
+    private static final class PathParser {
+        private final String s;
+        private int i = 0;
+
+        private PathParser(String s) {
+            this.s = s;
+        }
+
+        static Map.Entry<String, List<Step>> parse(String expression) {
+            PathParser p = new PathParser(expression);
+            String root = p.identifier();
+            List<Step> steps = new ArrayList<>();
+            while (p.i < p.s.length()) {
+                char c = p.s.charAt(p.i);
+                if (c == '.') {
+                    p.i++;
+                    String name = p.identifier();
+                    if (p.peek() == '(') {
+                        p.i++;
+                        List<Object> callArgs = p.args();
+                        p.expect(')');
+                        steps.add(Step.call(name, callArgs));
+                    } else {
+                        steps.add(Step.field(name));
+                    }
+                } else if (c == '[') {
+                    p.i++;
+                    int idx = p.integer();
+                    p.expect(']');
+                    steps.add(Step.index(idx));
+                } else {
+                    throw new IllegalArgumentException("unexpected '" + c + "' at position " + p.i);
+                }
+            }
+            return Map.entry(root, steps);
+        }
+
+        private char peek() {
+            return i < s.length() ? s.charAt(i) : '\0';
+        }
+
+        private void expect(char c) {
+            if (peek() != c) throw new IllegalArgumentException("expected '" + c + "' at position " + i);
+            i++;
+        }
+
+        private String identifier() {
+            int start = i;
+            while (i < s.length() && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_' || s.charAt(i) == '$')) {
+                i++;
+            }
+            if (i == start) throw new IllegalArgumentException("expected identifier at position " + i);
+            return s.substring(start, i);
+        }
+
+        private int integer() {
+            int start = i;
+            if (peek() == '-') i++;
+            while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
+            if (i == start || (i == start + 1 && s.charAt(start) == '-')) {
+                throw new IllegalArgumentException("expected integer at position " + i);
+            }
+            return Integer.parseInt(s.substring(start, i));
+        }
+
+        private String stringLiteral() {
+            expect('"');
+            StringBuilder sb = new StringBuilder();
+            while (peek() != '"') {
+                if (i >= s.length()) throw new IllegalArgumentException("unterminated string literal");
+                char c = s.charAt(i++);
+                if (c == '\\' && i < s.length()) {
+                    char e = s.charAt(i++);
+                    sb.append(switch (e) {
+                        case 'n' -> '\n';
+                        case 't' -> '\t';
+                        case '"' -> '"';
+                        case '\\' -> '\\';
+                        default -> e;
+                    });
+                } else {
+                    sb.append(c);
+                }
+            }
+            i++; // closing quote
+            return sb.toString();
+        }
+
+        private List<Object> args() {
+            List<Object> result = new ArrayList<>();
+            skipWs();
+            if (peek() == ')') return result;
+            while (true) {
+                result.add(literal());
+                skipWs();
+                if (peek() == ',') {
+                    i++;
+                    skipWs();
+                    continue;
+                }
+                break;
+            }
+            return result;
+        }
+
+        private void skipWs() {
+            while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+        }
+
+        private Object literal() {
+            skipWs();
+            char c = peek();
+            if (c == '"') return stringLiteral();
+            if (c == '-' || Character.isDigit(c)) return integer();
+            if (s.startsWith("true", i)) {
+                i += 4;
+                return Boolean.TRUE;
+            }
+            if (s.startsWith("false", i)) {
+                i += 5;
+                return Boolean.FALSE;
+            }
+            if (s.startsWith("null", i)) {
+                i += 4;
+                return null;
+            }
+            throw new IllegalArgumentException("expected a literal (int/string/true/false/null) at position " + i);
+        }
     }
 
     /** Every field (including inherited) of an arbitrary object, resolved generically via JDI reflection

@@ -20,9 +20,10 @@ LSP4IJ is used for both LSP and DAP here rather than mixing two different mechan
 - **Language features (LSP)**: live-verified against a real `runIde` session -- syntax
   highlighting, diagnostics, and completion via `flix lsp`, working through LSP4IJ.
 - **Debugging (DAP)**: live-verified end-to-end -- attach to a `--Xdebug`-suspended target,
-  breakpoints resolve and hit, `evaluate` (dotted-path expressions) works, and the shared
-  `FlixDebugAdapter.java` pretty-prints Flix records/tagged unions instead of showing raw JVM
-  identities. Getting here required finding and fixing two real bugs in LSP4IJ's dispatch model
+  breakpoints resolve and hit, `evaluate` (dotted-path field access, method calls with literal
+  arguments, and array indexing) works, and the shared `FlixDebugAdapter.java` pretty-prints Flix
+  records/tagged unions instead of showing raw JVM identities. Getting here required finding and
+  fixing two real bugs in LSP4IJ's dispatch model
   (not just wiring mistakes) -- see `FlixDebugAdapterDescriptor`'s javadoc and
   `isDebuggableFile()`'s javadoc for the specifics: LSP4IJ picks the literal DAP command
   (`launch`/`attach`) from `getDebugMode()` alone, and the Mappings-tab file association is never
@@ -166,10 +167,10 @@ the generator's defaults, but that's unverified.
 ## Known gaps
 
 - No "click Debug on this file" (launch-mode) support -- see the dedicated section above.
-- `FlixDebugAdapter`'s `evaluate` DAP request only supports dotted-path field/variable lookups, not
-  arbitrary expressions.
-- No automated re-sync mechanism for the vendored `FlixDebugAdapter.java`/TextMate grammar copies
-  against `flix-lab`.
+- `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
+  literal arguments, and array indexing, but not arithmetic or nested expressions as call
+  arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the
+  running program.
 - No formatter or linter is currently configured for this repo (Qodana provides static analysis,
   but that's a separate, heavier tool, not a fast local lint/format step).
 

@@ -13,6 +13,11 @@
 - Bundled TextMate fallback grammar for `.flix` syntax highlighting, derived from `flix-fork`'s
   lexer, for when the language server hasn't analyzed a file yet.
 - `FlixForkTest`, covering `flix-vendor-*.jar` resolution.
+- Launch-mode debugging: clicking "Debug" on a `.flix` file now auto-creates a working DAP run
+  configuration (a second `fileNamePatternMapping` makes `.flix` files discoverable by LSP4IJ's
+  built-in run configuration producer; `FlixDebugAdapterDescriptorFactory#prepareConfiguration`
+  fills in its Mappings tab data), backed by `FlixDebugAdapter.java`'s new ability to spawn
+  `flix run --Xdebug` itself instead of only ever attaching to an already-running target.
 
 ### Changed
 
@@ -29,10 +34,15 @@
 - An XML comment containing `--` in `flix.jetbrains.plugin.frontend.xml` made the entire plugin
   fail to load ("Cannot load ... contains invalid plugin descriptor") in both backend and frontend
   processes under Split Mode. `verifyPluginProjectConfiguration`/`buildPlugin` do not catch this
-  class of error; only an actual `runIdeSplitMode` session did.
+  class of error; `verifyPluginStructure` does (confirmed by deliberately reintroducing one), it
+  just doesn't fail the Gradle build over it.
 
 ### Verified
 
 - Language features, `--Xdebug` DAP debugging, and `flix.runMain` all confirmed working end-to-end
   under `./gradlew runIdeSplitMode` (real split frontend + backend processes, not just a
   single-process `runIde`).
+- Launch-mode debugging's underlying `FlixDebugAdapter.java` capability confirmed end-to-end from
+  `flix-lab`'s side; the plugin-side auto-configuration wiring confirmed statically (clean compile,
+  clean `verifyPluginStructure`, LSP4IJ's mechanism confirmed by decompiling its bytecode) but not
+  yet by clicking "Debug" in a live IDE session -- see the README's Launch-mode debugging section.

@@ -187,14 +187,16 @@ public class FlixDebugAdapter {
         try {
             switch (command) {
                 case "initialize" -> onInitialize(req);
-                // "launch" is handled identically to "attach": this adapter never launches a
-                // program itself, it only ever attaches to an already-running --Xdebug JVM's
-                // JDWP port given in `arguments`. A DAP client still gets to pick which of the
-                // two verbs it sends us for its own reasons -- e.g. LSP4IJ's DAPClient chooses
-                // launch vs. attach based solely on whether *it* had to spawn this adapter as a
-                // process (which it always does for us), not on what this adapter does upon
-                // receiving the request.
-                case "attach", "launch" -> onAttach(req, args);
+                case "attach" -> onAttach(req, args);
+                // A DAP client's choice of "launch" vs. "attach" doesn't reliably reflect what it
+                // wants us to do: LSP4IJ's DAPClient always sends "launch", regardless of whether
+                // its own run configuration is configured as Attach or Launch, because *it* always
+                // spawns this adapter as a process either way (see DAPRunConfigurationOptions).
+                // So "launch" requests are disambiguated by argument shape instead of by command
+                // name: a "program" argument means spawn `flix run --Xdebug` ourselves (real
+                // launch semantics); its absence means these are attach-shaped arguments
+                // (hostName/port) that merely arrived over the "launch" verb.
+                case "launch" -> onLaunchOrAttach(req, args);
                 case "setBreakpoints" -> onSetBreakpoints(req, args);
                 case "configurationDone" -> onConfigurationDone(req);
                 case "threads" -> onThreads(req);
@@ -227,6 +229,23 @@ public class FlixDebugAdapter {
     // ------------------------------------------------------------------
 
     private void onAttach(Map<String, Object> req, Map<String, Object> args) throws Exception {
+        doAttach(args);
+        sendResponse(req, true, null);
+    }
+
+    private void onLaunchOrAttach(Map<String, Object> req, Map<String, Object> args) throws Exception {
+        if (args.containsKey("program")) {
+            onLaunch(req, args);
+        } else {
+            onAttach(req, args);
+        }
+    }
+
+    /** Attaches to an already-running --Xdebug JVM's JDWP port; shared by both a real "attach"
+     * request and a "launch" request that spawned that JVM itself (see onLaunch). Sends no
+     * response of its own since onLaunch's retry loop needs to catch and retry a failed attempt
+     * before the JVM's JDWP listener comes up. */
+    private void doAttach(Map<String, Object> args) throws Exception {
         String host = String.valueOf(args.getOrDefault("hostName", "localhost"));
         int port = ((Number) args.getOrDefault("port", 5005)).intValue();
 
@@ -259,8 +278,133 @@ public class FlixDebugAdapter {
         eventThread = new Thread(this::eventLoop, "flix-debug-jdi-events");
         eventThread.setDaemon(true);
         eventThread.start();
+    }
 
+    // ------------------------------------------------------------------
+    // Launch
+    // ------------------------------------------------------------------
+
+    /** Non-null only for a "launch" session, i.e. one where this adapter spawned the target JVM
+     * itself rather than attaching to one someone else started -- used by onDisconnect to decide
+     * whether stopping the debug session should also kill the target process. */
+    private Process launchedProcess;
+
+    /**
+     * Spawns `flix run --Xdebug` (or a caller-supplied command) itself with a JDWP agent
+     * listening on a freshly-picked free port, then attaches to it the same way onAttach would --
+     * closing the "attach-only" gap where a target JVM had to already be running, suspended,
+     * before this adapter could do anything.
+     *
+     * Required argument: "program", a path to the .flix file or project directory to run (used
+     * to locate the project root, by walking up for the nearest flix.toml). Optional arguments:
+     * "entryPoint" (Flix --entrypoint, if not the default main()), "cwd" (overrides the located
+     * project root), "flixCommand" (the command used to invoke flix, as a list of strings;
+     * defaults to ["flix"] -- e.g. flix-lab's launch.json points this at scripts/flix-fork
+     * instead, since a plain `flix` on PATH wouldn't have --Xdebug support), and "args" (extra
+     * arguments passed through to the running program).
+     */
+    private void onLaunch(Map<String, Object> req, Map<String, Object> args) throws Exception {
+        String program = String.valueOf(args.get("program"));
+        File programFile = new File(program);
+        File startDir = programFile.isDirectory() ? programFile : programFile.getParentFile();
+        if (startDir == null) startDir = new File(".");
+        File cwd = args.get("cwd") != null ? new File(String.valueOf(args.get("cwd"))) : findProjectRoot(startDir);
+
+        List<String> command = new ArrayList<>();
+        if (args.get("flixCommand") instanceof List<?> flixCommand && !flixCommand.isEmpty()) {
+            for (Object o : flixCommand) command.add(String.valueOf(o));
+        } else {
+            command.add("flix");
+        }
+        command.add("run");
+        command.add("--Xdebug");
+        command.add("--yes");
+        Object entryPoint = args.get("entryPoint");
+        if (entryPoint != null && !String.valueOf(entryPoint).isBlank()) {
+            command.add("--entrypoint");
+            command.add(String.valueOf(entryPoint));
+        }
+        if (args.get("args") instanceof List<?> programArgs) {
+            for (Object o : programArgs) command.add(String.valueOf(o));
+        }
+
+        int port = findFreePort();
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(cwd);
+        pb.redirectErrorStream(true);
+        String existingOpts = System.getenv().getOrDefault("JAVA_TOOL_OPTIONS", "");
+        pb.environment().put("JAVA_TOOL_OPTIONS",
+                (existingOpts.isBlank() ? "" : existingOpts + " ")
+                        + "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:" + port);
+        debug("launching: " + String.join(" ", command) + " (cwd=" + cwd + ", JDWP port=" + port + ")");
+        try {
+            launchedProcess = pb.start();
+        } catch (IOException e) {
+            sendErrorResponse(req, "failed to start '" + String.join(" ", command) + "' in " + cwd + ": " + e.getMessage());
+            return;
+        }
+        Thread pump = new Thread(() -> pumpOutput(launchedProcess), "flix-debug-launch-output");
+        pump.setDaemon(true);
+        pump.start();
+
+        Map<String, Object> attachArgs = new LinkedHashMap<>();
+        attachArgs.put("hostName", "localhost");
+        attachArgs.put("port", port);
+
+        // The target JVM's JDWP listener takes a moment to come up after the process starts, so
+        // retry the attach instead of racing it with a single attempt. A refused connection here
+        // never reaches the JVM's JDWP server at all, so unlike probing the port with a bare
+        // socket first, this can't accidentally consume the one-shot accept a suspend=y listener
+        // grants its real debugger connection.
+        long deadline = System.currentTimeMillis() + 30_000;
+        Exception lastError = null;
+        while (System.currentTimeMillis() < deadline) {
+            if (!launchedProcess.isAlive()) {
+                sendErrorResponse(req, "flix process exited before a debugger could attach (exit code "
+                        + launchedProcess.exitValue() + "); see the Debug Console for its output");
+                return;
+            }
+            try {
+                doAttach(attachArgs);
+                lastError = null;
+                break;
+            } catch (Exception e) {
+                lastError = e;
+                Thread.sleep(200);
+            }
+        }
+        if (lastError != null) {
+            sendErrorResponse(req, "failed to attach to the launched flix process: " + lastError);
+            return;
+        }
         sendResponse(req, true, null);
+    }
+
+    private void pumpOutput(Process process) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("category", "console");
+                body.put("output", line + "\n");
+                sendEvent("output", body);
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static int findFreePort() throws IOException {
+        try (ServerSocket probe = new ServerSocket(0)) {
+            return probe.getLocalPort();
+        }
+    }
+
+    private static File findProjectRoot(File start) {
+        for (File dir = start; dir != null; dir = dir.getParentFile()) {
+            if (new File(dir, "flix.toml").isFile()) return dir;
+        }
+        return start;
     }
 
     private void onConfigurationDone(Map<String, Object> req) {
@@ -985,6 +1129,11 @@ public class FlixDebugAdapter {
         try {
             if (vm != null) vm.dispose();
         } catch (Exception ignored) {
+        }
+        if (launchedProcess != null) {
+            // A launch session owns the target process's lifecycle (an attach session never does,
+            // since it never started that process), so disconnecting stops it too.
+            launchedProcess.destroy();
         }
         sendResponse(req, true, null);
         System.exit(0);

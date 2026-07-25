@@ -41,20 +41,49 @@ LSP4IJ is used for both LSP and DAP here rather than mixing two different mechan
   client. One real bug found and fixed getting here: an XML comment containing `--` in
   `flix.jetbrains.plugin.frontend.xml` made the *entire plugin* fail to load on both sides ("Cannot
   load ... contains invalid plugin descriptor") -- `verifyPluginProjectConfiguration`/`buildPlugin`
-  both passed anyway, so this class of error is only caught by an actual IDE session, not the build.
+  both passed anyway; `./gradlew verifyPluginStructure` does catch it though (confirmed by
+  deliberately reintroducing one and rerunning it), it just doesn't fail the Gradle build over it,
+  so its output still needs to be read, not only its exit code.
+- **Launch-mode debugging**: implemented (see the dedicated section below) and verified statically
+  -- compiles clean, `verifyPluginStructure` reports no descriptor errors, the underlying
+  `FlixDebugAdapter.java` launch capability it depends on is live-verified end-to-end from
+  `flix-lab`'s side (spawns `flix run --Xdebug`, streams output, attaches, hits breakpoints,
+  disconnect kills the process), and the LSP4IJ auto-configuration mechanism it relies on was
+  confirmed by decompiling `DebugAdapterManager`/`DebugAdapterDescriptorFactory`'s actual bytecode
+  rather than assumed from docs. Not yet re-verified by literally clicking "Debug" in a live IDE
+  session in this pass, since a sandbox instance from earlier work was already running and left
+  undisturbed rather than risk disrupting it -- restart the sandbox IDE (or run
+  `./gradlew runIdeSplitMode` fresh) and click "Debug" on a `.flix` file to confirm end-to-end.
 
-## Known limitation: attach-only debugging
+## Launch-mode debugging ("click Debug on this file")
 
-There's no "click Debug on this file" support -- the toolbar's generic "Current File" run/debug
-widget does nothing useful for `.flix` files. `FlixDebugAdapterDescriptor` only implements DAP
-*attach* semantics: it connects to a `--Xdebug` JVM you've already started suspended and waiting
-(e.g. via a shell script or a run task). There's no `RunConfigurationProducer` recognizing `.flix`
-files, and `FlixDebugAdapter.java` has no code path for actually launching a Flix program with JDWP
-enabled itself. Building that would mean a real new feature -- a run-configuration producer plus
-teaching the adapter to spawn `flix run` with the right JDWP flags itself, essentially merging
-`flix.runMain`'s "run the program" logic with the attach flow -- not a quick fix.
+Clicking the gutter/toolbar "Debug" icon on a `.flix` file auto-creates a Debug Adapter Protocol
+run configuration in Launch mode -- no manual "Edit Configurations" step needed. This works via
+two pieces, both required:
 
-## One-time setup per project
+- A second `fileNamePatternMapping` in `flix.jetbrains.plugin.backend.xml` (`*.flix` ->
+  `flixDebugAdapter`, alongside the existing one pointing at the language server) makes `.flix`
+  files discoverable by LSP4IJ's built-in `DAPRunConfigurationProvider` in the first place --
+  without it, `.flix` files are invisible to that auto-creation step entirely (confirmed by
+  decompiling `DebugAdapterManager`/`DebugAdapterDescriptorFactory`; LSP4IJ 0.20.1 ships no sources
+  jar). `FlixDebugAdapterDescriptorFactory#prepareConfiguration` then fills in the resulting
+  configuration's own Mappings tab data too, which the base implementation does not do on its own.
+- `FlixDebugAdapter.java` gained real launch semantics: given a `program` argument it spawns
+  `flix run --Xdebug` itself (on a freshly-picked free JDWP port) instead of only ever attaching to
+  a JVM someone else already started. `FlixDebugAdapterDescriptor#getDapParameters` sends
+  launch-shaped arguments (`program`/`cwd`) when the run configuration's own mode is Launch, and
+  the original attach-shaped ones (`hostName`/`port`) otherwise -- see that class's javadoc.
+
+The entry point defaults to `main()` and the flix command defaults to `flix` on `PATH` (LSP4IJ's
+generic DAP run configuration UI has no field for overriding either); for a project needing
+`--entrypoint` or a non-`PATH` build like this one's own `scripts/flix-fork`, use the pre-existing
+manual Attach flow below instead, or edit the auto-created configuration's Working Directory field.
+
+## One-time setup per project (manual attach configuration)
+
+Launch mode (above) needs no setup. For attach mode -- connecting to a `--Xdebug` JVM you start
+yourself, e.g. via a shell script or a run task -- or to override the entry point/flix command
+launch mode can't:
 
 1. **Language features**: open a `.flix` file; LSP4IJ should offer to start the "Flix Language
    Server" automatically. Requires a `flix-vendor-*.jar` in the project root (or `$FLIX_FORK_JAR`
@@ -166,7 +195,10 @@ the generator's defaults, but that's unverified.
 
 ## Known gaps
 
-- No "click Debug on this file" (launch-mode) support -- see the dedicated section above.
+- Launch-mode debugging ("click Debug on this file") always uses `main()` as the entry point and
+  `flix` on `PATH` as the command -- there's no field in LSP4IJ's generic DAP run configuration UI
+  to override either, so a project needing `--entrypoint` or a non-`PATH` build (like this one's
+  own `scripts/flix-fork`) still needs the manual Attach configuration instead.
 - `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
   literal arguments, and array indexing, but not arithmetic or nested expressions as call
   arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the

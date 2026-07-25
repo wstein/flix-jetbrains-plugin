@@ -35,10 +35,17 @@ import java.util.Map;
  * connection does) -- confirmed by reading LSP4IJ's own DAPClient source after this actually broke
  * live: `debugMode == DebugMode.LAUNCH` makes LSP4IJ call `getDebugProtocolServer().launch(params)`
  * -- an *actual DAP `launch` command* -- rather than `attach(params)`, regardless of what "request"
- * key is inside the params map. So getDapParameters() below sets "request": "launch" to match, and
- * FlixDebugAdapter.java's dispatcher treats "launch" and "attach" identically (both just mean
- * "attach to the JDWP host:port in `arguments`" -- there's no real "launch a program" concept for
- * an adapter that never launches anything itself).
+ * key is inside the params map. So getDapParameters() below always sets "request": "launch" to
+ * match, no matter which mode the *run configuration itself* is set to.
+ *
+ * That run configuration's own mode -- {@code DAPRunConfigurationOptions#getDebugMode()}, not this
+ * class's hardcoded {@link #getDebugMode()} override -- is what actually varies now:
+ * FlixDebugAdapter.java gained real "launch" semantics (it spawns `flix run --Xdebug` itself,
+ * given a "program" argument) alongside its original attach-only behavior, so getDapParameters()
+ * below sends launch-shaped arguments ("program"/"cwd") when the configuration is set to Launch,
+ * and the original attach-shaped ones ("hostName"/"port") otherwise -- including for a
+ * configuration auto-created by clicking "Debug" on a .flix file, which
+ * FlixDebugAdapterDescriptorFactory#prepareConfiguration sets to Launch mode automatically.
  */
 public class FlixDebugAdapterDescriptor extends DebugAdapterDescriptor {
 
@@ -99,6 +106,27 @@ public class FlixDebugAdapterDescriptor extends DebugAdapterDescriptor {
 
     @Override
     public @NotNull Map<String, Object> getDapParameters() {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("type", "flix");
+        params.put("request", "launch"); // always "launch" over DAP -- see class javadoc
+
+        // The run configuration's *own* chosen mode (DAPRunConfigurationOptions#getDebugMode(),
+        // set on the Configuration tab, or automatically to LAUNCH by
+        // FlixDebugAdapterDescriptorFactory#prepareConfiguration for a "click Debug on this file"
+        // configuration) is a separate concern from getDebugMode() above, which is about how
+        // LSP4IJ itself obtains this DAP *server* process, not what the debuggee connection does.
+        if (options instanceof DAPRunConfigurationOptions dapOptions && dapOptions.getDebugMode() == DebugMode.LAUNCH) {
+            String program = dapOptions.getFile();
+            if (program != null && !program.isBlank()) {
+                params.put("program", program);
+            }
+            String workingDirectory = dapOptions.getWorkingDirectory();
+            if (workingDirectory != null && !workingDirectory.isBlank()) {
+                params.put("cwd", workingDirectory);
+            }
+            return params;
+        }
+
         String host = DEFAULT_HOST;
         String port = DEFAULT_PORT;
         if (options instanceof AttachConfigurable attach) {
@@ -111,9 +139,6 @@ public class FlixDebugAdapterDescriptor extends DebugAdapterDescriptor {
                 port = attachPort;
             }
         }
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("type", "flix");
-        params.put("request", "launch");
         params.put("hostName", host);
         params.put("port", Integer.parseInt(port));
         return params;

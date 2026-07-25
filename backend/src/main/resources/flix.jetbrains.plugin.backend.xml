@@ -37,6 +37,22 @@
                                 serverId="flixLanguageServer"
                                 languageId="flix"/>
 
+        <!-- This second mapping (same extension point, serverId pointed at the debug adapter
+             instead of the language server) is what makes "click Debug on this file" work for
+             .flix files at all: DebugAdapterManager.findDebugAdapterServerFor() consults exactly
+             this serverId to mappings table to recognize a file as debuggable *before* any run
+             configuration exists, which is what LSP4IJ's built-in DAPRunConfigurationProvider
+             (a LazyRunConfigurationProducer of DAPRunConfiguration) needs to auto-create one from
+             context. Without it, .flix files were invisible to that discovery step entirely,
+             confirmed by decompiling DebugAdapterManager/DebugAdapterDescriptorFactory (0.20.1
+             ships no sources jar); FlixDebugAdapterDescriptorFactory#prepareConfiguration then
+             fills in the resulting configuration's own Mappings tab data, which this extension
+             point entry does NOT do by itself (it only makes the file discoverable, not
+             debuggable once a configuration exists, see that override's javadoc). -->
+        <fileNamePatternMapping patterns="*.flix"
+                                serverId="flixDebugAdapter"
+                                languageId="flix"/>
+
         <debugAdapterServer id="flixDebugAdapter"
                             name="Flix (--Xdebug attach)"
                             factoryClass="dev.wstein.flixplugin.FlixDebugAdapterDescriptorFactory">

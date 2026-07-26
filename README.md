@@ -44,16 +44,15 @@ LSP4IJ is used for both LSP and DAP here rather than mixing two different mechan
   both passed anyway; `./gradlew verifyPluginStructure` does catch it though (confirmed by
   deliberately reintroducing one and rerunning it), it just doesn't fail the Gradle build over it,
   so its output still needs to be read, not only its exit code.
-- **Launch-mode debugging**: implemented (see the dedicated section below) and verified statically
-  -- compiles clean, `verifyPluginStructure` reports no descriptor errors, the underlying
-  `FlixDebugAdapter.java` launch capability it depends on is live-verified end-to-end from
+- **Launch-mode debugging**: live-verified -- clicking "Debug" on `Main.flix` with no existing run
+  configuration auto-created a "Flix (--Xdebug attach)" configuration named after the file, in
+  Launch mode, with no manual Mappings-tab step; the console showed it spawning
+  `flix run --Xdebug --yes` on a freshly-picked JDWP port, listening, and disconnecting cleanly
+  (exit code 0) once the program (no breakpoint set that run) ran to completion. Confirms both
+  halves: the `fileNamePatternMapping`/`prepareConfiguration` auto-configuration wiring, and
+  `FlixDebugAdapter.java`'s own launch capability, already live-verified independently from
   `flix-lab`'s side (spawns `flix run --Xdebug`, streams output, attaches, hits breakpoints,
-  disconnect kills the process), and the LSP4IJ auto-configuration mechanism it relies on was
-  confirmed by decompiling `DebugAdapterManager`/`DebugAdapterDescriptorFactory`'s actual bytecode
-  rather than assumed from docs. Not yet re-verified by literally clicking "Debug" in a live IDE
-  session in this pass, since a sandbox instance from earlier work was already running and left
-  undisturbed rather than risk disrupting it -- restart the sandbox IDE (or run
-  `./gradlew runIdeSplitMode` fresh) and click "Debug" on a `.flix` file to confirm end-to-end.
+  disconnect kills the process).
 
 ## Launch-mode debugging ("click Debug on this file")
 

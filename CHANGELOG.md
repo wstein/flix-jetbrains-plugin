@@ -42,7 +42,7 @@
 - Language features, `--Xdebug` DAP debugging, and `flix.runMain` all confirmed working end-to-end
   under `./gradlew runIdeSplitMode` (real split frontend + backend processes, not just a
   single-process `runIde`).
-- Launch-mode debugging's underlying `FlixDebugAdapter.java` capability confirmed end-to-end from
-  `flix-lab`'s side; the plugin-side auto-configuration wiring confirmed statically (clean compile,
-  clean `verifyPluginStructure`, LSP4IJ's mechanism confirmed by decompiling its bytecode) but not
-  yet by clicking "Debug" in a live IDE session -- see the README's Launch-mode debugging section.
+- Launch-mode debugging confirmed end-to-end, including by clicking "Debug" on `Main.flix` in a
+  live IDE session: a "Flix (--Xdebug attach)" configuration was auto-created in Launch mode with
+  no manual Mappings-tab step, `flix run --Xdebug --yes` was spawned on a fresh JDWP port, and the
+  session disconnected cleanly once the program ran to completion.

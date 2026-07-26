@@ -73,10 +73,15 @@ two pieces, both required:
   launch-shaped arguments (`program`/`cwd`) when the run configuration's own mode is Launch, and
   the original attach-shaped ones (`hostName`/`port`) otherwise -- see that class's javadoc.
 
-The entry point defaults to `main()` and the flix command defaults to `flix` on `PATH` (LSP4IJ's
-generic DAP run configuration UI has no field for overriding either); for a project needing
-`--entrypoint` or a non-`PATH` build like this one's own `scripts/flix-fork`, use the manual Attach
-flow below instead -- there's no field on the auto-created configuration that can express either.
+The entry point always defaults to `main()` -- LSP4IJ's generic DAP run configuration UI has no
+field to override it, and there's no environment-variable escape hatch for this one since a launch
+needs a *different* value per file, not one fixed value for the whole IDE process. The flix command
+itself does have that escape hatch: it defaults to the `FLIX_DEBUG_COMMAND` environment variable if
+set, then `flix` on `PATH`. Export `FLIX_DEBUG_COMMAND=/path/to/scripts/flix-fork` (or wherever a
+project's `--Xdebug`-capable build lives) **before** launching the sandbox IDE -- e.g. before running
+`./gradlew runIdeSplitMode` in the same shell -- since it's read once when the adapter process
+starts, not on every launch. This repo's own `flix` on `PATH` isn't `--Xdebug`-capable at all (see
+Troubleshooting below), so debugging any `.flix` file in *this* repo via Launch mode needs this set.
 
 ### Troubleshooting: Debug fails near-instantly with no useful message
 
@@ -88,12 +93,13 @@ then almost immediately `Unset error message.` / `Disconnected successfully from
 inside the adapter (a bad `sendErrorResponse`) shows up as this same generic placeholder text rather
 than anything actionable. Two independent causes produce this exact symptom:
 
-- **`flix` on `PATH` isn't a `--Xdebug`-capable build.** `flix run --Xdebug` exits almost instantly
-  if the resolved `flix` doesn't understand `--Xdebug` at all (e.g. an official Flix release rather
-  than `wstein/flix-fork`) -- check with `which flix` / `flix --version` in the same shell that
-  launched the sandbox IDE. This repo's own `flix` isn't `--Xdebug`-capable at all (only
-  `scripts/flix-fork`'s vendored jar is), so launch mode against this repo's `.flix` files will hit
-  this every time; use the manual Attach flow below instead.
+- **Neither `FLIX_DEBUG_COMMAND` nor `flix` on `PATH` is a `--Xdebug`-capable build.**
+  `flix run --Xdebug` exits almost instantly if the resolved command doesn't understand `--Xdebug`
+  at all (e.g. an official Flix release rather than `wstein/flix-fork`) -- check with `which flix` /
+  `flix --version` in the same shell that launched the sandbox IDE. This repo's own `flix` isn't
+  `--Xdebug`-capable at all (only `scripts/flix-fork`'s vendored jar is), so debugging its `.flix`
+  files needs `export FLIX_DEBUG_COMMAND=/absolute/path/to/scripts/flix-fork` before launching the
+  IDE (see above) -- or the manual Attach flow below instead.
 - **An existing run configuration already matching the file gets reused as-is**, mode and all.
   LSP4IJ's producer prefers an existing `DAPRunConfiguration` whose Mappings already cover the
   clicked file over creating a fresh one (`DebugAdapterManager.findExistingConfigurationFor`) --
@@ -218,10 +224,18 @@ the generator's defaults, but that's unverified.
 
 ## Known gaps
 
-- Launch-mode debugging ("click Debug on this file") always uses `main()` as the entry point and
-  `flix` on `PATH` as the command -- there's no field in LSP4IJ's generic DAP run configuration UI
-  to override either, so a project needing `--entrypoint` or a non-`PATH` build (like this one's
-  own `scripts/flix-fork`) still needs the manual Attach configuration instead.
+- Launch-mode debugging ("click Debug on this file") always uses `main()` as the entry point --
+  there's no field in LSP4IJ's generic DAP run configuration UI to override it, and no
+  environment-variable escape hatch either (a launch needs a different entry point per file, not
+  one fixed value for the whole IDE process). A project needing `--entrypoint` still needs the
+  manual Attach configuration. The flix command itself *is* overridable now, via the
+  `FLIX_DEBUG_COMMAND` environment variable (see the Launch-mode debugging section above).
+- No inline gutter/CodeLens "Debug" affordance next to `def main()`, unlike the existing "Run"
+  CodeLens -- that one comes from the Flix language server's own `flix.runMain` codelens, which this
+  plugin merely binds to an action; a "Debug" equivalent would need either the language server to
+  emit a matching codelens (external dependency) or full Flix PSI/parsing support in this plugin (a
+  much bigger undertaking). Use the standard "Debug 'Main.flix'" entry in the editor's right-click
+  context menu instead -- confirmed present and working via `canRun()`'s default (always `true`).
 - `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
   literal arguments, and array indexing, but not arithmetic or nested expressions as call
   arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the

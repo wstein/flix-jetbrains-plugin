@@ -28,6 +28,10 @@
   method calls with literal arguments and array indexing in addition to dotted-path field access.
 - `scripts/sync-debug-adapter.sh` plus the `checkDebugAdapterSync`/`syncDebugAdapter` Gradle tasks
   replace manually copying the vendored `FlixDebugAdapter.java` from `flix-lab`.
+- Launch mode now honors the `FLIX_DEBUG_COMMAND` environment variable as the flix command to run
+  (re-synced from `flix-lab`), since LSP4IJ's generic DAP run configuration UI has no field to set
+  it per-configuration -- export it before launching the IDE to debug a project (like this one)
+  whose plain `flix` on `PATH` doesn't support `--Xdebug`.
 
 ### Fixed
 

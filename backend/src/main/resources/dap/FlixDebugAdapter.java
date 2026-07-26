@@ -299,9 +299,12 @@ public class FlixDebugAdapter {
      * to locate the project root, by walking up for the nearest flix.toml). Optional arguments:
      * "entryPoint" (Flix --entrypoint, if not the default main()), "cwd" (overrides the located
      * project root), "flixCommand" (the command used to invoke flix, as a list of strings;
-     * defaults to ["flix"] -- e.g. flix-lab's launch.json points this at scripts/flix-fork
-     * instead, since a plain `flix` on PATH wouldn't have --Xdebug support), and "args" (extra
-     * arguments passed through to the running program).
+     * defaults to the FLIX_DEBUG_COMMAND environment variable if set, then ["flix"] -- e.g.
+     * flix-lab's launch.json points this at scripts/flix-fork explicitly, since a plain `flix` on
+     * PATH wouldn't have --Xdebug support, but DAP clients with no way to set a per-request
+     * argument (LSP4IJ's generic run configuration UI has no field for this) can still override
+     * the default via that environment variable instead), and "args" (extra arguments passed
+     * through to the running program).
      */
     private void onLaunch(Map<String, Object> req, Map<String, Object> args) throws Exception {
         String program = String.valueOf(args.get("program"));
@@ -314,7 +317,8 @@ public class FlixDebugAdapter {
         if (args.get("flixCommand") instanceof List<?> flixCommand && !flixCommand.isEmpty()) {
             for (Object o : flixCommand) command.add(String.valueOf(o));
         } else {
-            command.add("flix");
+            String envCommand = System.getenv("FLIX_DEBUG_COMMAND");
+            command.add(envCommand != null && !envCommand.isBlank() ? envCommand : "flix");
         }
         command.add("run");
         command.add("--Xdebug");

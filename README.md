@@ -75,8 +75,32 @@ two pieces, both required:
 
 The entry point defaults to `main()` and the flix command defaults to `flix` on `PATH` (LSP4IJ's
 generic DAP run configuration UI has no field for overriding either); for a project needing
-`--entrypoint` or a non-`PATH` build like this one's own `scripts/flix-fork`, use the pre-existing
-manual Attach flow below instead, or edit the auto-created configuration's Working Directory field.
+`--entrypoint` or a non-`PATH` build like this one's own `scripts/flix-fork`, use the manual Attach
+flow below instead -- there's no field on the auto-created configuration that can express either.
+
+### Troubleshooting: Debug fails near-instantly with no useful message
+
+Symptom (live-verified against this repo itself): clicking Debug shows
+`Listening for DAP client on port <n>` and `[flix-debug-adapter] launching: flix run --Xdebug ...`,
+then almost immediately `Unset error message.` / `Disconnected successfully from the debug server.`
+-- no breakpoint hit, no `flix run` output ever shown. LSP4IJ's Console here only renders the DAP
+*server* process's raw stdout/stderr, not the DAP protocol responses themselves, so a real failure
+inside the adapter (a bad `sendErrorResponse`) shows up as this same generic placeholder text rather
+than anything actionable. Two independent causes produce this exact symptom:
+
+- **`flix` on `PATH` isn't a `--Xdebug`-capable build.** `flix run --Xdebug` exits almost instantly
+  if the resolved `flix` doesn't understand `--Xdebug` at all (e.g. an official Flix release rather
+  than `wstein/flix-fork`) -- check with `which flix` / `flix --version` in the same shell that
+  launched the sandbox IDE. This repo's own `flix` isn't `--Xdebug`-capable at all (only
+  `scripts/flix-fork`'s vendored jar is), so launch mode against this repo's `.flix` files will hit
+  this every time; use the manual Attach flow below instead.
+- **An existing run configuration already matching the file gets reused as-is**, mode and all.
+  LSP4IJ's producer prefers an existing `DAPRunConfiguration` whose Mappings already cover the
+  clicked file over creating a fresh one (`DebugAdapterManager.findExistingConfigurationFor`) --
+  so a configuration you (or an earlier auto-creation) left in Attach mode with nothing listening on
+  its configured port gets silently reused and fails the same way. Check **Run \| Edit
+  Configurations** for a stale entry and either fix its Debug Mode or remove it so a fresh one gets
+  auto-created.
 
 ## One-time setup per project (manual attach configuration)
 

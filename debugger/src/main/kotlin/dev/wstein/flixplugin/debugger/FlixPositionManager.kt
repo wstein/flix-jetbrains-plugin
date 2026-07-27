@@ -60,14 +60,21 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     override fun locationsOfLine(type: ReferenceType, position: SourcePosition): List<Location> {
         val target = flixTargetOf(position)
         val stratum = FlixSourceLocations.stratumFor(type) ?: throw NoDataException.INSTANCE
-        if (!matchesSource(type, target)) throw NoDataException.INSTANCE
+        val sourceNames = matchingSourceNames(type, stratum, target)
+        if (sourceNames.isEmpty()) throw NoDataException.INSTANCE
 
         // One Flix line commonly compiles into several generated classes and several locations
         // within them -- closures and lambdas each get their own. Returning all of them is what
-        // makes a single breakpoint stop wherever that line actually runs.
-        return runCatching {
-            type.locationsOfLine(stratum, target.baseName, position.line + 1)
-        }.getOrElse { emptyList() }
+        // makes a single breakpoint stop wherever that line actually runs. Query with the source
+        // name JDI actually reported, rather than [Target.baseName]: a no-SMAP class can expose an
+        // absolute SourceFile name (for example `/project/src/Main.flix`). Passing `Main.flix`
+        // then silently yields no locations even though the line table contains the requested
+        // line.
+        return sourceNames.flatMap { sourceName ->
+            runCatching {
+                type.locationsOfLine(stratum, sourceName, position.line + 1)
+            }.getOrElse { emptyList() }
+        }.distinct()
     }
 
     override fun createPrepareRequest(
@@ -116,14 +123,27 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
      */
     private fun matchesSource(type: ReferenceType, target: Target): Boolean {
         val stratum = FlixSourceLocations.stratumFor(type) ?: return false
+        return matchingSourceNames(type, stratum, target).isNotEmpty()
+    }
+
+    /**
+     * The JDI source names that identify [target] in [type].
+     *
+     * This is intentionally shared by forward binding and the later `locationsOfLine` query:
+     * using one selection rule for the former and a base-name approximation for the latter was
+     * enough to verify a breakpoint on some generated classes while leaving it unbound on others.
+     */
+    private fun matchingSourceNames(type: ReferenceType, stratum: String, target: Target): List<String> {
         val sources = FlixSourceLocations.flixSourcesOf(type, stratum)
             .filter { (name, _) -> FlixSourceLocations.couldReferToBaseName(name, target.baseName) }
-        if (sources.isEmpty()) return false
+        if (sources.isEmpty()) return emptyList()
 
-        return ReadAction.compute<Boolean, RuntimeException> {
-            sources.any { (name, path) ->
-                FlixSourceFiles.find(debugProcess.project, name, path)?.virtualFile == target.file
-            }
+        return ReadAction.compute<List<String>, RuntimeException> {
+            sources.mapNotNull { (name, path) ->
+                name.takeIf {
+                    FlixSourceFiles.find(debugProcess.project, name, path)?.virtualFile == target.file
+                }
+            }.distinct()
         }
     }
 

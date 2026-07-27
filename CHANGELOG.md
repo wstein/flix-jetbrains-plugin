@@ -95,6 +95,11 @@
   now claims `.flix`, which also means no custom Flix breakpoint type is needed.
 - The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
   where nothing consumes them.
+- A breakpoint could verify against a class and then never bind to a location. `matchesSource`
+  resolved using the source name JDI reported, but `locationsOfLine` queried with a base name
+  derived from the breakpoint's file -- and a class without SMAP can report an absolute
+  `SourceFile`, for which `locationsOfLine(stratum, "Main.flix", n)` yields nothing even though the
+  line table holds line `n`. Both now share one selection rule and query with the reported name.
 - A breakpoint could bind to the wrong class. Reverse navigation refused ambiguous duplicate base
   names, but forward binding compared source paths textually, and the suffix rule makes
   `Main.flix` match `/project/moduleA/Main.flix` -- so a class without SMAP, which reports only a

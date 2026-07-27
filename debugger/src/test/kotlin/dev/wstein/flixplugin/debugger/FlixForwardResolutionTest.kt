@@ -50,6 +50,25 @@ class FlixForwardResolutionTest {
     }
 
     @Test
+    fun `returns source names exactly as JDI reported them`() {
+        // Load-bearing for locationsOfLine, which must query with the name JDI gave rather than a
+        // base name derived from it. A class without SMAP can report an absolute SourceFile, and
+        // `locationsOfLine(stratum, "Main.flix", n)` then yields nothing even though the line table
+        // holds line n -- so the breakpoint verifies against the class and never binds to a
+        // location. Normalizing here would reintroduce exactly that.
+        val type = referenceType(
+            names = listOf("/project/src/Main.flix"),
+            paths = listOf("/project/src/Main.flix"),
+        )
+        assertEquals(
+            listOf("/project/src/Main.flix" to "/project/src/Main.flix"),
+            FlixSourceLocations.flixSourcesOf(type, "Java"),
+        )
+        // ...while still passing the base-name filter, so such a class is not skipped outright.
+        assertTrue(FlixSourceLocations.couldReferToBaseName("/project/src/Main.flix", "Main.flix"))
+    }
+
+    @Test
     fun `ignores non-Flix sources of a mixed class`() {
         val type = referenceType(
             names = listOf("Main.flix", "Helper.java"),

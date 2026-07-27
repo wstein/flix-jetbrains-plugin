@@ -92,9 +92,24 @@ jobs:
         with:
           cache-read-only: true
 
+      # Check out the Flix compiler so the parser corpus gate has a corpus to run against.
+      # Without it FlixCorpusTest skips, and the grammar's coverage of real Flix code goes
+      # unverified -- which is the one property the hand-written parser tests cannot establish,
+      # since they were written against the grammar. Pinned to flixCorpusCommit for reproducibility;
+      # see docs/intellij-flix-parser-evaluation.md.
+      - name: Fetch Flix corpus
+        id: corpus
+        continue-on-error: true
+        run: |
+          COMMIT=$(grep -E '^flixCorpusCommit' gradle.properties | cut -d= -f2 | tr -d ' ')
+          git clone --filter=blob:none --no-checkout https://github.com/flix/flix.git "$RUNNER_TEMP/flix"
+          git -C "$RUNNER_TEMP/flix" fetch --depth 1 origin "$COMMIT"
+          git -C "$RUNNER_TEMP/flix" checkout --detach FETCH_HEAD
+          echo "dir=$RUNNER_TEMP/flix" >> "$GITHUB_OUTPUT"
+
       # Run tests
       - name: Run Tests
-        run: ./gradlew check
+        run: ./gradlew check -PflixCorpusDir="${{ steps.corpus.outputs.dir }}"
 
       # Collect Tests Result of failed tests
       - name: Collect Tests Result

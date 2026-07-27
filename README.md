@@ -156,7 +156,20 @@ This repository implements a modular IntelliJ Platform plugin using content modu
 ├── .github/                GitHub Workflows, issue templates, and Dependabot configuration
 ├── .qodana/profiles/       Qodana plugin inspections profile
 ├── .run/                   Predefined Run/Debug Configurations
-├── backend/                Backend module -- everything currently lives here
+├── language/               Language module -- Flix Language, FileType, parser, PSI, editor support
+│   ├── build.gradle.kts    Grammar-Kit: generates the lexer/parser/PSI from src/main/grammar
+│   └── src/
+│       ├── main/
+│       │   ├── grammar/    Flix.bnf, _Flix.flex, Flix.tokens.txt (adopted; see NOTICE)
+│       │   ├── kotlin/org/flixlang/intellij/   language, editor, highlighting, gutter marker
+│       │   └── resources/flix.jetbrains.plugin.language.xml
+│       └── test/kotlin/    parser corpus gate, parsing, recovery, folding, gutter anchoring
+├── debugger/               Debugger module -- Flix source positions for IntelliJ's JVM debugger
+│   ├── build.gradle.kts    depends on the Java plugin; optional, so non-Java IDEs still load
+│   └── src/
+│       ├── main/kotlin/dev/wstein/flixplugin/debugger/   PositionManager + source lookup
+│       └── test/kotlin/    JDI-stub tests for the dual-mode SMAP mapping rules
+├── backend/                Backend module -- LSP4IJ server + DAP registrations, flix.runMain
 │   ├── build.gradle.kts    LSP4IJ dependency
 │   └── src/
 │       ├── main/
@@ -167,7 +180,9 @@ This repository implements a modular IntelliJ Platform plugin using content modu
 │       └── test/java/dev/wstein/flixplugin/  FlixForkTest
 ├── frontend/                Frontend module -- placeholder, no genuinely frontend-only UI yet
 ├── shared/                  Shared module -- empty, no cross-boundary RPC contracts needed
-├── src/main/resources/META-INF/plugin.xml   Root descriptor, declares the content modules
+├── src/
+│   ├── main/resources/META-INF/plugin.xml   Root descriptor, declares the content modules
+│   └── test/kotlin/        FlixPluginDescriptorTest -- registration-wiring invariants
 ├── build.gradle.kts        Root build -- assembles the final plugin, splitMode = true
 ├── gradle.properties
 └── settings.gradle.kts
@@ -198,6 +213,39 @@ Produces `build/distributions/flix.jetbrains.plugin-<version>.zip`.
 lighter `BasePlatformTestCase` (an in-memory VFS project) -- `FlixFork.resolveJar` does plain
 `java.io`/`java.nio.file` calls against `project.getBasePath()`, which only resolve against a real
 directory.
+
+### How the suite is split, and why
+
+A content-module descriptor is inert on its own: the platform reads it only when the root
+`plugin.xml` names it in `<content>`. A module-local test fixture therefore never loads our
+`<extensions>`, and every `LanguageBraceMatching.forLanguage`-style lookup resolves `null`. Rather
+than assert wiring through a fixture that cannot represent it, the suite splits along that line:
+
+- **Behaviour** is asserted against the implementations directly, on real parsed PSI -- folding
+  regions, brace pairs, commenter prefixes, gutter anchoring, incremental reparse.
+- **Wiring** is asserted by `FlixPluginDescriptorTest` against the descriptors themselves -- every
+  content module declared, every extension naming a class that exists and implements its extension
+  point's interface, exactly one file type claiming `*.flix`, and every descriptor well-formed.
+
+Each failure then names one cause instead of two. The well-formedness check earns its place: `--`
+inside an XML comment is invalid, is not caught by `verifyPluginProjectConfiguration` or
+`buildPlugin`, and makes the entire plugin fail to load with only "contains invalid plugin
+descriptor" to go on.
+
+### Parser corpus gate
+
+`FlixCorpusTest` parses every `.flix` file the Flix compiler accepts -- 243 under
+`main/src/library` and 185 under `examples` -- and requires all of them to parse cleanly,
+losslessly and without crashing. It needs a Flix checkout, and **skips** when there is none, so CI
+without one still passes:
+
+```console
+./gradlew test -PflixCorpusDir=/path/to/flix
+```
+
+`FLIX_DIR` and `-DflixCorpusDir` work too, and `~/github.com/flix/flix` is tried by default. See
+[the evaluation](docs/intellij-flix-parser-evaluation.md) for what it measured and the one file it
+excludes.
 
 ## Predefined Run/Debug configurations
 
@@ -242,9 +290,12 @@ implemented in phases. They change where language support and debugging come fro
   reimplementing each capability inside a debug adapter. The DAP path stays functional until the
   native path passes its gate.
 
-ADR 0001 has landed: a `language` content module now provides the Flix `Language`, file type,
-parser, PSI, editor support and the `def main` gutter arrow. ADR 0002's native JVM debugger has
-not; debugging still goes through the DAP path described above.
+**Status.** ADR 0001 has landed in full. ADR 0002 has landed its first step: a `debugger` content
+module registers a `PositionManagerFactory`, so IntelliJ's stock **Remote JVM Debug** configuration
+attached to a `flix run --Xdebug` process resolves `.flix` frames to real source and lines. A
+dedicated Flix run/debug configuration and a Flix line-breakpoint type are not built yet, and the
+mixed Flix/Java stepping matrix has not been exercised in a live IDE session -- so the DAP path
+remains the supported way to debug, and is still registered.
 
 ## Known gaps
 
@@ -254,9 +305,14 @@ not; debugging still goes through the DAP path described above.
   one fixed value for the whole IDE process). A project needing `--entrypoint` still needs the
   manual Attach configuration. The flix command itself *is* overridable now, via the
   `FLIX_DEBUG_COMMAND` environment variable (see the Launch-mode debugging section above).
-- Debugging still runs through LSP4IJ's DAP client rather than IntelliJ's own JVM debugger, so
-  there are no mixed Flix/Java stacks, no Java expression evaluation in Java frames, and no
-  source-JAR resolution. [ADR 0002][adr2] describes the replacement; it has not landed yet.
+- Debugging by default still runs through LSP4IJ's DAP client. The native path ([ADR 0002][adr2])
+  currently covers *source positions* only: attach a **Remote JVM Debug** configuration to a
+  `flix run --Xdebug` process and Flix frames resolve, with full Java behaviour for Java frames in
+  the same session. A Flix run/debug configuration and a Flix line-breakpoint type are still to
+  come, and the mixed Flix/Java stepping matrix in ADR 0002 has not been exercised in a live IDE.
+- `Flix.bnf` uses no `pin`/`recoverWhile`, so a syntax error yields one error node and the rest of
+  the file becomes a single unparsed block. Complete files parse fully (427 of 427 in the corpus
+  gate), but half-written code degrades more than it should. Tracked separately from adoption.
 - `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
   literal arguments, and array indexing, but not arithmetic or nested expressions as call
   arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the

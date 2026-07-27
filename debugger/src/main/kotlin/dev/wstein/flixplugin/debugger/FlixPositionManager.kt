@@ -36,10 +36,18 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
 
     override fun getSourcePosition(location: Location?): SourcePosition? {
         val jdiLocation = location ?: throw NoDataException.INSTANCE
-        val sourceName = FlixSourceLocations.sourceNameOf(jdiLocation) ?: throw NoDataException.INSTANCE
-        val line = FlixSourceLocations.lineNumberOf(jdiLocation) ?: throw NoDataException.INSTANCE
 
-        val sourcePath = runCatching { jdiLocation.sourcePath(strataFor(jdiLocation)) }.getOrNull()
+        // Resolved once and threaded through. Each derivation costs an availableStrata() round-trip
+        // and often a sourceNames() one too, and this runs for every frame of every stack -- so
+        // deriving it per attribute tripled JDWP traffic on the hot path. It also kept three
+        // independent derivations of one value alive, which is the shape of the locationsOfLine bug.
+        val stratum = FlixSourceLocations.stratumOf(jdiLocation) ?: throw NoDataException.INSTANCE
+        val sourceName = FlixSourceLocations.sourceNameOf(jdiLocation, stratum)
+            ?: throw NoDataException.INSTANCE
+        val line = FlixSourceLocations.lineNumberOf(jdiLocation, stratum)
+            ?: throw NoDataException.INSTANCE
+        val sourcePath = FlixSourceLocations.sourcePathOf(jdiLocation, stratum)
+
         val file = ReadAction.compute<PsiFile?, RuntimeException> {
             FlixSourceFiles.find(debugProcess.project, sourceName, sourcePath)
         } ?: throw NoDataException.INSTANCE
@@ -149,8 +157,6 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
 
     private data class Target(val file: VirtualFile, val baseName: String)
 
-    private fun strataFor(location: Location): String =
-        FlixSourceLocations.stratumFor(location.declaringType()) ?: location.declaringType().defaultStratum()
 }
 
 /** Registered under `com.intellij.debugger.positionManagerFactory`. */

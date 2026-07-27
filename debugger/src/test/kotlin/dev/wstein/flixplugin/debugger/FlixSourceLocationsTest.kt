@@ -85,6 +85,49 @@ class FlixSourceLocationsTest {
         assertNull(FlixSourceLocations.stratumFor(type))
     }
 
+    // --- JDWP traffic ----------------------------------------------------------------------
+
+    @Test
+    fun `the stratum-taking overloads make no further strata queries`() {
+        // Every attribute of a location used to derive the stratum for itself, so reading name,
+        // line and path cost three availableStrata() round-trips where one would do -- on a path
+        // that runs for every frame of every stack. Worse, three independent derivations of one
+        // value can disagree, which is exactly how locationsOfLine ended up querying with a
+        // different source name than matchesSource had matched on.
+        var strataQueries = 0
+        val type = countingReferenceType(
+            sourceNames = listOf("Main.flix"),
+            onAvailableStrata = { strataQueries++ },
+        )
+        val location = location(type, sourceName = "Main.flix", line = 12)
+
+        val stratum = FlixSourceLocations.stratumOf(location)
+        assertEquals("Java", stratum)
+        val afterResolving = strataQueries
+
+        FlixSourceLocations.sourceNameOf(location, stratum!!)
+        FlixSourceLocations.lineNumberOf(location, stratum)
+        FlixSourceLocations.sourcePathOf(location, stratum)
+
+        assertEquals(
+            "Reading three attributes with a resolved stratum must not query the VM again",
+            afterResolving,
+            strataQueries,
+        )
+    }
+
+    @Test
+    fun `the convenience overloads agree with the explicit ones`() {
+        // The single-argument forms exist for callers with no stratum in hand. They must not become
+        // a second, subtly different derivation.
+        val type = referenceType(listOf("Java", "Flix"), "Java", listOf("Main.flix"))
+        val location = location(type, "Main.flix", line = 9)
+        val stratum = FlixSourceLocations.stratumOf(location)!!
+
+        assertEquals(FlixSourceLocations.sourceNameOf(location, stratum), FlixSourceLocations.sourceNameOf(location))
+        assertEquals(FlixSourceLocations.lineNumberOf(location, stratum), FlixSourceLocations.lineNumberOf(location))
+    }
+
     // --- path matching ---------------------------------------------------------------------
 
     @Test
@@ -136,6 +179,22 @@ class FlixSourceLocationsTest {
                     else -> sourceNames
                 }
             "sourcePaths" -> sourceNames ?: throw AbsentInformationException()
+            else -> null
+        }
+    }
+
+    /** A reference type that counts how often the VM is asked for its strata. */
+    private fun countingReferenceType(
+        sourceNames: List<String>,
+        onAvailableStrata: () -> Unit,
+    ): ReferenceType = proxy(ReferenceType::class.java) { method, _ ->
+        when (method.name) {
+            "availableStrata" -> {
+                onAvailableStrata()
+                listOf("Java")
+            }
+            "defaultStratum" -> "Java"
+            "sourceNames", "sourcePaths" -> sourceNames
             else -> null
         }
     }

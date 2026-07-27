@@ -54,10 +54,26 @@ internal object FlixSourceLocations {
      */
     fun isFlixLocation(location: Location): Boolean = sourceNameOf(location) != null
 
-    /** The `.flix` source name for [location], or `null` if it is not Flix code. */
-    fun sourceNameOf(location: Location): String? {
+    /**
+     * The stratum for [location]'s declaring type, or `null` if it is not Flix code.
+     *
+     * Callers that need more than one attribute of a location should resolve the stratum once with
+     * this and use the stratum-taking overloads below. [stratumFor] costs an `availableStrata()`
+     * round-trip and often a `sourceNames()` one as well, and `getSourcePosition` runs for every
+     * frame of every stack -- deriving it separately per attribute multiplies JDWP traffic on the
+     * hot path for no benefit, and lets two derivations of the same value drift apart.
+     */
+    fun stratumOf(location: Location): String? {
         val type = runCatching { location.declaringType() }.getOrNull() ?: return null
-        val stratum = stratumFor(type) ?: return null
+        return stratumFor(type)
+    }
+
+    /** The `.flix` source name for [location], or `null` if it is not Flix code. */
+    fun sourceNameOf(location: Location): String? =
+        stratumOf(location)?.let { sourceNameOf(location, it) }
+
+    /** As [sourceNameOf], for a caller that already resolved the stratum. */
+    fun sourceNameOf(location: Location, stratum: String): String? {
         val name = runCatching { location.sourceName(stratum) }.getOrNull()
             ?: runCatching { location.sourceName() }.getOrNull()
             ?: return null
@@ -70,14 +86,21 @@ internal object FlixSourceLocations {
      * JDI reports 0 or -1 for "unknown"; both are filtered here rather than by callers, so a
      * missing line can never be mistaken for line 1 after the usual zero-based conversion.
      */
-    fun lineNumberOf(location: Location): Int? {
-        val type = runCatching { location.declaringType() }.getOrNull() ?: return null
-        val stratum = stratumFor(type) ?: return null
+    fun lineNumberOf(location: Location): Int? =
+        stratumOf(location)?.let { lineNumberOf(location, it) }
+
+    /** As [lineNumberOf], for a caller that already resolved the stratum. */
+    fun lineNumberOf(location: Location, stratum: String): Int? {
         val line = runCatching { location.lineNumber(stratum) }.getOrNull()
             ?: runCatching { location.lineNumber() }.getOrNull()
             ?: return null
         return line.takeIf { it > 0 }
     }
+
+    /** The recorded source path for [location] in [stratum], or `null` if absent. */
+    fun sourcePathOf(location: Location, stratum: String): String? =
+        runCatching { location.sourcePath(stratum) }.getOrNull()
+            ?: runCatching { location.sourcePath() }.getOrNull()
 
     /** Whether [type] declares at least one `.flix` source in [stratum]. */
     fun declaresFlixSourceIn(type: ReferenceType, stratum: String): Boolean = try {

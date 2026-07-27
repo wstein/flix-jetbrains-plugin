@@ -95,6 +95,11 @@
   now claims `.flix`, which also means no custom Flix breakpoint type is needed.
 - The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
   where nothing consumes them.
+- `getSourcePosition` derived the SMAP stratum three times per location -- once each for the source
+  name, line and path -- costing up to six JDWP round-trips per frame where two suffice, on a path
+  that runs for every frame of every stack. It is now resolved once and threaded through. This is
+  the same defect shape as the `locationsOfLine` bug below: several independent derivations of one
+  value, free to disagree.
 - A breakpoint could verify against a class and then never bind to a location. `matchesSource`
   resolved using the source name JDI reported, but `locationsOfLine` queried with a base name
   derived from the breakpoint's file -- and a class without SMAP can report an absolute

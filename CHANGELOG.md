@@ -95,6 +95,12 @@
   now claims `.flix`, which also means no custom Flix breakpoint type is needed.
 - The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
   where nothing consumes them.
+- A breakpoint could bind to the wrong class. Reverse navigation refused ambiguous duplicate base
+  names, but forward binding compared source paths textually, and the suffix rule makes
+  `Main.flix` match `/project/moduleA/Main.flix` -- so a class without SMAP, which reports only a
+  bare name, bound to a breakpoint in *every* module's `Main.flix`. Forward resolution is now
+  project-aware and uses the same ambiguity-refusing selection, behind a cheap base-name filter so
+  it stays affordable across every loaded class.
 - Native source lookup passed a possibly path-valued `SourceFile` straight to `FilenameIndex`,
   which keys on base names, so a path-valued attribute found nothing. It now reduces to a base name
   and keeps the full path for disambiguation, refusing ambiguous duplicate-base-name matches rather

@@ -88,6 +88,31 @@ internal object FlixSourceLocations {
         false
     }
 
+    /**
+     * The `.flix` sources [type] was compiled from, as (name, path) pairs.
+     *
+     * JDI reports names and paths as two parallel lists, so they are zipped back together here:
+     * a caller needs both halves of one source to identify it, and either half alone is ambiguous
+     * -- the name lacks directories, and the path may be absent.
+     */
+    fun flixSourcesOf(type: ReferenceType, stratum: String): List<Pair<String, String?>> {
+        val names = runCatching { type.sourceNames(stratum) }.getOrNull().orEmpty()
+        val paths = runCatching { type.sourcePaths(stratum) }.getOrNull().orEmpty()
+        return names.indices
+            .filter { names[it].isFlixSourceName() }
+            .map { names[it] to paths.getOrNull(it) }
+    }
+
+    /**
+     * Whether [name] could refer to a file called [baseName], ignoring directories.
+     *
+     * A cheap pre-filter only. It is deliberately permissive, because deciding *which* file a
+     * source refers to requires the project, and doing that for every loaded class would be far too
+     * expensive. Callers must follow it with an authoritative, project-aware check.
+     */
+    fun couldReferToBaseName(name: String, baseName: String): Boolean =
+        name.replace('\\', '/').substringAfterLast('/').equals(baseName, ignoreCase = false)
+
     private fun declaresFlixSource(type: ReferenceType): Boolean =
         declaresFlixSourceIn(type, runCatching { type.defaultStratum() }.getOrNull() ?: return false)
 

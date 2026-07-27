@@ -9,6 +9,7 @@ import com.intellij.debugger.engine.DebugProcess
 import com.intellij.debugger.requests.ClassPrepareRequestor
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileTypes.FileType
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiFile
 import com.sun.jdi.Location
 import com.sun.jdi.ReferenceType
@@ -50,22 +51,22 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     }
 
     override fun getAllClasses(position: SourcePosition): List<ReferenceType> {
-        val sourcePath = flixSourcePathOf(position)
+        val target = flixTargetOf(position)
         return debugProcess.virtualMachineProxy.allClasses().filter { type ->
-            matchesSource(type, sourcePath)
+            matchesSource(type, target)
         }
     }
 
     override fun locationsOfLine(type: ReferenceType, position: SourcePosition): List<Location> {
-        val sourcePath = flixSourcePathOf(position)
+        val target = flixTargetOf(position)
         val stratum = FlixSourceLocations.stratumFor(type) ?: throw NoDataException.INSTANCE
-        if (!matchesSource(type, sourcePath)) throw NoDataException.INSTANCE
+        if (!matchesSource(type, target)) throw NoDataException.INSTANCE
 
         // One Flix line commonly compiles into several generated classes and several locations
         // within them -- closures and lambdas each get their own. Returning all of them is what
         // makes a single breakpoint stop wherever that line actually runs.
         return runCatching {
-            type.locationsOfLine(stratum, sourcePath.substringAfterLast('/'), position.line + 1)
+            type.locationsOfLine(stratum, target.baseName, position.line + 1)
         }.getOrElse { emptyList() }
     }
 
@@ -80,7 +81,7 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     ): List<ClassPrepareRequest> {
         // Guarantees the position is Flix before requesting anything, so a breakpoint in another
         // language never produces a class-prepare request owned by this manager.
-        flixSourcePathOf(position)
+        flixTargetOf(position)
 
         // Flix compiles a source file into many classes whose names it chooses, so there is no
         // single class-name pattern to filter on. Watching every prepare and re-checking the source
@@ -91,19 +92,42 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         return listOf(request)
     }
 
-    private fun flixSourcePathOf(position: SourcePosition): String {
+    /** The breakpoint's file, or [NoDataException] if it is not Flix. */
+    private fun flixTargetOf(position: SourcePosition): Target {
         val file = position.file
         if (file.fileType != FlixFileType.INSTANCE) throw NoDataException.INSTANCE
-        return file.virtualFile?.path ?: file.name
+        val virtualFile = file.virtualFile ?: throw NoDataException.INSTANCE
+        return Target(virtualFile, virtualFile.name)
     }
 
-    private fun matchesSource(type: ReferenceType, sourcePath: String): Boolean {
+    /**
+     * Whether [type] was compiled from the breakpoint's file.
+     *
+     * Resolution is **project-aware**, and has to be. Comparing recorded source paths textually is
+     * not enough: a class with no SMAP reports only `Main.flix`, and a suffix comparison against
+     * `/project/moduleA/Main.flix` succeeds for that and for every other module's `Main.flix` too --
+     * so one breakpoint would bind in all of them. Resolving each recorded source through
+     * [FlixSourceFiles], which refuses ambiguous duplicate-base-name matches, makes forward binding
+     * exactly as strict as the reverse navigation in [getSourcePosition]. Anything else lets a
+     * breakpoint bind to a class whose frames the debugger would then decline to navigate to.
+     *
+     * The cheap base-name filter comes first because [getAllClasses] runs this over every loaded
+     * class, and the authoritative check touches the file index.
+     */
+    private fun matchesSource(type: ReferenceType, target: Target): Boolean {
         val stratum = FlixSourceLocations.stratumFor(type) ?: return false
-        if (!FlixSourceLocations.declaresFlixSourceIn(type, stratum)) return false
-        return runCatching { type.sourcePaths(stratum) }
-            .getOrDefault(emptyList())
-            .any { FlixSourceLocations.sameSourcePath(it, sourcePath) }
+        val sources = FlixSourceLocations.flixSourcesOf(type, stratum)
+            .filter { (name, _) -> FlixSourceLocations.couldReferToBaseName(name, target.baseName) }
+        if (sources.isEmpty()) return false
+
+        return ReadAction.compute<Boolean, RuntimeException> {
+            sources.any { (name, path) ->
+                FlixSourceFiles.find(debugProcess.project, name, path)?.virtualFile == target.file
+            }
+        }
     }
+
+    private data class Target(val file: VirtualFile, val baseName: String)
 
     private fun strataFor(location: Location): String =
         FlixSourceLocations.stratumFor(location.declaringType()) ?: location.declaringType().defaultStratum()

@@ -95,6 +95,11 @@
   now claims `.flix`, which also means no custom Flix breakpoint type is needed.
 - The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
   where nothing consumes them.
+- The `flix.runMain` CodeLens ignored its argument, so the "Run" lens above any entry point ran the
+  project default instead of the one it sat above. The server sends a lens for *every* entry point,
+  each carrying its own symbol, so this was only visibly wrong once a file had more than one. The
+  symbol is now passed through as `--entrypoint`; the round-trip is exact, since
+  `Symbol.DefnSym.toString` renders what `Symbol.mkDefnSym` parses back.
 - Two run arrows appeared beside `def main`, the left one reporting "Nothing here". The
   `runLineMarkerContributor` was registered in the always-loaded language module, so it loaded in
   both split-mode processes: the backend one resolved the DAP run-configuration producer and built

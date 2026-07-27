@@ -28,9 +28,10 @@ LSP4IJ is used for both LSP and DAP here rather than mixing two different mechan
   `isDebuggableFile()`'s javadoc for the specifics: LSP4IJ picks the literal DAP command
   (`launch`/`attach`) from `getDebugMode()` alone, and the Mappings-tab file association is never
   consulted unless a descriptor explicitly checks `DAPRunConfigurationOptions`.
-- **`flix.runMain` CodeLens**: live-verified -- clicking "Run" above `def main()` in the editor now
-  runs `flix run` and shows output in a console, instead of failing with "Missing 'flix.runMain'
-  command... needs to be contributed by an IntelliJ plugin".
+- **`flix.runMain` CodeLens**: live-verified -- clicking "Run" above an entry point runs it and
+  shows output in a console, instead of failing with "Missing 'flix.runMain' command... needs to be
+  contributed by an IntelliJ plugin". The lens's symbol argument is honoured and passed as
+  `--entrypoint`, so the lens above `demo()` runs `demo`, not the project default.
 - **Flix language support (PSI)**: a real `Language("Flix")`, file type, Grammar-Kit/JFlex parser
   and PSI, syntax highlighter, brace matcher, commenter, quote handler and folding, adopted from
   [`intellij-flix`][intellij-flix] per [ADR 0001][adr1]. The adopted grammar parses 427 of 427

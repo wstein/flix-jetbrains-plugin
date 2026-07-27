@@ -109,7 +109,6 @@ class FlixPluginDescriptorTest {
                 "lang.commenter",
                 "lang.quoteHandler",
                 "lang.foldingBuilder",
-                "runLineMarkerContributor",
             ),
             extensions.map { it.tagName },
         )
@@ -125,7 +124,6 @@ class FlixPluginDescriptorTest {
             "lang.commenter" to "com.intellij.lang.Commenter",
             "lang.quoteHandler" to "com.intellij.codeInsight.editorActions.QuoteHandler",
             "lang.foldingBuilder" to "com.intellij.lang.folding.FoldingBuilder",
-            "runLineMarkerContributor" to "com.intellij.execution.lineMarker.RunLineMarkerContributor",
         )
 
         languageExtensions().forEach { extension ->
@@ -154,6 +152,32 @@ class FlixPluginDescriptorTest {
                     it.getAttribute("language"),
                 )
             }
+    }
+
+    @Test
+    fun `the gutter run marker is registered backend-only`() {
+        // Line markers are produced by the highlighting pass and resolved through ExecutorAction
+        // against run-configuration producers, both of which are backend concerns under split mode.
+        // Registered in the always-loaded language module instead, it loaded in both processes and
+        // drew two arrows on the line -- the backend one offering Run/Debug, the frontend one, with
+        // no producers available to it, offering "Nothing here".
+        val language = parse("language/src/main/resources/flix.jetbrains.plugin.language.xml")
+        assertTrue(
+            "The language module must not register the run line marker; it loads in both processes",
+            language.childrenNamed("runLineMarkerContributor").isEmpty(),
+        )
+
+        val backend = parse("backend/src/main/resources/flix.jetbrains.plugin.backend.xml")
+        val markers = backend.childrenNamed("runLineMarkerContributor")
+        assertEquals("Exactly one run line marker contributor", 1, markers.size)
+        assertEquals("Flix", markers.single().getAttribute("language"))
+
+        // The contributor class lives in the language module, so the backend has to depend on it
+        // for the class to resolve.
+        assertTrue(
+            "The backend module must depend on the language module to resolve the contributor class",
+            backend.childrenNamed("module").any { it.getAttribute("name") == "flix.jetbrains.plugin.language" },
+        )
     }
 
     @Test

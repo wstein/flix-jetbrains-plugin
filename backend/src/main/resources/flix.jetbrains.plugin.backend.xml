@@ -10,6 +10,7 @@
         <module name="intellij.platform.backend"/>
         <module name="intellij.platform.kernel.backend"/>
         <module name="flix.jetbrains.plugin.shared"/>
+        <module name="flix.jetbrains.plugin.language"/>
         <plugin id="com.redhat.devtools.lsp4ij"/>
     </dependencies>
 
@@ -94,6 +95,19 @@
              typeHierarchy/callHierarchy provider). Registering them would add menu entries that
              can never resolve. Revisit if the server starts advertising them. -->
     <extensions defaultExtensionNs="com.intellij">
+        <!-- The gutter run arrow beside `def main`.
+             Registered here, not in the always-loaded language module, because line markers are
+             produced by the highlighting pass and resolved through ExecutorAction against
+             run-configuration producers – both backend concerns under split mode. Registering it in
+             a module that loads in *both* processes produced two arrows on the line: the backend
+             one found the DAP producer and built the correct menu, while the frontend one had no
+             producers to offer and rendered "Nothing here".
+             The contributor class itself stays in the language module, which owns FlixDefDecl; the
+             module dependency above makes it resolvable from here. -->
+        <runLineMarkerContributor
+                language="Flix"
+                implementationClass="org.flixlang.intellij.run.FlixRunLineMarkerContributor"/>
+
         <lang.psiStructureViewFactory
                 language="Flix"
                 implementationClass="com.redhat.devtools.lsp4ij.features.documentSymbol.LSPDocumentSymbolStructureViewFactory"/>

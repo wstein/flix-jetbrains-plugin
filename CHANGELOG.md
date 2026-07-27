@@ -95,6 +95,11 @@
   now claims `.flix`, which also means no custom Flix breakpoint type is needed.
 - The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
   where nothing consumes them.
+- Two run arrows appeared beside `def main`, the left one reporting "Nothing here". The
+  `runLineMarkerContributor` was registered in the always-loaded language module, so it loaded in
+  both split-mode processes: the backend one resolved the DAP run-configuration producer and built
+  the correct menu, while the frontend one had no producers available and offered nothing. It is
+  now registered backend-only, where line markers and `ExecutorAction` belong.
 - `getSourcePosition` derived the SMAP stratum three times per location -- once each for the source
   name, line and path -- costing up to six JDWP round-trips per frame where two suffice, on a path
   that runs for every frame of every stack. It is now resolved once and threaded through. This is

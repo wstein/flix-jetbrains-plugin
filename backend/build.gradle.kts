@@ -14,10 +14,6 @@ dependencies {
         // 2026.1.3, but that combination hasn't been build/run-verified yet.
         plugin("com.redhat.devtools.lsp4ij", "0.20.1")
 
-        // Bundled with the platform itself (not a Marketplace plugin) -- needed on the compile
-        // classpath for FlixTextMateBundleProvider, which registers the bundled fallback grammar
-        // via the real com.intellij.textmate.bundleProvider extension point.
-        bundledPlugin("org.jetbrains.plugins.textmate")
 
         // The root project's testFramework(Platform) declaration doesn't propagate to this
         // module's own test source set -- needed here directly for FlixForkTest's

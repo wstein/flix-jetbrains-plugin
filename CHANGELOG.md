@@ -37,7 +37,8 @@
   `FlixDebugAdapter.java` (vendored copy).
 - `flix.runMain` action, wiring up the Flix language server's "Run" CodeLens above `def main()`.
 - Bundled TextMate fallback grammar for `.flix` syntax highlighting, derived from `flix-fork`'s
-  lexer, for when the language server hasn't analyzed a file yet.
+  lexer, for when the language server hasn't analyzed a file yet. *(Removed once the language
+  module landed: registering a real file type deactivates TextMate, so it became dead code.)*
 - `FlixForkTest`, covering `flix-vendor-*.jar` resolution.
 - Launch-mode debugging: clicking "Debug" on a `.flix` file now auto-creates a working DAP run
   configuration (a second `fileNamePatternMapping` makes `.flix` files discoverable by LSP4IJ's
@@ -47,6 +48,16 @@
 
 ### Changed
 
+- The LSP4IJ language-server mapping moved from `fileNamePatternMapping` to `languageMapping` now
+  that a real `Language("Flix")` exists, carrying `languageId="flix"` across explicitly. The DAP
+  mapping stays filename-based: `DebugAdapterManager.findDebugAdapterServerFor()` consults it to
+  recognise a file as debuggable before any run configuration exists.
+- Three LSP4IJ features that were bound to `language="textmate"` are re-registered for
+  `language="Flix"`, since registering a real language would otherwise silently remove them:
+  structure view, code-block navigation and parameter info. Four others are deliberately left
+  unregistered -- the semantic-token file view provider is the *structureless* one and would
+  destroy the new PSI, LSP folding would duplicate the syntactic folding builder, and `flix lsp`
+  advertises neither call nor type hierarchy.
 - Ported from a single-module prototype (in `flix-lab/jetbrains-plugin/`) into this repo's
   frontend/backend/shared split-mode content-module layout; removed the generator's sample RPC
   chat-demo code.
@@ -58,6 +69,14 @@
   (re-synced from `flix-lab`), since LSP4IJ's generic DAP run configuration UI has no field to set
   it per-configuration -- export it before launching the IDE to debug a project (like this one)
   whose plain `flix` on `PATH` doesn't support `--Xdebug`.
+
+### Removed
+
+- The bundled TextMate grammar and all five of its attachment points: `FlixTextMateBundleProvider`,
+  its extension registration, `backend/src/main/resources/textmate-bundle/`, the
+  `bundledPlugin("org.jetbrains.plugins.textmate")` dependency, and the backend module's TextMate
+  plugin dependency. Registering a real file type for `*.flix` deactivates TextMate, so keeping it
+  would have left an inactive grammar to maintain.
 
 ### Fixed
 

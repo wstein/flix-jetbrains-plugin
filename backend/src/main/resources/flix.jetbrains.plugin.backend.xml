@@ -5,16 +5,12 @@
          LSP and DAP, rather than switching the LSP half to the native intellij.platform.lsp module
          this scaffold originally suggested, since DAP debugging has no native-platform equivalent
          at all; using one mechanism for both is simpler than mixing two, and LSP4IJ is already
-         fully verified working from the single-module prototype. TextMate is declared as a plain
-         (non-optional) dependency here: module descriptors have no equivalent of the root
-         plugin.xml's <depends optional="true" config-file="..."> pattern, and TextMate support
-         ships with the IDE itself in practice, so the risk of it being unavailable is negligible. -->
+         fully verified working from the single-module prototype. -->
     <dependencies>
         <module name="intellij.platform.backend"/>
         <module name="intellij.platform.kernel.backend"/>
         <module name="flix.jetbrains.plugin.shared"/>
         <plugin id="com.redhat.devtools.lsp4ij"/>
-        <plugin id="org.jetbrains.plugins.textmate"/>
     </dependencies>
 
     <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
@@ -29,13 +25,16 @@
             ]]></description>
         </server>
 
-        <!-- fileNamePatternMapping (rather than languageMapping/fileTypeMapping) is used
-             deliberately: it's the mapping LSP4IJ's own docs recommend when the plugin doesn't
-             register an IntelliJ FileType/Language for the extension, and it's the one that
-             doesn't disable TextMate-based syntax coloration. -->
-        <fileNamePatternMapping patterns="*.flix"
-                                serverId="flixLanguageServer"
-                                languageId="flix"/>
+        <!-- languageMapping, now that the language module registers a real Language("Flix").
+             fileNamePatternMapping was used before only because there was no Language to map, and
+             because it left TextMate coloration alone; both reasons are gone.
+
+             languageId is carried across explicitly. It is not cosmetic: it is the value sent as
+             `languageId` in textDocument/didOpen, and dropping the attribute changes what the
+             server is told the document is. -->
+        <languageMapping language="Flix"
+                         serverId="flixLanguageServer"
+                         languageId="flix"/>
 
         <!-- This second mapping (same extension point, serverId pointed at the debug adapter
              instead of the language server) is what makes "click Debug on this file" work for
@@ -65,16 +64,49 @@
             <p><b>After creating a "Flix (--Xdebug attach)" run configuration, you must add a
             <code>*.flix</code> mapping to it on the "Mappings" tab before breakpoints in .flix
             files are recognized</b> -- LSP4IJ has no plugin.xml-level file mapping for DAP servers
-            (unlike its LSP fileNamePatternMapping above), only this per-run-configuration UI
+            (unlike its LSP languageMapping above), only this per-run-configuration UI
             step.</p>
             ]]></description>
         </debugAdapterServer>
 
     </extensions>
 
+    <!-- LSP4IJ registers several of its features only for language="TEXT" and language="textmate".
+         Until this plugin registered a real Language("Flix"), .flix files *were* textmate files and
+         got them for free; registering our own language silently takes them away, so the ones we
+         still want are re-registered here against the Flix language.
+
+         This is a per-feature judgement, not a blanket copy of LSP4IJ's textmate block:
+
+           - lang.fileViewProviderFactory is deliberately NOT re-registered. LSP4IJ's own comment
+             calls it a view provider "for TextMate files", and the class is the *Structureless*
+             one: it exists for files with no PSI. Installing it for Flix would replace the real
+             file view provider and destroy the parse tree the language module just added.
+             Semantic-token colouring is unaffected – LSPSemanticTokensHighlightVisitor is
+             registered globally with no language attribute, so it already applies.
+
+           - lang.foldingBuilder is NOT re-registered either: the language module contributes a
+             complete syntactic FlixFoldingBuilder, and stacking a second builder over the same
+             regions risks duplicate and overlapping fold handles for no gain.
+
+           - typeHierarchyProvider and callHierarchyProvider are NOT re-registered, because
+             `flix lsp` advertises neither capability (LspServer.mkServerCapabilities sets no
+             typeHierarchy/callHierarchy provider). Registering them would add menu entries that
+             can never resolve. Revisit if the server starts advertising them. -->
     <extensions defaultExtensionNs="com.intellij">
-        <textmate.bundleProvider implementation="dev.wstein.flixplugin.FlixTextMateBundleProvider"/>
+        <lang.psiStructureViewFactory
+                language="Flix"
+                implementationClass="com.redhat.devtools.lsp4ij.features.documentSymbol.LSPDocumentSymbolStructureViewFactory"/>
+
+        <codeBlockProvider
+                language="Flix"
+                implementationClass="com.redhat.devtools.lsp4ij.features.codeBlockProvider.LSPCodeBlockProvider"/>
+
+        <codeInsight.parameterInfo
+                language="Flix"
+                implementationClass="com.redhat.devtools.lsp4ij.features.signatureHelp.LSPParameterInfoHandler"/>
     </extensions>
+
 
     <!-- Registers the "flix.runMain" LSP command the Flix language server attaches to the "Run"
          CodeLens above def main(). LSP4IJ maps LSP commands to IntelliJ actions 1:1 by id (see

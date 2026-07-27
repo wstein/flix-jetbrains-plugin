@@ -31,10 +31,14 @@ LSP4IJ is used for both LSP and DAP here rather than mixing two different mechan
 - **`flix.runMain` CodeLens**: live-verified -- clicking "Run" above `def main()` in the editor now
   runs `flix run` and shows output in a console, instead of failing with "Missing 'flix.runMain'
   command... needs to be contributed by an IntelliJ plugin".
-- **Bundled TextMate fallback grammar**: derived directly from `flix-fork`'s real lexer
-  (`language/ast/TokenKind.scala`, `language/phase/Lexer.scala`), auto-registered via the real
-  `com.intellij.textmate.bundleProvider` extension point. Live-verified rendering `.flix` syntax
-  highlighting under `./gradlew runIdeSplitMode`.
+- **Flix language support (PSI)**: a real `Language("Flix")`, file type, Grammar-Kit/JFlex parser
+  and PSI, syntax highlighter, brace matcher, commenter, quote handler and folding, adopted from
+  [`intellij-flix`][intellij-flix] per [ADR 0001][adr1]. The adopted grammar parses 427 of 427
+  compilable files in the upstream Flix corpus; see the
+  [parser corpus evaluation](docs/intellij-flix-parser-evaluation.md). This replaced the bundled
+  TextMate fallback grammar, which a real file type deactivates.
+- **Gutter run arrow beside `def main`**: anchored on the declaration's name leaf, delegating to
+  the platform's generic `ExecutorAction`.
 - **Split Mode**: live-verified running as an actual split frontend+backend process pair
   (`./gradlew runIdeSplitMode`) -- all of the above (LSP, DAP debugging, `flix.runMain`) confirmed
   working with everything registered in the backend module and the frontend acting as a thin
@@ -128,7 +132,7 @@ launch mode can't:
 The embedded DAP server (`backend/src/main/resources/dap/FlixDebugAdapter.java`) is a **vendored
 copy** of `flix-lab/debug-adapter/src/FlixDebugAdapter.java` -- the same file the VS Code extension
 uses, not a fork -- rather than referenced by relative path, since this plugin lives in its own repo
-instead of as a subdirectory of `flix-lab`. The TextMate grammar has no equivalent second copy to
+instead of as a subdirectory of `flix-lab`. The language layer has no equivalent second copy to
 drift from: this repo is its only home (the frozen `flix-lab/jetbrains-plugin/` prototype's copy is
 historical, not maintained).
 
@@ -153,13 +157,12 @@ This repository implements a modular IntelliJ Platform plugin using content modu
 ├── .qodana/profiles/       Qodana plugin inspections profile
 ├── .run/                   Predefined Run/Debug Configurations
 ├── backend/                Backend module -- everything currently lives here
-│   ├── build.gradle.kts    LSP4IJ + TextMate dependencies
+│   ├── build.gradle.kts    LSP4IJ dependency
 │   └── src/
 │       ├── main/
 │       │   ├── java/dev/wstein/flixplugin/   Flix*.java (LSP factory, DAP descriptor, run action, ...)
 │       │   └── resources/
 │       │       ├── dap/FlixDebugAdapter.java         vendored DAP server
-│       │       ├── textmate-bundle/                  vendored fallback grammar
 │       │       └── flix.jetbrains.plugin.backend.xml module descriptor
 │       └── test/java/dev/wstein/flixplugin/  FlixForkTest
 ├── frontend/                Frontend module -- placeholder, no genuinely frontend-only UI yet

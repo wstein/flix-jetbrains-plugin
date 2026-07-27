@@ -43,6 +43,20 @@ class FlixPluginDescriptorTest {
         }
 
     @Test
+    fun `every descriptor is well-formed XML`() {
+        // `--` is not permitted inside an XML comment. It is an easy thing to type when writing a
+        // prose comment, it is not caught by verifyPluginProjectConfiguration or buildPlugin, and
+        // when it reaches a descriptor it makes the *entire plugin* fail to load on both sides of
+        // split mode with only "contains invalid plugin descriptor" to go on. Parsing every
+        // descriptor here turns that into an immediate, located test failure.
+        descriptors().forEach { path ->
+            runCatching { parse(path) }.onFailure {
+                throw AssertionError("$path is not well-formed XML: ${it.message}", it)
+            }
+        }
+    }
+
+    @Test
     fun `plugin declares every content module`() {
         val modules = parse("src/main/resources/META-INF/plugin.xml")
             .childrenNamed("module")
@@ -135,6 +149,15 @@ class FlixPluginDescriptorTest {
                 backend.childrenNamed("lang.parserDefinition").isEmpty(),
         )
     }
+
+    /** Every plugin descriptor in the repository, root and content modules alike. */
+    private fun descriptors(): List<String> = listOf(
+        "src/main/resources/META-INF/plugin.xml",
+        "language/src/main/resources/flix.jetbrains.plugin.language.xml",
+        "backend/src/main/resources/flix.jetbrains.plugin.backend.xml",
+        "frontend/src/main/resources/flix.jetbrains.plugin.frontend.xml",
+        "shared/src/main/resources/flix.jetbrains.plugin.shared.xml",
+    )
 
     private fun languageExtensions(): List<Element> =
         parse("language/src/main/resources/flix.jetbrains.plugin.language.xml")

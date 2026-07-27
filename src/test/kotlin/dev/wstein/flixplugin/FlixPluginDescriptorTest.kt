@@ -65,10 +65,33 @@ class FlixPluginDescriptorTest {
             listOf(
                 "flix.jetbrains.plugin.shared",
                 "flix.jetbrains.plugin.language",
+                "flix.jetbrains.plugin.debugger",
                 "flix.jetbrains.plugin.frontend",
                 "flix.jetbrains.plugin.backend",
             ),
             modules,
+        )
+    }
+
+    @Test
+    fun `the debugger module is optional and scopes its Java plugin dependency`() {
+        val debugger = parse("debugger/src/main/resources/flix.jetbrains.plugin.debugger.xml")
+
+        // com.intellij.debugger.positionManagerFactory lives in the Java plugin, so this module
+        // cannot load in an IDE without Java support. It must therefore stay optional: marking it
+        // loading="required" would take the whole plugin -- language layer included -- down with it.
+        val declared = parse("src/main/resources/META-INF/plugin.xml")
+            .childrenNamed("module")
+            .single { it.getAttribute("name") == "flix.jetbrains.plugin.debugger" }
+        assertEquals(
+            "The debugger module must not be required; the language layer has to load without Java",
+            "",
+            declared.getAttribute("loading"),
+        )
+
+        assertTrue(
+            "The Java plugin dependency belongs here, not in the language module",
+            debugger.childrenNamed("plugin").any { it.getAttribute("id") == "com.intellij.java" },
         )
     }
 
@@ -154,6 +177,7 @@ class FlixPluginDescriptorTest {
     private fun descriptors(): List<String> = listOf(
         "src/main/resources/META-INF/plugin.xml",
         "language/src/main/resources/flix.jetbrains.plugin.language.xml",
+        "debugger/src/main/resources/flix.jetbrains.plugin.debugger.xml",
         "backend/src/main/resources/flix.jetbrains.plugin.backend.xml",
         "frontend/src/main/resources/flix.jetbrains.plugin.frontend.xml",
         "shared/src/main/resources/flix.jetbrains.plugin.shared.xml",

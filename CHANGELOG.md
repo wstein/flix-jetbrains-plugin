@@ -26,6 +26,14 @@
   extension point's interface, every language extension targets `Flix`, and exactly one file type
   claims `*.flix`. It caught an invalid `--` sequence inside an XML comment on its first run — the
   same class of defect that previously made the whole plugin fail to load.
+- **Flix source positions in IntelliJ's own JVM debugger.** A new optional `debugger` content
+  module registers a `PositionManagerFactory`, so IntelliJ's stock *Remote JVM Debug* configuration
+  attached to a `flix run --Xdebug` process now resolves `.flix` frames to real source and lines,
+  alongside Java, Kotlin and Scala frames in the same session (ADR 0002). Resolution is dual-mode:
+  the fork emits an SMAP `"Flix"` stratum only for classes that inline across files, so ownership is
+  decided by source *name* and the stratum only selects which JDI overload to ask. The module scopes
+  its Java-plugin dependency and stays optional, so an IDE without Java support still gets the
+  language layer.
 - [`docs/intellij-flix-parser-evaluation.md`](docs/intellij-flix-parser-evaluation.md), the gate
   evidence for ADR 0001. Measured against 428 real `.flix` files from the pinned Flix revision, the
   adopted grammar went from 211 clean (49.3%) to **427 of 427 (100%)** once six localized defect

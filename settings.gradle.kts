@@ -32,5 +32,6 @@ dependencyResolutionManagement {
 
 include("shared")
 include("language")
+include("debugger")
 include("frontend")
 include("backend")

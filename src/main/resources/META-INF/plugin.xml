@@ -26,6 +26,7 @@
     <content>
         <module name="flix.jetbrains.plugin.shared" loading="required"/>
         <module name="flix.jetbrains.plugin.language" loading="required"/>
+        <module name="flix.jetbrains.plugin.debugger"/>
         <module name="flix.jetbrains.plugin.frontend"/>
         <module name="flix.jetbrains.plugin.backend"/>
     </content>

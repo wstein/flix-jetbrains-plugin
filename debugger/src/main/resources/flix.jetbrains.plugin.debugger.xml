@@ -1,0 +1,20 @@
+<idea-plugin>
+    <!-- Flix support for IntelliJ's own JVM debugger (docs/adr/0002-native-jvm-debugger.md).
+
+         Depends on the Java plugin, because com.intellij.debugger.PositionManagerFactory lives
+         there. That is why this is a separate content module and not part of the language module:
+         the dependency is scoped so that an IDE without Java support loses only Flix debugging,
+         while the language layer keeps loading everywhere.
+
+         The module is not marked loading="required" for the same reason. If the Java plugin is
+         absent this module is skipped and the rest of the plugin still works. -->
+    <dependencies>
+        <plugin id="com.intellij.java"/>
+        <module name="flix.jetbrains.plugin.language"/>
+    </dependencies>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <debugger.positionManagerFactory
+                implementation="dev.wstein.flixplugin.debugger.FlixPositionManagerFactory"/>
+    </extensions>
+</idea-plugin>

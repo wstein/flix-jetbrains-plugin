@@ -24,6 +24,7 @@ dependencies {
 
         pluginModule(implementation(project(":shared")))
         pluginModule(implementation(project(":language")))
+        pluginModule(implementation(project(":debugger")))
         pluginModule(implementation(project(":frontend")))
         pluginModule(implementation(project(":backend")))
 

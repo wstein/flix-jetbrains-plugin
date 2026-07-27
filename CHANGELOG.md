@@ -6,6 +6,16 @@
 
 ### Added
 
+- `LICENSE` (Apache 2.0) and `NOTICE`, recording the provenance of every derived component: the
+  imported `intellij-flix` revision, the upstream Flix revision the grammar derives from, and
+  `flix-lab`'s `FlixDebugAdapter.java`. The repository previously carried no license at all.
+- `docs/adr/` architecture decision records: [0001][adr1] adopts `intellij-flix`'s language layer as
+  the single `Language("Flix")` owner instead of hand-porting the Flix compiler's parser, and
+  [0002][adr2] makes IntelliJ's native Java debugger the sole JDWP owner for Flix debug sessions.
+- `flixCorpusCommit` in `gradle.properties`, pinning the upstream Flix revision used to derive and
+  validate the adopted grammar to a commit reachable from `flix/flix` `origin/master`, so the
+  parser corpus gate is reproducible off this machine.
+
 - Flix language server integration via LSP4IJ (`flix lsp`, resolved from `flix-vendor-*.jar`).
 - `--Xdebug` JDWP breakpoint debugging via LSP4IJ's DAP client, reusing `flix-lab`'s
   `FlixDebugAdapter.java` (vendored copy).
@@ -50,3 +60,6 @@
   live IDE session: a "Flix (--Xdebug attach)" configuration was auto-created in Launch mode with
   no manual Mappings-tab step, `flix run --Xdebug --yes` was spawned on a fresh JDWP port, and the
   session disconnected cleanly once the program ran to completion.
+
+[adr1]: docs/adr/0001-single-language-owner.md
+[adr2]: docs/adr/0002-native-jvm-debugger.md

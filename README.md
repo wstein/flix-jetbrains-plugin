@@ -222,6 +222,27 @@ Generator-provided scaffolding, unmodified: [Build](.github/workflows/build.yml)
 these have been exercised yet (no CI run, no Qodana scan) -- they're present and should work per
 the generator's defaults, but that's unverified.
 
+## Direction: one language owner, native JVM debugging
+
+Two architectural decisions are now recorded in [`docs/adr/`](docs/adr/README.md) and are being
+implemented in phases. They change where language support and debugging come from:
+
+- **[ADR 0001][adr1] -- one language owner and one LSP client.** Flix PSI is adopted from
+  [`flix/intellij-flix`][intellij-flix]'s Grammar-Kit/JFlex language layer rather than hand-porting
+  the Flix compiler's `Lexer.scala`/`Parser2.scala` (measured at ~7,200 lines). That layer already
+  provides a `Language("Flix")`, a full parser and PSI, editor support, and the `def main` gutter
+  marker this plugin lacks. LSP4IJ remains the single LSP client.
+- **[ADR 0002][adr2] -- IntelliJ's Java debugger is the sole JDWP owner.** Flix compiles to JVM
+  bytecode, and `flix-fork` emits a JSR-45/SMAP `"Flix"` stratum, so the platform Java debugger can
+  debug Flix directly through a `PositionManager`. That yields mixed Flix/Java stacks, frame-specific
+  expression evaluation, conditional and exception breakpoints, and source-JAR resolution without
+  reimplementing each capability inside a debug adapter. The DAP path stays functional until the
+  native path passes its gate.
+
+Adopting a real `FileType` retires the bundled TextMate grammar, and adopting real PSI closes the
+"no gutter Debug affordance" gap listed below. Neither has landed yet; this section describes the
+target, and the gaps below describe today.
+
 ## Known gaps
 
 - Launch-mode debugging ("click Debug on this file") always uses `main()` as the entry point --
@@ -243,14 +264,26 @@ the generator's defaults, but that's unverified.
 - No formatter or linter is currently configured for this repo (Qodana provides static analysis,
   but that's a separate, heavier tool, not a fast local lint/format step).
 
+## License
+
+Apache License 2.0 -- see [`LICENSE`](LICENSE).
+
+[`NOTICE`](NOTICE) records the provenance of every derived component: the imported
+`intellij-flix` revision, the upstream Flix revision the grammar and token inventory are derived
+from (pinned as `flixCorpusCommit` in `gradle.properties`), and `flix-lab`'s `FlixDebugAdapter.java`.
+
 ## Useful links
 
+- [Architecture decision records](docs/adr/README.md)
 - [IntelliJ Platform SDK Plugin SDK][docs]
 - [Modular Plugins (content modules)][docs:modular-plugins]
 - [LSP4IJ][lsp4ij]
 - [flix-lab][flix-lab] -- the VS Code side of this tooling
 - [wstein/flix-fork][flix-fork] -- the Flix compiler build this targets
 
+[adr1]: docs/adr/0001-single-language-owner.md
+[adr2]: docs/adr/0002-native-jvm-debugger.md
+[intellij-flix]: https://github.com/flix/intellij-flix
 [docs]: https://plugins.jetbrains.com/docs/intellij
 [docs:modular-plugins]: https://plugins.jetbrains.com/docs/intellij/modular-plugins.html
 [lsp4ij]: https://plugins.jetbrains.com/plugin/23257-lsp4ij

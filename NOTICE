@@ -1,0 +1,79 @@
+Flix plugin for IntelliJ-based IDEs
+Copyright 2026 Werner Stein
+
+This product includes software developed for the Flix programming language
+(https://flix.dev).
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full text.
+
+
+================================================================================
+Third-party and derived components
+================================================================================
+
+--------------------------------------------------------------------------------
+1. intellij-flix -- Flix language layer (grammar, lexer, parser, PSI, editor)
+--------------------------------------------------------------------------------
+
+Origin:   https://github.com/flix/intellij-flix (plugin id org.flixlang.intellij)
+Revision: 375dcc661d95a93d66b262b8365459121913efbb
+Tree:     fcd45b6f7dcbc30284b1f893cbb219737db3a0ba
+License:  Apache License 2.0
+
+The following are imported into this repository and retain their original
+`org.flixlang.intellij` package names so that the imported layer stays
+reviewable against, and re-synchronizable with, its origin:
+
+  src/main/grammar/Flix.bnf
+  src/main/grammar/_Flix.flex
+  src/main/grammar/Flix.tokens.txt
+  org.flixlang.intellij.lang.**        (language, file type, parser definition,
+                                        PSI, editor support, highlighting)
+  org.flixlang.intellij.run.FlixRunLineMarkerContributor
+  the associated language, editor and gutter tests
+
+Not imported: the compiler downloader/settings/service, the native
+`com.intellij.platform.lsp` integration, the standalone run configurations, and
+the introduce/inline refactorings. See docs/adr/0001-single-language-owner.md.
+
+--------------------------------------------------------------------------------
+2. Flix compiler -- source of the grammar and token inventory
+--------------------------------------------------------------------------------
+
+Origin:   https://github.com/flix/flix
+License:  Apache License 2.0
+
+`Flix.bnf`, `_Flix.flex` and `Flix.tokens.txt` are a hand re-derivation of the
+Flix compiler's authoritative parser and lexer:
+
+  main/src/ca/uwaterloo/flix/language/phase/Parser2.scala
+  main/src/ca/uwaterloo/flix/language/phase/Lexer.scala
+  main/src/ca/uwaterloo/flix/language/ast/SyntaxTree.scala
+  main/src/ca/uwaterloo/flix/language/ast/TokenKind.scala
+
+The pinned upstream revision used to derive and validate them is recorded in
+`gradle.properties` as `flixCorpusCommit`, and is verified by the
+`checkFlixCorpusPin` Gradle task. The parser corpus evaluation that gates this
+derivation is documented in docs/intellij-flix-parser-evaluation.md.
+
+--------------------------------------------------------------------------------
+3. FlixDebugAdapter.java -- DAP<->JDI bridge
+--------------------------------------------------------------------------------
+
+Origin:   https://github.com/wstein/flix-lab (debug-adapter/src)
+License:  Apache License 2.0
+
+Vendored at backend/src/main/resources/dap/FlixDebugAdapter.java and kept in
+sync by scripts/sync-debug-adapter.sh. This copy serves the transitional DAP
+debugging path only; IntelliJ's native JVM debugger is the target backend. See
+docs/adr/0002-native-jvm-debugger.md.
+
+--------------------------------------------------------------------------------
+4. IntelliJ Platform Gradle plugin template
+--------------------------------------------------------------------------------
+
+Origin:   https://github.com/JetBrains/intellij-platform-plugin-template
+License:  Apache License 2.0
+
+The Gradle build scaffold, GitHub Actions workflows and Qodana configuration
+derive from the JetBrains plugin template.

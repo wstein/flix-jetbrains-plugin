@@ -15,6 +15,11 @@
 - `flixCorpusCommit` in `gradle.properties`, pinning the upstream Flix revision used to derive and
   validate the adopted grammar to a commit reachable from `flix/flix` `origin/master`, so the
   parser corpus gate is reproducible off this machine.
+- [`docs/intellij-flix-parser-evaluation.md`](docs/intellij-flix-parser-evaluation.md), the gate
+  evidence for ADR 0001. Measured against 428 real `.flix` files from the pinned Flix revision, the
+  adopted grammar went from 211 clean (49.3%) to **427 of 427 (100%)** once six localized defect
+  families were fixed, with zero crashes and zero non-lossless parses throughout, and addressable
+  `def main` entry points rising from 114 to 137.
 
 - Flix language server integration via LSP4IJ (`flix lsp`, resolved from `flix-vendor-*.jar`).
 - `--Xdebug` JDWP breakpoint debugging via LSP4IJ's DAP client, reusing `flix-lab`'s

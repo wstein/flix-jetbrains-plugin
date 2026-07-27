@@ -16,9 +16,13 @@ Third-party and derived components
 --------------------------------------------------------------------------------
 
 Origin:   https://github.com/flix/intellij-flix (plugin id org.flixlang.intellij)
-Revision: 375dcc661d95a93d66b262b8365459121913efbb
-Tree:     fcd45b6f7dcbc30284b1f893cbb219737db3a0ba
+Revision: b0f93e3ccd94c7583f8bd85961cd2b3bf581d028
+Tree:     6e4e0509cf072e16377c8a4f47d9d9ab0e61f91f
 License:  Apache License 2.0
+
+The imported tree snapshot is 375dcc661d95a93d66b262b8365459121913efbb; the
+revision above additionally carries the grammar fixes required to pass the
+parser corpus gate (see docs/intellij-flix-parser-evaluation.md).
 
 The following are imported into this repository and retain their original
 `org.flixlang.intellij` package names so that the imported layer stays
@@ -52,9 +56,10 @@ Flix compiler's authoritative parser and lexer:
   main/src/ca/uwaterloo/flix/language/ast/TokenKind.scala
 
 The pinned upstream revision used to derive and validate them is recorded in
-`gradle.properties` as `flixCorpusCommit`, and is verified by the
-`checkFlixCorpusPin` Gradle task. The parser corpus evaluation that gates this
-derivation is documented in docs/intellij-flix-parser-evaluation.md.
+`gradle.properties` as `flixCorpusCommit`. The parser corpus evaluation that
+gates this derivation -- 427 of 427 compilable corpus files parsing cleanly,
+losslessly and without crashes -- is documented in
+docs/intellij-flix-parser-evaluation.md and enforced by `FlixCorpusTest`.
 
 --------------------------------------------------------------------------------
 3. FlixDebugAdapter.java -- DAP<->JDI bridge

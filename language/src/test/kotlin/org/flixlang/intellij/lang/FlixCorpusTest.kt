@@ -48,6 +48,8 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
             return
         }
 
+        verifyPinnedRevision(corpus)
+
         val files = collectCorpusFiles(corpus)
         assertFalse(
             "Found a Flix checkout at $corpus but no .flix files under ${CORPUS_ROOTS.joinToString()}",
@@ -124,7 +126,63 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
                     mains++
                 }
         }
-        println("[flix-corpus] verified $mains addressable `def main` entry point(s)")
+        // Without a floor this test passes vacuously: a parser producing no FlixDefDecl at all
+        // never enters the loop, so zero entry points would read as success. The floor is an
+        // independent count taken from the corpus text itself, so it cannot drift with the parser.
+        val declared = countDeclaredMains(corpus)
+        assertTrue(
+            "The corpus declares $declared `def main` entry points but only $mains are addressable " +
+                "in the PSI. The gutter run marker anchors on exactly these, so a shortfall means " +
+                "some entry points would show no run arrow.",
+            mains >= declared,
+        )
+        println("[flix-corpus] verified $mains addressable `def main` entry point(s) (>= $declared declared)")
+    }
+
+    /**
+     * Counts `def main` declarations by scanning the corpus text, independently of the parser.
+     *
+     * Deliberately conservative -- it matches only a `def main` at the start of a line, optionally
+     * preceded by modifiers -- so it under-counts rather than over-counts and cannot fail the
+     * assertion above spuriously. Its job is to be a floor the parser must clear, not an exact
+     * oracle.
+     */
+    private fun countDeclaredMains(corpus: File): Int =
+        collectCorpusFiles(corpus).sumOf { relative ->
+            File(corpus, relative).readLines().count { line ->
+                DECLARED_MAIN.containsMatchIn(line)
+            }
+        }
+
+    /**
+     * Warns when the checkout is not on the pinned revision.
+     *
+     * The numbers in docs/intellij-flix-parser-evaluation.md describe one specific corpus. Measured
+     * against a drifted checkout they mean something else, and silently so -- new upstream files
+     * would look like grammar regressions, removed ones like improvements. This reports the
+     * mismatch rather than failing, because a developer deliberately testing against newer Flix is
+     * a legitimate thing to do; CI pins the revision explicitly.
+     */
+    private fun verifyPinnedRevision(corpus: File) {
+        val pinned = System.getProperty("flixCorpusCommit").orEmpty()
+        if (pinned.isBlank()) return
+
+        val head = runCatching {
+            ProcessBuilder("git", "rev-parse", "HEAD")
+                .directory(corpus)
+                .redirectErrorStream(true)
+                .start()
+                .inputStream.bufferedReader().readText().trim()
+        }.getOrNull()
+
+        if (head == null || head.isBlank()) {
+            println("[flix-corpus] NOTE: could not read the checkout's revision; expected $pinned")
+        } else if (head != pinned) {
+            println(
+                "[flix-corpus] NOTE: corpus is at $head, not the pinned $pinned. Results are not " +
+                    "comparable with docs/intellij-flix-parser-evaluation.md.",
+            )
+        }
     }
 
     private fun evaluate(corpus: File, relative: String): FileResult {
@@ -232,6 +290,9 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
          * errors are the point.
          */
         private val CORPUS_ROOTS = listOf("main/src/library", "examples")
+
+        /** A line-leading `def main`, optionally modified. Deliberately conservative; see usage. */
+        private val DECLARED_MAIN = Regex("""^\s*(?:pub\s+)?(?:sealed\s+)?(?:lawful\s+)?def\s+main\s*\(""")
 
         /**
          * Corpus files that the Flix compiler itself cannot compile, keyed to the reason. They are

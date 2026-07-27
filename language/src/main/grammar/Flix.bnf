@@ -289,7 +289,30 @@ qualifiedName ::= ident (DOT ident)*
 // DECLARATIONS
 // =================================================================================================
 
-declaration ::= annotationList modifierList declarationBody
+// Error recovery at the declaration boundary.
+//
+// Without `recoverWhile`, a single syntax error consumes the remainder of the file: the whole tail
+// becomes one PsiErrorElement, so no later declaration exists as PSI, the gutter marker disappears,
+// folding stops and structure view empties. Complete files are unaffected -- which is exactly why a
+// corpus of compilable sources reported the grammar as green while half-written code, the normal
+// state of a file being edited, degraded badly.
+//
+// `pin=3` commits the rule once the declaration keyword itself has matched, so the error is
+// reported at the offending token rather than rejecting the whole declaration; recovery then skips
+// ahead to the next token that can begin a declaration and resumes there.
+declaration ::= annotationList modifierList declarationBody {pin=3 recoverWhile=declarationRecover}
+
+// Stops as soon as something that could start the next declaration is in sight. CURLY_R is
+// included so recovery inside a `mod`/`trait`/`instance` body stops at the body's closing brace
+// instead of eating it and unbalancing everything after.
+private declarationRecover ::= !declarationStart
+private declarationStart ::=
+    MOD_KW | TRAIT_KW | INSTANCE_KW | DEF_KW | REDEF_KW | LAW_KW | ENUM_KW | STRUCT_KW
+  | TYPE_KW | EFF_KW | RESTRICTABLE_KW
+  | PUB_KW | SEALED_KW | LAWFUL_KW | MUT_KW
+  | ANNOTATION | COMMENT_DOC
+  | USE_KW | IMPORT_KW
+  | CURLY_R
 
 private declarationBody ::=
     moduleDecl

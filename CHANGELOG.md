@@ -88,6 +88,35 @@
 
 ### Fixed
 
+- `.flix` lines could not take a breakpoint at all. `DebuggerUtils.isBreakpointAware` returns true
+  only when the file type reports `isJVMDebuggingSupported()` or a `JavaDebugAware` claims the file,
+  and `JavaLineBreakpointTypeBase.canPutAtElement` refuses everything else -- so the position
+  manager was never consulted, because nothing asked it to resolve anything. A `JavaDebugAware`
+  now claims `.flix`, which also means no custom Flix breakpoint type is needed.
+- The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
+  where nothing consumes them.
+- Native source lookup passed a possibly path-valued `SourceFile` straight to `FilenameIndex`,
+  which keys on base names, so a path-valued attribute found nothing. It now reduces to a base name
+  and keeps the full path for disambiguation, refusing ambiguous duplicate-base-name matches rather
+  than binding to an arbitrary same-named file.
+- A syntax error made the rest of a file unparseable: `declaration` had no `pin`/`recoverWhile`, so
+  a single error turned everything after it into one `PsiErrorElement`, taking the gutter marker,
+  folding and structure view with it. Declaration-level recovery is now in place, with the corpus
+  still at 427 of 427.
+- The recovery tests did not test recovery. They looked for a lexer token, which survives inside the
+  error element that swallowed the file, so they passed against a parser with no recovery at all.
+  They now assert a real declaration outside any error element -- and the cases that cannot make
+  that claim assert the weaker guarantee explicitly, because Flix permits a local `def` as an
+  expression and an unfinished expression legitimately absorbs the next declaration.
+- The corpus gate's `def main` check passed vacuously: a parser producing no declarations never
+  entered the loop. It now compares against an independent count taken from the corpus text.
+- `-DflixCorpusDir` was silently overwritten with an empty value by the build, so the documented
+  invocation skipped the gate instead of running it. The gate also now reports when the checkout is
+  not on the pinned revision.
+- `:language:test` runs one JVM per class. Three recovery assertions failed only once enough classes
+  had shared a JVM -- state leaking through the platform's test fixtures, not a grammar defect,
+  confirmed by parsing the same sources directly.
+
 - An XML comment containing `--` in `flix.jetbrains.plugin.frontend.xml` made the entire plugin
   fail to load ("Cannot load ... contains invalid plugin descriptor") in both backend and frontend
   processes under Split Mode. `verifyPluginProjectConfiguration`/`buildPlugin` do not catch this

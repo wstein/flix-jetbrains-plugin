@@ -2,6 +2,8 @@ package org.flixlang.intellij.lang
 
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiErrorElement
+import org.flixlang.intellij.lang.psi.FlixDefDecl
+import org.flixlang.intellij.run.nameOrNull
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.ParsingTestCase
@@ -36,18 +38,63 @@ class FlixErrorRecoveryTest : ParsingTestCase("", "flix", FlixParserDefinition()
         assertNotNull("Expected malformed input to produce a PsiErrorElement, found none", error)
     }
 
-    /** Builds `malformed` followed by a distinct, well-formed `def <name>(): Int32 = 1` and
-     *  asserts that second declaration's name still shows up as a real identifier token, proving
-     *  the parser recovered rather than treating the rest of the file as unparseable garbage. */
+    /**
+     * Builds `malformed` followed by a well-formed `def <name>(): Int32 = 1` and asserts the second
+     * declaration survives as a real [FlixDefDecl] outside any error element.
+     *
+     * Asserting on a NAME_LOWERCASE leaf instead -- which an earlier version of this helper did --
+     * proves nothing: the lexer produces tokens regardless, so the identifier is still present
+     * inside a PsiErrorElement that has swallowed the entire rest of the file. That is precisely
+     * the failure mode `recoverWhile` exists to prevent, and the weaker assertion reported it as
+     * recovery.
+     */
     private fun assertRecoversAndContinues(malformed: String, followingDeclName: String) {
         val code = "$malformed\n\ndef $followingDeclName(): Int32 = 1"
         val psiFile = parseWithoutCrashing(code)
-        val identLeaf = PsiTreeUtil.findChildrenOfType(psiFile, PsiElement::class.java)
+
+        val declaration = PsiTreeUtil.findChildrenOfType(psiFile, FlixDefDecl::class.java)
+            .firstOrNull { it.nameOrNull() == followingDeclName }
+        assertNotNull(
+            "Expected 'def $followingDeclName' to parse as a real declaration after recovering " +
+                "from the preceding malformed one, but no FlixDefDecl with that name exists -- " +
+                "the error element has swallowed the rest of the file",
+            declaration
+        )
+        assertNull(
+            "'def $followingDeclName' parsed, but inside an error element rather than as a " +
+                "recovered top-level declaration",
+            PsiTreeUtil.getParentOfType(declaration, PsiErrorElement::class.java)
+        )
+    }
+
+    /**
+     * The weaker guarantee, for inputs whose trailing incompleteness is *syntactically valid*.
+     *
+     * `def foo(): Int32 = 1 +` followed by another `def` parses with **no error at all**: Flix
+     * allows a local `def` as an expression, so the following declaration becomes the right operand
+     * of the `+`. The declaration is not lost -- it has PSI and is not inside an error element --
+     * but it is nested rather than top-level.
+     *
+     * Upstream's `Parser2` differs here: `isRecoverInExpr` includes `isFirstInDecl`, so it breaks
+     * out of an expression when it sees a declaration keyword. Reproducing that in a PEG grammar
+     * would mean making `localDefExpr` decline a declaration-leading `def`, which the grammar has
+     * no positional way to express. The divergence is recorded in
+     * docs/intellij-flix-parser-evaluation.md rather than asserted away.
+     */
+    private fun assertFollowingDeclarationSurvives(malformed: String, followingDeclName: String) {
+        val code = "$malformed\n\ndef $followingDeclName(): Int32 = 1"
+        val psiFile = parseWithoutCrashing(code)
+
+        val named = PsiTreeUtil.findChildrenOfType(psiFile, PsiElement::class.java)
             .firstOrNull { it.node?.elementType == FlixTypes.NAME_LOWERCASE && it.text == followingDeclName }
         assertNotNull(
-            "Expected '$followingDeclName' to still be recognized as an identifier after recovering " +
-                "from the preceding malformed declaration",
-            identLeaf
+            "'def $followingDeclName' vanished entirely after the preceding incomplete declaration",
+            named
+        )
+        assertNull(
+            "'def $followingDeclName' survived only inside an error element, meaning the rest of " +
+                "the file was swallowed rather than parsed",
+            PsiTreeUtil.getParentOfType(named, PsiErrorElement::class.java)
         )
     }
 
@@ -81,7 +128,7 @@ class FlixErrorRecoveryTest : ParsingTestCase("", "flix", FlixParserDefinition()
     }
 
     fun testIncompleteMatchArmRecovers() {
-        assertRecoversAndContinues(
+        assertFollowingDeclarationSurvives(
             """
             def area(s: Shape): Int32 = match s {
                 case Shape.Circle(r) =>
@@ -96,7 +143,7 @@ class FlixErrorRecoveryTest : ParsingTestCase("", "flix", FlixParserDefinition()
     }
 
     fun testDanglingBinaryOperatorRecovers() {
-        assertRecoversAndContinues("def foo(): Int32 = 1 +", "afterDanglingOp")
+        assertFollowingDeclarationSurvives("def foo(): Int32 = 1 +", "afterDanglingOp")
     }
 
     fun testUnterminatedString() {
@@ -104,7 +151,7 @@ class FlixErrorRecoveryTest : ParsingTestCase("", "flix", FlixParserDefinition()
     }
 
     fun testUnterminatedStringRecovers() {
-        assertRecoversAndContinues("""def foo(): String = "hello""", "afterUnterminatedString")
+        assertFollowingDeclarationSurvives("""def foo(): String = "hello""", "afterUnterminatedString")
     }
 
     fun testMissingDefBody() {
@@ -112,7 +159,7 @@ class FlixErrorRecoveryTest : ParsingTestCase("", "flix", FlixParserDefinition()
     }
 
     fun testMissingDefBodyRecovers() {
-        assertRecoversAndContinues("def foo(): Int32 =", "afterMissingBody")
+        assertFollowingDeclarationSurvives("def foo(): Int32 =", "afterMissingBody")
     }
 
     fun testUnclosedParenInCall() {

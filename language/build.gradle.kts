@@ -69,8 +69,35 @@ tasks.compileJava { dependsOn(generateFlixParser, generateFlixLexer) }
 
 tasks.test {
     useJUnit()
+
+    // One JVM per test class, to isolate cross-class state leaking through the platform's test
+    // fixtures.
+    //
+    // Three error-recovery assertions failed only in a full-suite run: passing alone, passing in
+    // every pairwise combination, and failing once enough classes had run in one JVM. Parsing the
+    // same sources directly showed the parser recovering correctly in all three, so the defect was
+    // in the harness, not the grammar. ParsingTestCase builds a mock application and registers
+    // extensions against static, per-Language collectors that outlive an individual class, and
+    // FlixEditorBasicsRegistrationTest already has to clear those caches by hand for the same
+    // reason.
+    //
+    // Forking costs about 20 seconds across the suite. That is worth paying not to have correct
+    // code reported as broken depending on what ran before it.
+    setForkEvery(1)
+
     // Lets FlixCorpusTest find the sibling Flix checkout that holds the parser corpus. It skips
     // when absent, so CI without the checkout still passes; see
     // docs/intellij-flix-parser-evaluation.md.
-    systemProperty("flixCorpusDir", providers.gradleProperty("flixCorpusDir").getOrElse(""))
+    //
+    // Set only when non-empty. Unconditionally setting it to "" defeated `-DflixCorpusDir=...`,
+    // because Gradle's empty value overwrote the one the user passed on the command line -- so the
+    // documented invocation silently skipped the gate instead of running it.
+    providers.gradleProperty("flixCorpusDir").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { systemProperty("flixCorpusDir", it) }
+
+    // The pinned revision the grammar was derived from and validated against. FlixCorpusTest
+    // verifies the checkout actually sits on it, so a gate run against a drifted corpus reports
+    // that rather than quietly measuring something else.
+    systemProperty("flixCorpusCommit", providers.gradleProperty("flixCorpusCommit").getOrElse(""))
 }

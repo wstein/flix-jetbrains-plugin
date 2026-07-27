@@ -310,9 +310,11 @@ remains the supported way to debug, and is still registered.
   `flix run --Xdebug` process and Flix frames resolve, with full Java behaviour for Java frames in
   the same session. A Flix run/debug configuration and a Flix line-breakpoint type are still to
   come, and the mixed Flix/Java stepping matrix in ADR 0002 has not been exercised in a live IDE.
-- `Flix.bnf` uses no `pin`/`recoverWhile`, so a syntax error yields one error node and the rest of
-  the file becomes a single unparsed block. Complete files parse fully (427 of 427 in the corpus
-  gate), but half-written code degrades more than it should. Tracked separately from adoption.
+- An unfinished *expression* can absorb the following top-level declaration, because Flix permits a
+  local `def` as an expression and the grammar has no positional way to decline one. Upstream's
+  `Parser2` breaks out of an expression at a declaration keyword; this grammar does not. The
+  declaration is not lost, only nested. See
+  [the evaluation](docs/intellij-flix-parser-evaluation.md#error-recovery).
 - `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
   literal arguments, and array indexing, but not arithmetic or nested expressions as call
   arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the

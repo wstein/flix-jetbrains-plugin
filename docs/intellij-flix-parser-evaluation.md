@@ -101,10 +101,39 @@ is absent rather than failing.
 `build/reports/flix-parser-corpus.json`, which groups failures by the token the first error sits on
 so a regression names the syntax family it broke instead of only a count.
 
-## Residual risk
+## Error recovery
 
-`Flix.bnf` uses no `pin` or `recoverWhile`, so a file yields exactly one error node and everything
-after it becomes a single unparsed block. On a clean corpus this is invisible — the measurements
-above are all on files that parse completely — but it degrades the editing experience on
-half-written code, which is most code most of the time. Error recovery is tracked separately from
-adoption; it does not affect this gate.
+The corpus gate is blind to recovery by construction: it measures files that parse completely. The
+grammar originally had no `pin`/`recoverWhile` at all, so a single syntax error turned the entire
+remainder of a file into one `PsiErrorElement` — no later declaration existed as PSI, which takes
+the gutter marker, folding and structure view with it. That is the normal state of a file being
+edited, so it mattered more than the clean-corpus number suggested.
+
+`declaration` now pins after its keyword and recovers to the next token that can begin a
+declaration. The corpus stays at 427 of 427, and recovery is now genuinely asserted rather than
+assumed.
+
+**The old assertions did not test recovery.** They looked for a `NAME_LOWERCASE` leaf with the
+expected text — but the lexer emits tokens regardless, so that leaf is present *inside* the error
+element that swallowed the file. Every one of them passed against a parser with no recovery
+whatsoever. They now assert a real `FlixDefDecl` outside any error element.
+
+### A divergence from upstream, deliberately not asserted away
+
+Six of those cases still cannot make the strong claim, and the reason is not a recovery gap:
+
+```flix
+def foo(): Int32 = 1 +
+
+def next(): Int32 = 1
+```
+
+parses with **no error at all**. Flix permits a local `def` as an expression, so `next` legitimately
+becomes the right operand of the `+`. Upstream's `Parser2` behaves differently — `isRecoverInExpr`
+includes `isFirstInDecl`, so it breaks out of an expression when it sees a declaration keyword.
+Reproducing that in a PEG grammar would mean making `localDefExpr` decline a declaration-leading
+`def`, which the grammar has no positional way to express.
+
+Those cases assert the weaker property that still matters: the following declaration is not *lost*
+— it has PSI and is not buried in an error element. Splitting the two guarantees keeps both honest,
+rather than weakening one assertion until everything passes.

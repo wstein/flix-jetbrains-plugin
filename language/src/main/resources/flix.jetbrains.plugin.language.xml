@@ -1,0 +1,68 @@
+<idea-plugin>
+    <!-- The Flix language layer, adopted from flix/intellij-flix (see NOTICE for the revision and
+         docs/adr/0001-single-language-owner.md for the decision).
+
+         This module deliberately declares neither intellij.platform.frontend nor
+         intellij.platform.backend: a content module that names either is loaded in only that
+         process, and everything registered here describes the language itself, so it has to be
+         visible wherever a .flix file is opened. The bundled TextMate and TOML plugins split their
+         own registrations the same way – language and editor extensions in an always-loaded
+         module, indexing and tool-window extensions in a backend-only one.
+
+         No <dependencies> block either. Everything this module compiles against – PsiBuilder,
+         ParserDefinition, LexerBase, LanguageFileType, IElementType, Commenter, FoldingBuilderEx,
+         ASTWrapperPsiElement, PsiFileBase, PairedBraceMatcher, SyntaxHighlighterBase,
+         RunLineMarkerContributor – lives in a top-level lib/*.jar on the platform's boot
+         classpath, so it resolves without being declared. Naming a module here would be worse than
+         redundant: an unsatisfiable content-module dependency makes the platform skip the module
+         *silently*, taking every extension below with it and leaving no error to diagnose. -->
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+                name="Flix File"
+                implementationClass="org.flixlang.intellij.lang.FlixFileType"
+                fieldName="INSTANCE"
+                language="Flix"
+                extensions="flix"/>
+
+        <lang.parserDefinition
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.FlixParserDefinition"/>
+
+        <!-- Mandatory, not optional: registering a real FileType for *.flix stops the TextMate
+             plugin from substituting its own, because TextMateFileType.isMyFileType only replaces
+             UnknownFileType, PlainTextFileType, TextMateFileType and TextMateBackedFileType. This
+             highlighter is what replaces the bundled TextMate grammar, and it is strictly better –
+             it is driven by the compiler's own token inventory rather than a hand-written regex
+             grammar, with LSP semantic tokens layering on top. -->
+        <lang.syntaxHighlighterFactory
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.highlighting.FlixSyntaxHighlighterFactory"/>
+
+        <lang.braceMatcher
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.editor.FlixBraceMatcher"/>
+
+        <lang.commenter
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.editor.FlixCommenter"/>
+
+        <lang.quoteHandler
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.editor.FlixQuoteHandler"/>
+
+        <lang.foldingBuilder
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.editor.FlixFoldingBuilder"/>
+
+        <!-- The gutter run arrow next to `def main` – the gap that motivated adopting this layer.
+             It anchors on the declaration's name leaf and delegates to the platform's generic
+             ExecutorAction, so whichever run-configuration producer applies supplies the actual
+             Run and Debug entries. Today that is LSP4IJ's DAP producer, matched through the
+             *.flix fileNamePatternMapping in the backend module; ADR 0002 replaces it with a
+             native JVM debug configuration. -->
+        <runLineMarkerContributor
+                language="Flix"
+                implementationClass="org.flixlang.intellij.run.FlixRunLineMarkerContributor"/>
+    </extensions>
+</idea-plugin>

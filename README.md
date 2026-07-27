@@ -239,9 +239,9 @@ implemented in phases. They change where language support and debugging come fro
   reimplementing each capability inside a debug adapter. The DAP path stays functional until the
   native path passes its gate.
 
-Adopting a real `FileType` retires the bundled TextMate grammar, and adopting real PSI closes the
-"no gutter Debug affordance" gap listed below. Neither has landed yet; this section describes the
-target, and the gaps below describe today.
+ADR 0001 has landed: a `language` content module now provides the Flix `Language`, file type,
+parser, PSI, editor support and the `def main` gutter arrow. ADR 0002's native JVM debugger has
+not; debugging still goes through the DAP path described above.
 
 ## Known gaps
 
@@ -251,12 +251,9 @@ target, and the gaps below describe today.
   one fixed value for the whole IDE process). A project needing `--entrypoint` still needs the
   manual Attach configuration. The flix command itself *is* overridable now, via the
   `FLIX_DEBUG_COMMAND` environment variable (see the Launch-mode debugging section above).
-- No inline gutter/CodeLens "Debug" affordance next to `def main()`, unlike the existing "Run"
-  CodeLens -- that one comes from the Flix language server's own `flix.runMain` codelens, which this
-  plugin merely binds to an action; a "Debug" equivalent would need either the language server to
-  emit a matching codelens (external dependency) or full Flix PSI/parsing support in this plugin (a
-  much bigger undertaking). Use the standard "Debug 'Main.flix'" entry in the editor's right-click
-  context menu instead -- confirmed present and working via `canRun()`'s default (always `true`).
+- Debugging still runs through LSP4IJ's DAP client rather than IntelliJ's own JVM debugger, so
+  there are no mixed Flix/Java stacks, no Java expression evaluation in Java frames, and no
+  source-JAR resolution. [ADR 0002][adr2] describes the replacement; it has not landed yet.
 - `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
   literal arguments, and array indexing, but not arithmetic or nested expressions as call
   arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the

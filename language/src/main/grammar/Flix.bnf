@@ -1,0 +1,756 @@
+/*
+ * Grammar-Kit BNF grammar for the Flix programming language.
+ *
+ * This grammar is a faithful, from-scratch re-derivation of the authoritative hand-written
+ * Scala parser at:
+ *   flix/main/src/ca/uwaterloo/flix/language/phase/Parser2.scala
+ * cross-referenced against the syntax-node inventory at:
+ *   flix/main/src/ca/uwaterloo/flix/language/ast/SyntaxTree.scala (sealed trait TreeKind)
+ * and the token set at:
+ *   intellij-flix/src/main/grammar/Flix.tokens.txt  (158 tokens, hand-lexed by _Flix.flex)
+ *
+ * ---------------------------------------------------------------------------------------------
+ * DELIBERATE SIMPLIFICATIONS (see final report for the complete list). Each is also called out
+ * with a short inline comment at the relevant rule:
+ *
+ *   1. Comments (COMMENT_LINE / COMMENT_DOC / COMMENT_BLOCK) and whitespace are not referenced
+ *      anywhere in this grammar. Unlike the Scala parser (which threads doc-comments through the
+ *      tree as explicit TreeKind.Doc/CommentList nodes so later phases can re-attach them), an
+ *      IntelliJ Grammar-Kit grammar instead treats comment/whitespace tokens as parser trivia
+ *      that the PsiBuilder attaches to the tree automatically (via ParserDefinition's whitespace
+ *      / comment token sets, configured outside this file). This is the standard, idiomatic
+ *      approach for Grammar-Kit grammars (see e.g. the Rust/Kotlin/TOML plugins).
+ *   2. Both "->" spellings (ARROW_THIN_R, the whitespace-sensitive variant, and
+ *      ARROW_THIN_R_TIGHT) are accepted interchangeably everywhere an arrow is expected (the
+ *      `arrow` helper rule below), per the task's explicit guidance -- the whitespace-sensitivity
+ *      that distinguishes them is a lexer concern, not a grammar-structural one.
+ *   3. Qualified/simple name *token-kind-set* precision (e.g. "only uppercase names are legal
+ *      tags", "only lowercase names are legal record fields") is not enforced structurally.
+ *      Every name position uses one of a small number of general `ident`/`qualifiedName` helper
+ *      rules. The reference parser tracks ~15 distinct legal-token-kind sets per name position
+ *      (NAME_VARIABLE, NAME_FIELD, NAME_TAG, NAME_TYPE, NAME_EFFECT, ...); reproducing all of
+ *      those distinctly in a CFG would multiply the rule count several-fold for no benefit to a
+ *      PSI-based IDE grammar -- that lexical-class validation belongs in a semantic annotator.
+ *   4. Statement-level implicit-semicolon-insertion / missing-operator error recovery (the
+ *      `notBinaryOperator` / `canFollowBinaryOperator` heuristics in Expr.statement()) is not
+ *      modeled; `statement` is simply `expr (SEMI expr)*`.
+ *   5. Unary prefix operators (discard/lazy/force/not/unary +-) are modeled as their own
+ *      precedence-chain levels bottoming out in `postfixExpr`. The reference parser's operand
+ *      for a unary prefix op is a fully general, precedence-bounded `expression(leftOpt=...)`
+ *      call, which (due to an implementation quirk) lets the *enclosing* call's postfix loop
+ *      re-apply postfix operators (call/field/index) on top of an already-unary-wrapped result.
+ *      This grammar applies postfix operators only directly to atoms (the conventional,
+ *      standard placement), not on top of unary expressions.
+ *   6. Extensible-variant *patterns* (`TreeKind.Pattern.ExtTag`) are not modeled as a separate
+ *      pattern form: Parser2.scala's `Pattern.pattern()` dispatch table has no case building
+ *      that tree kind (only `Expr.extTagExpr` / `Expr.extMatchExpr` construct extensible-variant
+ *      *expressions*), so ordinary tag patterns are used to cover this position too.
+ *   7. A handful of very rare defensive/fallback shapes in the reference parser (e.g. the
+ *      `(ParenL, ParenR) => expression()` unit-shorthand branch inside fixpointQuerySelect, which
+ *      is subsumed by `expr` already handling parenthesized/unit expressions generally) are
+ *      collapsed into their more general sibling production.
+ *   8. No `pin`/`recoverWhile` error-recovery attributes are used anywhere (conservative, per
+ *      task guidance): this is a purely structural grammar, correctness-first.
+ * ---------------------------------------------------------------------------------------------
+ */
+{
+  parserClass="org.flixlang.intellij.lang.parser.FlixParser"
+  extends="com.intellij.extapi.psi.ASTWrapperPsiElement"
+
+  psiClassPrefix="Flix"
+  psiImplClassSuffix="Impl"
+  psiPackage="org.flixlang.intellij.lang.psi"
+  psiImplPackage="org.flixlang.intellij.lang.psi.impl"
+
+  elementTypeHolderClass="org.flixlang.intellij.lang.psi.FlixTypes"
+  elementTypeClass="org.flixlang.intellij.lang.psi.FlixElementType"
+  tokenTypeClass="org.flixlang.intellij.lang.psi.FlixTokenType"
+
+  tokens = [
+      // ===== Keywords (79) =====
+      ALIAS_KW='alias'
+      AND_KW='and'
+      AS_KW='as'
+      CASE_KW='case'
+      CATCH_KW='catch'
+      CHECKED_CAST_KW='checked_cast'
+      CHECKED_ECAST_KW='checked_ecast'
+      CHOOSE_KW='choose'
+      CHOOSE_STAR_KW='choose*'
+      DEF_KW='def'
+      DISCARD_KW='discard'
+      EFF_KW='eff'
+      ELSE_KW='else'
+      EMATCH_KW='ematch'
+      ENUM_KW='enum'
+      FALSE_KW='false'
+      FIX_KW='fix'
+      FORA_KW='forA'
+      FORM_KW='forM'
+      FORALL_KW='forall'
+      FORCE_KW='force'
+      FOREACH_KW='foreach'
+      FROM_KW='from'
+      HANDLER_KW='handler'
+      IF_KW='if'
+      IMPORT_KW='import'
+      INJECT_KW='inject'
+      INSTANCE_KW='instance'
+      INSTANCEOF_KW='instanceof'
+      INTO_KW='into'
+      LAW_KW='law'
+      LAWFUL_KW='lawful'
+      LAZY_KW='lazy'
+      LET_KW='let'
+      MATCH_KW='match'
+      MOD_KW='mod'
+      MUT_KW='mut'
+      NEW_KW='new'
+      NOT_KW='not'
+      NULL_KW='null'
+      OPEN_VARIANT_KW='open_variant'
+      OPEN_VARIANT_AS_KW='open_variant_as'
+      OR_KW='or'
+      PQUERY_KW='pquery'
+      PSOLVE_KW='psolve'
+      PAR_KW='par'
+      PROJECT_KW='project'
+      PUB_KW='pub'
+      QUERY_KW='query'
+      REDEF_KW='redef'
+      REGION_KW='region'
+      RESTRICTABLE_KW='restrictable'
+      RUN_KW='run'
+      RVADD_KW='rvadd'
+      RVAND_KW='rvand'
+      RVNOT_KW='rvnot'
+      RVSUB_KW='rvsub'
+      SEALED_KW='sealed'
+      SELECT_KW='select'
+      SOLVE_KW='solve'
+      SPAWN_KW='spawn'
+      STATIC_KW='static'
+      STATIC_UPPER_KW='Static'
+      STRUCT_KW='struct'
+      SUPER_KW='super'
+      THROW_KW='throw'
+      TRAIT_KW='trait'
+      TRUE_KW='true'
+      TRY_KW='try'
+      TYPE_KW='type'
+      UNCHECKED_CAST_KW='unchecked_cast'
+      UNIV_KW='Univ'
+      UNSAFE_KW='unsafe'
+      USE_KW='use'
+      WHERE_KW='where'
+      WITH_KW='with'
+      XOR_KW='xor'
+      XVAR_KW='xvar'
+      YIELD_KW='yield'
+
+      // ===== Prefixed-hash collection literals (5) =====
+      ARRAY_HASH='Array#'
+      LIST_HASH='List#'
+      MAP_HASH='Map#'
+      SET_HASH='Set#'
+      VECTOR_HASH='Vector#'
+
+      // ===== Simple tokens / delimiters (17) =====
+      HASH='#'
+      HASH_PAREN_L='#('
+      HASH_CURLY_L='#{'
+      HASH_BAR='#|'
+      PAREN_L='('
+      PAREN_R=')'
+      COMMA=','
+      SEMI=';'
+      HOLE_ANONYMOUS='???'
+      BRACKET_L='['
+      BACKSLASH='\'
+      BRACKET_R=']'
+      TICK='`'
+      CURLY_L='{'
+      BAR_HASH='|#'
+      CURLY_R='}'
+      TILDE='~'
+
+      // ===== Operators (23) =====
+      BANG='!'
+      BANG_EQUAL='!='
+      AMPERSAND='&'
+      STAR='*'
+      PLUS='+'
+      MINUS='-'
+      COLON=':'
+      COLON_MINUS=':-'
+      COLON_COLON='::'
+      COLON_COLON_COLON=':::'
+      ANGLE_L='<'
+      ANGLED_PLUS='<+>'
+      ARROW_THIN_L='<-'
+      ANGLE_L_EQUAL='<='
+      ANGLED_EQUAL='<=>'
+      EQUAL='='
+      EQUAL_EQUAL='=='
+      ARROW_THICK_R='=>'
+      ANGLE_R='>'
+      ANGLE_R_EQUAL='>='
+      CARET='^'
+      BAR='|'
+      SLASH='/'
+
+      // ===== Arrow "->" disambiguation (2) -- both spelled "->", see notes above =====
+      ARROW_THIN_R_TIGHT='->'
+      ARROW_THIN_R='->'
+
+      // ===== Dot (2) =====
+      DOT='.'
+      DOT_WHITESPACE='.'
+
+      // ===== Misc special-cased single characters / prefixes (7) =====
+      AT='@'
+      ANNOTATION='annotation'
+      DOLLAR='$'
+      BUILT_IN='built-in'
+      DEBUG_INTERPOLATOR='d'
+      GENERIC_OPERATOR='operator'
+      UNDERSCORE='_'
+
+      // ===== Holes (2 remaining; HOLE_ANONYMOUS declared above) =====
+      HOLE_NAMED='named hole'
+      HOLE_VARIABLE='variable hole'
+
+      // ===== Names (3) =====
+      NAME_LOWERCASE='identifier'
+      NAME_UPPERCASE='identifier'
+      NAME_MATH='math identifier'
+
+      // ===== Number literals (10) =====
+      LITERAL_INT='int literal'
+      LITERAL_INT8='int8 literal'
+      LITERAL_INT16='int16 literal'
+      LITERAL_INT32='int32 literal'
+      LITERAL_INT64='int64 literal'
+      LITERAL_BIGINT='bigint literal'
+      LITERAL_FLOAT='float literal'
+      LITERAL_FLOAT32='float32 literal'
+      LITERAL_FLOAT64='float64 literal'
+      LITERAL_BIGDECIMAL='bigdecimal literal'
+
+      // ===== Other literals (5) =====
+      LITERAL_CHAR='char literal'
+      LITERAL_STRING='string literal'
+      LITERAL_REGEX='regex literal'
+      LITERAL_STRING_INTERPOLATION_L='string interpolation start'
+      LITERAL_STRING_INTERPOLATION_R='string interpolation end'
+
+      // ===== Comments (3) -- never referenced in rule bodies, see note above =====
+      COMMENT_LINE='line comment'
+      COMMENT_DOC='doc comment'
+      COMMENT_BLOCK='block comment'
+  ]
+}
+
+// =================================================================================================
+// ROOT
+// =================================================================================================
+
+root ::= usesOrImports declaration*
+
+usesOrImports ::= (useDecl | importDecl)*
+
+useDecl ::= USE_KW qualifiedName (DOT (useMany | ident))?
+useMany ::= CURLY_L (aliasedName (COMMA aliasedName)* COMMA?)? CURLY_R
+
+importDecl ::= IMPORT_KW qualifiedName (DOT (importMany | ident))?
+importMany ::= CURLY_L (aliasedName (COMMA aliasedName)* COMMA?)? CURLY_R
+
+private aliasedName ::= ident (ARROW_THICK_R ident)?
+
+// =================================================================================================
+// NAMES
+// =================================================================================================
+
+// Simplification #3 (see header): a single general identifier/qualified-name family is used at
+// every name position rather than reproducing every one of the reference parser's ~15 distinct
+// legal-token-kind sets (NAME_VARIABLE, NAME_FIELD, NAME_TAG, NAME_TYPE, ...).
+// QUERY_KW is deliberately NOT included here: the reference parser only accepts it as an
+// identifier in variable-*pattern* position (Parser2.scala's variablePat(), matching "query" as
+// a binding name in `case query => ...`), never in general expression/type/qualified-name
+// position. Since this collapsed `ident` rule is shared by every name position (simplification
+// #3 above), including it here would make the far more common `query <db> select ... from ...`
+// expression unparseable -- losing pattern-position support for the literal name "query" is a
+// much smaller gap than that.
+private ident ::= NAME_LOWERCASE | NAME_UPPERCASE | NAME_MATH | UNDERSCORE | GENERIC_OPERATOR | STATIC_UPPER_KW
+
+qualifiedName ::= ident (DOT ident)*
+
+// =================================================================================================
+// DECLARATIONS
+// =================================================================================================
+
+declaration ::= annotationList modifierList declarationBody
+
+private declarationBody ::=
+    moduleDecl
+  | traitDecl
+  | instanceDecl
+  | defDecl
+  | enumDecl
+  | structDecl
+  | typeAliasDecl
+  | effectDecl
+
+moduleDecl ::= MOD_KW qualifiedName CURLY_L usesOrImports declaration* CURLY_R
+
+traitDecl ::= TRAIT_KW ident typeParameterList? typeConstraints? (CURLY_L traitMember* CURLY_R)?
+traitMember ::= annotationList modifierList (lawDecl | signatureDecl | associatedTypeSigDecl)
+
+instanceDecl ::= INSTANCE_KW qualifiedName BRACKET_L type BRACKET_R typeConstraints? equalityConstraintList? (CURLY_L instanceMember* CURLY_R)?
+instanceMember ::= annotationList modifierList (defDecl | redefDecl | associatedTypeDefDecl)
+
+signatureDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? (EQUAL statement)?
+
+defDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement
+
+redefDecl ::= REDEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement
+
+lawDecl ::= LAW_KW ident COLON FORALL_KW typeParameterList? parameterList? typeConstraints? equalityConstraintList? expr
+
+enumDecl ::= RESTRICTABLE_KW? ENUM_KW ident restrictableEnumIndex? typeParameterList? enumSingletonBody? derivationList? (CURLY_L enumCaseList? CURLY_R)?
+private restrictableEnumIndex ::= BRACKET_L parameter BRACKET_R
+private enumSingletonBody ::= PAREN_L (type (COMMA type)* COMMA?)? PAREN_R
+// The reference parser allows a mix of leading COMMA and/or repeated CASE_KW between cases, so
+// the separator is optional: every case carries its own optional leading CASE_KW and an optional
+// preceding COMMA. That covers all commonly written forms -- `case A, case B` / `A, B` /
+// `case A case B`, the last spread over separate lines. Requiring the COMMA rejected 68 of the
+// 428 corpus files; not one multi-case enum in `main/src/library` writes the separator.
+private enumCaseList ::= enumCase (COMMA? enumCase)*
+enumCase ::= CASE_KW? ident enumSingletonBody?
+
+structDecl ::= STRUCT_KW ident typeParameterList? (CURLY_L (structField (COMMA structField)* COMMA?)? CURLY_R)?
+structField ::= modifierList ident COLON type
+
+typeAliasDecl ::= TYPE_KW ALIAS_KW ident typeParameterList? EQUAL type
+
+associatedTypeSigDecl ::= TYPE_KW ident typeParameterList? (COLON kind)? (EQUAL type)?
+associatedTypeDefDecl ::= TYPE_KW ident typeArgumentList? EQUAL type
+
+effectDecl ::= EFF_KW ident typeParameterList? (CURLY_L effectOperation* CURLY_R)?
+effectOperation ::= annotationList modifierList DEF_KW ident typeParameterList? parameterList? COLON type typeConstraints?
+
+// ---- shared declaration fragments ----
+
+modifierList ::= (PUB_KW | SEALED_KW | LAWFUL_KW | MUT_KW)*
+annotationList ::= ANNOTATION*
+
+parameterList ::= PAREN_L (parameter (COMMA parameter)* COMMA?)? PAREN_R
+parameter ::= ident (COLON type)?
+
+typeParameterList ::= BRACKET_L (typeParameter (COMMA typeParameter)* COMMA?)? BRACKET_R
+typeParameter ::= ident (COLON kind)?
+
+typeArgumentList ::= BRACKET_L (typeArgument (COMMA typeArgument)* COMMA?)? BRACKET_R
+typeArgument ::= type
+
+typeConstraints ::= WITH_KW typeConstraint (COMMA typeConstraint)*
+typeConstraint ::= qualifiedName BRACKET_L type BRACKET_R
+
+equalityConstraintList ::= WHERE_KW equalityConstraint (COMMA equalityConstraint)*
+equalityConstraint ::= type TILDE type
+
+derivationList ::= WITH_KW qualifiedName (COMMA qualifiedName)*
+
+// =================================================================================================
+// EXPRESSIONS
+// =================================================================================================
+
+// Simplification #4 (see header): no implicit-semicolon / missing-operator recovery heuristics.
+statement ::= expr (SEMI expr)*
+
+// ---- precedence chain, loosest to tightest (mirrors Parser2.Expr.Op.precedence exactly) ----
+
+expr ::= instanceofExpr
+
+instanceofExpr ::= orExpr (INSTANCEOF_KW orExpr)*
+orExpr ::= andExpr (OR_KW andExpr)*
+andExpr ::= equalityExpr (AND_KW equalityExpr)*
+equalityExpr ::= relationalExpr ((EQUAL_EQUAL | ANGLED_EQUAL | BANG_EQUAL) relationalExpr)*
+relationalExpr ::= consExpr ((ANGLE_L | ANGLE_R | ANGLE_L_EQUAL | ANGLE_R_EQUAL) consExpr)*
+// `::`/`:::` are right-associative per Parser2.Expr.Op.isRightAssoc -- modeled as self-recursion
+// on the right rather than the usual left-iterative `(OP next)*` chain used everywhere else.
+consExpr ::= additiveExpr ((COLON_COLON | COLON_COLON_COLON) consExpr)?
+additiveExpr ::= multiplicativeExpr ((PLUS | MINUS) multiplicativeExpr)*
+multiplicativeExpr ::= channelPutExpr ((STAR | SLASH) channelPutExpr)*
+channelPutExpr ::= discardExpr (ANGLED_PLUS discardExpr)*
+discardExpr ::= DISCARD_KW discardExpr | infixAppExpr
+infixAppExpr ::= userOpExpr (TICK qualifiedName TICK userOpExpr)*
+userOpExpr ::= lazyForceExpr ((GENERIC_OPERATOR | NAME_MATH) lazyForceExpr)*
+lazyForceExpr ::= (LAZY_KW | FORCE_KW) lazyForceExpr | signExpr
+signExpr ::= (PLUS | MINUS) signExpr | notExpr
+notExpr ::= NOT_KW notExpr | postfixExpr
+
+// ---- postfix chain: function application, field/method access, indexing ----
+
+postfixExpr ::= exprDelimited postfixSuffix*
+private postfixSuffix ::=
+    argumentList                                          // f(args)  (Apply)
+  | DOT NAME_LOWERCASE argumentList?                       // e.f  /  e.f(args)  (GetField / InvokeMethod)
+  | HASH NAME_LOWERCASE                                    // e#f  (RecordSelect)
+  | arrow NAME_LOWERCASE (EQUAL expr)?                      // e->f  /  e->f = v  (StructGet / StructPut; `arrow` merges tight/whitespace "->", see header note #2)
+  | BRACKET_L expr BRACKET_R (EQUAL expr)?                  // e[i]  /  e[i] = v  (Index / IndexMut)
+
+argumentList ::= PAREN_L (argument (COMMA argument)* COMMA?)? PAREN_R
+argument ::= expr (EQUAL expr)?
+
+// Both spellings of "->" are accepted everywhere an arrow is expected (see header note #2).
+private arrow ::= ARROW_THIN_R | ARROW_THIN_R_TIGHT
+
+// ---- delimited / atomic expressions ----
+
+exprDelimited ::=
+    debugInterpolatorExpr
+  | openVariantExpr
+  | openVariantAsExpr
+  | holeExpr
+  | holeVariableExpr
+  | useExpr
+  | literalExpr
+  | interpolatedStringExpr
+  | parenOrTupleOrLambdaExpr
+  | structPutExpr
+  | unaryLambdaExpr
+  | qualifiedName
+  | ifExpr
+  | letExpr
+  | localDefExpr
+  | regionExpr
+  | matchOrMatchLambdaExpr
+  | restrictableChooseExpr
+  | forApplicativeExpr
+  | foreachExpr
+  | forMonadicExpr
+  | blockOrRecordExpr
+  | arrayLiteralExpr
+  | vectorLiteralExpr
+  | listLiteralExpr
+  | setLiteralExpr
+  | mapLiteralExpr
+  | checkedTypeCastExpr
+  | checkedEffectCastExpr
+  | uncheckedCastExpr
+  | unsafeExpr
+  | runExpr
+  | handlerExpr
+  | tryExpr
+  | throwExpr
+  | ambiguousNewExpr
+  | invokeSuperExpr
+  | staticExpr
+  | selectExpr
+  | spawnExpr
+  | parYieldExpr
+  | fixpointSolveExpr
+  | fixpointConstraintSetExpr
+  | fixpointLambdaExpr
+  | fixpointPQueryExpr
+  | fixpointInjectExpr
+  | fixpointQueryExpr
+  | intrinsicExpr
+  | extMatchOrLambdaExpr
+  | extTagExpr
+
+debugInterpolatorExpr ::= DEBUG_INTERPOLATOR exprDelimited
+
+openVariantExpr ::= OPEN_VARIANT_KW qualifiedName
+openVariantAsExpr ::= OPEN_VARIANT_AS_KW qualifiedName expr
+
+holeExpr ::= HOLE_ANONYMOUS | HOLE_NAMED
+holeVariableExpr ::= HOLE_VARIABLE
+
+useExpr ::= useDecl SEMI statement
+
+literalExpr ::=
+    LITERAL_STRING | LITERAL_CHAR
+  | LITERAL_FLOAT | LITERAL_FLOAT32 | LITERAL_FLOAT64 | LITERAL_BIGDECIMAL
+  | LITERAL_INT | LITERAL_INT8 | LITERAL_INT16 | LITERAL_INT32 | LITERAL_INT64 | LITERAL_BIGINT
+  | TRUE_KW | FALSE_KW | NULL_KW | LITERAL_REGEX
+
+interpolatedStringExpr ::= LITERAL_STRING_INTERPOLATION_L expr (LITERAL_STRING_INTERPOLATION_L expr)* LITERAL_STRING_INTERPOLATION_R
+
+// A struct put on a bare receiver -- `counter->state = x` -- is otherwise swallowed by
+// unaryLambdaExpr, which matches `counter -> state` as a lambda and then chokes on `=`. The
+// general `postfixSuffix` form already covers `e->f = v` for any other receiver shape; only the
+// bare-identifier case needs to win the ordered choice, so this strictly longer alternative is
+// listed ahead of unaryLambdaExpr. Five of the 428 corpus files depended on it.
+structPutExpr ::= ident arrow NAME_LOWERCASE EQUAL expr
+
+unaryLambdaExpr ::= ident arrow expr
+
+// `(...)`-headed forms: unit lambda, unit tuple, operator section, lambda, ascription, tuple, paren.
+parenOrTupleOrLambdaExpr ::=
+    PAREN_L PAREN_R arrow expr                     // unit lambda: () -> e
+  | PAREN_L PAREN_R                                // unit
+  | PAREN_L operatorToken PAREN_R                  // operator section, e.g. (+)
+  | lambdaExpr                                     // (params) -> e
+  | PAREN_L expr (ascribeSuffix | tupleSuffix)? PAREN_R
+
+lambdaExpr ::= parameterList arrow expr
+private ascribeSuffix ::= COLON typeAndEffect
+private tupleSuffix ::= (EQUAL expr)? (COMMA argument)+
+
+// Set of tokens accepted as a bare "operator section" inside parens, per TokenKind.isOperator.
+private operatorToken ::= PLUS | MINUS | STAR | SLASH | ANGLE_L | ANGLE_R | ANGLED_EQUAL | ANGLE_L_EQUAL | ANGLE_R_EQUAL | EQUAL_EQUAL | BANG_EQUAL | GENERIC_OPERATOR | COLON_COLON_COLON
+
+ifExpr ::= IF_KW PAREN_L expr PAREN_R expr (ELSE_KW expr)?
+
+letExpr ::= LET_KW pattern (COLON type)? EQUAL statement
+
+localDefExpr ::= annotationList DEF_KW ident parameterList (COLON typeAndEffect)? EQUAL statement
+
+regionExpr ::= REGION_KW ident block?
+block ::= CURLY_L CURLY_R | CURLY_L statement CURLY_R
+
+// The braced form is tried first: `match node->next { ... }` would otherwise be swallowed by the
+// match-lambda alternative, which matches `node -> next` and then chokes on `{`. Ordering the
+// braced form first is safe because a real match lambda has no `{` after its body, so it falls
+// through. Three of the 428 corpus files depended on this.
+matchOrMatchLambdaExpr ::=
+    MATCH_KW expr CURLY_L (matchRule (COMMA? matchRule)*)? CURLY_R
+  | MATCH_KW pattern arrow expr
+matchRule ::= CASE_KW pattern (IF_KW expr)? ARROW_THICK_R statement
+
+extMatchOrLambdaExpr ::=
+    EMATCH_KW pattern arrow expr
+  | EMATCH_KW expr CURLY_L (extMatchRule (COMMA? extMatchRule)*)? CURLY_R
+extMatchRule ::= CASE_KW pattern ARROW_THICK_R statement
+
+extTagExpr ::= XVAR_KW ident argumentList?
+
+restrictableChooseExpr ::= (CHOOSE_KW | CHOOSE_STAR_KW) expr CURLY_L (matchRule (COMMA? matchRule)*)? CURLY_R
+
+forApplicativeExpr ::= FORA_KW forFragments YIELD_KW expr
+foreachExpr ::= FOREACH_KW forFragments expr
+forMonadicExpr ::= FORM_KW forFragments YIELD_KW expr
+// The fragment list may be parenthesized -- `foreach (x <- xs) body`, `forM (x <- a; y <- b) yield e`
+// -- which is how essentially all real code writes it. Accepting only the bare form rejected 37 of
+// the 428 corpus files.
+private forFragments ::= PAREN_L forFragmentList PAREN_R | forFragmentList
+private forFragmentList ::= forFragment (SEMI forFragment)*
+private forFragment ::= guardFragment | generatorOrLetFragment
+guardFragment ::= IF_KW expr
+generatorOrLetFragment ::= pattern (ARROW_THIN_L expr | EQUAL expr)
+
+blockOrRecordExpr ::= block | recordOperationExpr
+recordOperationExpr ::= CURLY_L (recordOp (COMMA recordOp)* COMMA?)? (BAR expr)? CURLY_R
+recordOp ::=
+    PLUS ident EQUAL expr    // RecordOpExtend
+  | MINUS ident              // RecordOpRestrict
+  | ident EQUAL expr         // RecordOpUpdate
+
+arrayLiteralExpr ::= ARRAY_HASH CURLY_L (expr (COMMA expr)* COMMA?)? CURLY_R regionName
+vectorLiteralExpr ::= VECTOR_HASH CURLY_L (expr (COMMA expr)* COMMA?)? CURLY_R
+listLiteralExpr ::= LIST_HASH CURLY_L (expr (COMMA expr)* COMMA?)? CURLY_R
+setLiteralExpr ::= SET_HASH CURLY_L (expr (COMMA expr)* COMMA?)? CURLY_R
+mapLiteralExpr ::= MAP_HASH CURLY_L (mapEntry (COMMA mapEntry)* COMMA?)? CURLY_R
+mapEntry ::= expr ARROW_THICK_R expr
+
+regionName ::= AT expr
+
+checkedTypeCastExpr ::= CHECKED_CAST_KW (PAREN_L expr PAREN_R)?
+checkedEffectCastExpr ::= CHECKED_ECAST_KW (PAREN_L expr PAREN_R)?
+uncheckedCastExpr ::= UNCHECKED_CAST_KW (PAREN_L expr (AS_KW typeAndEffect)? PAREN_R)?
+unsafeExpr ::= UNSAFE_KW type (AS_KW type)? CURLY_L statement CURLY_R
+
+runExpr ::= RUN_KW expr withBody*
+withBody ::= WITH_KW expr
+
+handlerExpr ::= HANDLER_KW qualifiedName (CURLY_L (withRule (COMMA? withRule)*)? CURLY_R)?
+withRule ::= DEF_KW ident parameterList EQUAL expr
+
+tryExpr ::= TRY_KW expr catchBody*
+catchBody ::= CATCH_KW CURLY_L (catchRule (COMMA? catchRule)*)? CURLY_R
+catchRule ::= CASE_KW ident COLON qualifiedName ARROW_THICK_R statement
+
+throwExpr ::= THROW_KW expr
+
+invokeSuperExpr ::= SUPER_KW ((DOT ident argumentList) | argumentList)
+
+ambiguousNewExpr ::= NEW_KW type newBody
+private newBody ::=
+    AT expr (CURLY_L (structFieldInit (COMMA structFieldInit)*)? CURLY_R)   // new Struct @ rc { ... }
+  | CURLY_L jvmMember* CURLY_R                                              // new Type { ... } (anonymous class)
+  | argumentList                                                            // new Type(args)   (InvokeConstructor)
+structFieldInit ::= ident EQUAL expr
+private jvmMember ::= jvmConstructor | jvmMethod
+jvmMethod ::= annotationList DEF_KW ident parameterList COLON typeAndEffect EQUAL statement
+jvmConstructor ::= DEF_KW NEW_KW PAREN_L PAREN_R COLON typeAndEffect EQUAL statement
+
+staticExpr ::= STATIC_UPPER_KW
+
+selectExpr ::= SELECT_KW CURLY_L selectRule* CURLY_R
+private selectRule ::=
+    CASE_KW ident ARROW_THIN_L qualifiedName PAREN_L expr PAREN_R ARROW_THICK_R statement   // SelectRuleFragment
+  | CASE_KW UNDERSCORE ARROW_THICK_R statement                                              // SelectRuleDefaultFragment (must be last)
+
+spawnExpr ::= SPAWN_KW expr regionName
+
+parYieldExpr ::= PAR_KW (PAREN_L (parYieldFragment (SEMI parYieldFragment)*)? PAREN_R)? YIELD_KW expr
+parYieldFragment ::= pattern ARROW_THIN_L expr
+
+// ---- fixpoint / Datalog expressions ----
+
+fixpointConstraintSetExpr ::= HASH_CURLY_L fixpointConstraint* CURLY_R
+fixpointConstraint ::= predicateHead (COLON_MINUS predicateBody (COMMA predicateBody)*)? DOT_WHITESPACE
+
+fixpointLambdaExpr ::= predicateParamList arrow expr
+
+// Covers both `solve` and `psolve`; `psolve` never takes a `project` clause (matches
+// Parser2.Expr.fixpointSolveExpr's early return for isPSolve).
+fixpointSolveExpr ::=
+    PSOLVE_KW expr (COMMA expr)*
+  | SOLVE_KW expr (COMMA expr)* (PROJECT_KW ident (COMMA ident)*)?
+
+fixpointInjectExpr ::= INJECT_KW expr (COMMA expr)* INTO_KW predicateAndArity (COMMA predicateAndArity)*
+predicateAndArity ::= ident SLASH LITERAL_INT
+
+fixpointPQueryExpr ::= PQUERY_KW expr (COMMA expr)* SELECT_KW predicateHead WITH_KW CURLY_L (ident (COMMA ident)*)? CURLY_R
+
+fixpointQueryExpr ::= QUERY_KW expr (COMMA expr)* (SELECT_KW fixpointSelectBody)? (FROM_KW predicateAtom (COMMA predicateAtom)*)? (WHERE_KW expr)?
+// Simplification #7: the reference parser special-cases a bare "()" select body, but that shape
+// is already handled generally by `expr` (via parenOrTupleOrLambdaExpr's unit alternative).
+private fixpointSelectBody ::= expr | PAREN_L (expr (COMMA expr)* COMMA?)? PAREN_R
+
+intrinsicExpr ::= BUILT_IN
+
+// =================================================================================================
+// PATTERNS
+// =================================================================================================
+
+pattern ::= patternPrimary (COLON_COLON pattern)?   // FCons, right-associative like `::` in expr
+
+private patternPrimary ::=
+    variablePattern
+  | literalPattern
+  | tagPattern
+  | tuplePattern
+  | recordPattern
+  | unaryPattern
+
+// Simplification: the reference parser also dispatches on the KEYWORD_QUERY token here, but its
+// callee (`nameUnqualified(NAME_VARIABLE)`) never actually accepts that token kind, so reaching
+// this case always produces a recovered error node -- an error-recovery detail, not a legal
+// pattern shape, so it is intentionally omitted here.
+variablePattern ::= NAME_LOWERCASE | NAME_MATH | UNDERSCORE
+
+literalPattern ::=
+    LITERAL_STRING | LITERAL_CHAR
+  | LITERAL_FLOAT | LITERAL_FLOAT32 | LITERAL_FLOAT64 | LITERAL_BIGDECIMAL
+  | LITERAL_INT | LITERAL_INT8 | LITERAL_INT16 | LITERAL_INT32 | LITERAL_INT64 | LITERAL_BIGINT
+  | TRUE_KW | FALSE_KW | LITERAL_REGEX | NULL_KW
+
+// Simplification #6 (see header): extensible-variant patterns are not modeled separately; ordinary
+// tag patterns (this rule) also cover that syntactic position.
+tagPattern ::= qualifiedName tagBodyPattern?
+tagBodyPattern ::= PAREN_L (pattern (COMMA pattern)* COMMA?)? PAREN_R
+
+tuplePattern ::= PAREN_L (pattern (COMMA pattern)* COMMA?)? PAREN_R
+
+recordPattern ::= CURLY_L (recordFieldPattern (COMMA recordFieldPattern)* COMMA?)? (BAR pattern)? CURLY_R
+recordFieldPattern ::= ident (EQUAL pattern)?
+
+// The reference parser's unaryPat() just advances over the operator and whatever token follows
+// (in practice always a negative numeric literal); modeled directly as such.
+unaryPattern ::= MINUS literalPattern
+
+// =================================================================================================
+// PREDICATES (Datalog)
+// =================================================================================================
+
+predicateHead ::= ident termList?
+termList ::= PAREN_L (expr (COMMA expr)* COMMA?)? (SEMI latticeTermExpr)? PAREN_R
+private latticeTermExpr ::= expr
+
+patternList ::= PAREN_L (pattern (COMMA pattern)* COMMA?)? (SEMI latticeTermPattern)? PAREN_R
+private latticeTermPattern ::= pattern
+
+predicateBody ::= guard | functional | predicateAtom
+guard ::= IF_KW PAREN_L expr PAREN_R
+functional ::= LET_KW (ident | PAREN_L (ident (COMMA ident)* COMMA?)? PAREN_R) EQUAL expr
+predicateAtom ::= NOT_KW? FIX_KW? ident patternList?
+
+predicateParamList ::= HASH_PAREN_L (predicateParam (COMMA predicateParam)* COMMA?)? PAREN_R
+predicateParam ::= ident (PAREN_L (type (COMMA type)* COMMA?)? (SEMI type)? PAREN_R)?
+
+// =================================================================================================
+// TYPES
+// =================================================================================================
+
+typeAndEffect ::= type (BACKSLASH type)?
+
+// Kind ascription (": Kind") applies once, around the whole binary-operator chain, matching
+// Parser2.Type.ttype's trailing `if (eat(Colon)) { ... Ascribe }` step.
+type ::= arrowType (COLON kind)?
+
+// ---- precedence chain, loosest to tightest (mirrors Parser2.Type.TYPE_OP_PRECEDENCE exactly) ----
+// All levels are left-associative (the reference algorithm has no isRightAssoc override for
+// types, unlike Expr's `::`/`:::`), so the standard `(OP next)*` chain is faithful here too.
+
+// An effect binds to an arrow's *result*, not just to a declaration's return type:
+// `Parser2.Type.ttype` returns `typeAndEffect()` for the right operand of every
+// whitespace-arrow, so `f: a -> b \ ef` is as ordinary as `def f(): b \ ef`. Accepting the
+// suffix only in `typeAndEffect` (the declaration-return position) rejected 103 of the 428
+// corpus files, `List.map`'s signature among them.
+arrowType ::= rvAddSubType (arrow rvAddSubType)* (BACKSLASH type)?
+rvAddSubType ::= rvAndType ((RVADD_KW | RVSUB_KW) rvAndType)*
+rvAndType ::= addSubType (RVAND_KW addSubType)*
+addSubType ::= ampType ((PLUS | MINUS) ampType)*
+ampType ::= xorType (AMPERSAND xorType)*
+xorType ::= orType (XOR_KW orType)*
+orType ::= andType (OR_KW andType)*
+andType ::= unaryTypeLevel (AND_KW unaryTypeLevel)*
+unaryTypeLevel ::= (RVNOT_KW | TILDE | NOT_KW) unaryTypeLevel | typeApplication
+
+typeApplication ::= typeDelimited typeArgumentList*
+
+typeDelimited ::=
+    qualifiedTypeName
+  | typeVariable
+  | constantType
+  | tupleOrRecordRowType
+  | recordOrEffectSetType
+  | extensibleType
+  | schemaType
+  | schemaRowType
+  | caseSetType
+
+qualifiedTypeName ::= qualifiedName
+typeVariable ::= NAME_LOWERCASE | NAME_MATH | UNDERSCORE
+constantType ::= UNIV_KW | FALSE_KW | TRUE_KW
+
+// `(...)` is ambiguous between a record row and a tuple; ordered so record-row (including the
+// empty-parens "unit" shape, per Parser2.Type.tupleOrRecordRowType's `next == ParenR` case) is
+// tried first, falling back to a plain tuple via backtracking.
+tupleOrRecordRowType ::= recordRowType | tupleType
+recordRowType ::= PAREN_L (recordFieldType (COMMA recordFieldType)* COMMA?)? (BAR type)? PAREN_R
+recordFieldType ::= ident EQUAL type
+tupleType ::= PAREN_L (type (COMMA type)* COMMA?)? PAREN_R
+
+// `{...}` is ambiguous between a record type and an effect set; likewise resolved by ordered
+// alternation + backtracking rather than explicit lookahead.
+recordOrEffectSetType ::= recordType | effectSetType
+recordType ::= (CURLY_L BAR CURLY_R) | (CURLY_L (recordFieldType (COMMA recordFieldType)* COMMA?)? (BAR type)? CURLY_R)
+effectSetType ::= CURLY_L (type (COMMA type)* COMMA?)? CURLY_R
+
+extensibleType ::= HASH_BAR (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? BAR_HASH
+schemaType ::= HASH_CURLY_L (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? CURLY_R
+schemaRowType ::= HASH_PAREN_L (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? PAREN_R
+// PredicateWithAlias (qname + type-argument-list) vs. PredicateWithTypes (qname + optional
+// parenthesized term-type-list with an optional trailing lattice type).
+schemaTerm ::= qualifiedName (typeArgumentList | schemaTermTypeList?)
+private schemaTermTypeList ::= PAREN_L (type (COMMA type)* COMMA?)? (SEMI latticeTermType)? PAREN_R
+private latticeTermType ::= type
+
+caseSetType ::= ANGLE_L (qualifiedName (COMMA qualifiedName)* COMMA?)? ANGLE_R
+
+kind ::= (PAREN_L ident (arrow kind)? PAREN_R) | (ident (arrow kind)?)

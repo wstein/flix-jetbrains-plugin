@@ -15,6 +15,17 @@
 - `flixCorpusCommit` in `gradle.properties`, pinning the upstream Flix revision used to derive and
   validate the adopted grammar to a commit reachable from `flix/flix` `origin/master`, so the
   parser corpus gate is reproducible off this machine.
+- **Real Flix language support.** A new `language` content module supplies a `Language("Flix")`,
+  file type, Grammar-Kit/JFlex lexer and parser, PSI, syntax highlighter, brace matcher, commenter,
+  quote handler and folding builder, adopted from `intellij-flix` per ADR 0001.
+- **A gutter run arrow next to `def main`** — the gap that started this work. It anchors on the
+  declaration's name leaf and delegates to the platform's generic `ExecutorAction`, so the existing
+  LSP4IJ DAP producer supplies the Run and Debug entries.
+- `FlixPluginDescriptorTest`, asserting the registration wiring the behavioural tests cannot: every
+  content module is declared, every extension names a class that exists and implements its
+  extension point's interface, every language extension targets `Flix`, and exactly one file type
+  claims `*.flix`. It caught an invalid `--` sequence inside an XML comment on its first run — the
+  same class of defect that previously made the whole plugin fail to load.
 - [`docs/intellij-flix-parser-evaluation.md`](docs/intellij-flix-parser-evaluation.md), the gate
   evidence for ADR 0001. Measured against 428 real `.flix` files from the pinned Flix revision, the
   adopted grammar went from 211 clean (49.3%) to **427 of 427 (100%)** once six localized defect

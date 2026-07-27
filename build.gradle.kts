@@ -23,11 +23,28 @@ dependencies {
         intellijIdea("2026.1.3")
 
         pluginModule(implementation(project(":shared")))
+        pluginModule(implementation(project(":language")))
         pluginModule(implementation(project(":frontend")))
         pluginModule(implementation(project(":backend")))
 
         testFramework(TestFrameworkType.Platform)
     }
+
+    // Registration tests live here rather than in :language because they assert that the
+    // *assembled* plugin wires the language layer up -- root plugin.xml <content> naming the
+    // content module, which in turn declares the extensions. A content-module descriptor is inert
+    // on its own, so a module-local test sandbox contains the jar but never reads its
+    // <extensions>, and every extension lookup resolves null. Only the root project builds the
+    // whole plugin, so only here can those lookups mean anything.
+    //
+    // Pure-parser tests stay in :language: ParsingTestCase registers the ParserDefinition
+    // programmatically and needs no descriptor at all.
+    testImplementation(project(":language"))
+    testImplementation("junit:junit:4.13.2")
+}
+
+tasks.test {
+    useJUnit()
 }
 
 intellijPlatform {

@@ -16,12 +16,13 @@ Third-party and derived components
 --------------------------------------------------------------------------------
 
 Origin:   https://github.com/flix/intellij-flix (plugin id org.flixlang.intellij)
-Revision: 301699e (recovery fixes synced back from this repository)
+Revision: 301699e752da9a675c3caad35836b0599d4671f8
 License:  Apache License 2.0
 
-The imported tree snapshot is 375dcc661d95a93d66b262b8365459121913efbb; the
+The imported tree snapshot is 375dcc661d95a93d66b262b8365459121913efbb. The
 revision above additionally carries the grammar fixes required to pass the
-parser corpus gate (see docs/intellij-flix-parser-evaluation.md).
+parser corpus gate, and the declaration-boundary error recovery developed in
+this repository and synced back. See docs/intellij-flix-parser-evaluation.md.
 
 The following are imported into this repository and retain their original
 `org.flixlang.intellij` package names so that the imported layer stays

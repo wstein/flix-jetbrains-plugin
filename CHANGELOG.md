@@ -26,6 +26,13 @@
   extension point's interface, every language extension targets `Flix`, and exactly one file type
   claims `*.flix`. It caught an invalid `--` sequence inside an XML comment on its first run — the
   same class of defect that previously made the whole plugin fail to load.
+- `FlixLaunchCommand` in the `shared` module, building the Flix run and debug invocations in one
+  place for the CodeLens action and the forthcoming native JVM debug configuration. It pins the
+  ordering rules that are easy to get wrong and hard to diagnose: options must follow the `run`
+  subcommand or the compiler demotes `run` to a positional argument and reports
+  `Unrecognized file extension: 'run'`; `--Xdebug` must appear exactly once or it is rejected as
+  an unknown option; and `JAVA_TOOL_OPTIONS` is appended to rather than replaced, so a debug
+  session does not silently drop the user's heap or encoding settings.
 - **Flix source positions in IntelliJ's own JVM debugger.** A new optional `debugger` content
   module registers a `PositionManagerFactory`, so IntelliJ's stock *Remote JVM Debug* configuration
   attached to a `flix run --Xdebug` process now resolves `.flix` frames to real source and lines,

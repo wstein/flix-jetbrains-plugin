@@ -95,6 +95,11 @@
   now claims `.flix`, which also means no custom Flix breakpoint type is needed.
 - The debugger module was not backend-scoped, so it registered debugger extensions on the frontend
   where nothing consumes them.
+- Reading the `flix.runMain` argument could throw instead of falling back. `LSPCommand.getArgumentAt`
+  bounds-checks with `index > size`, so index 0 against an empty list reaches `get(0)` and raises
+  `IndexOutOfBoundsException` -- turning "the server sent no symbol, run the project default" into a
+  failed CodeLens click. The argument list is now indexed directly via `getArguments()`, which
+  returns an empty list rather than null and applies the same JSON conversion.
 - The `flix.runMain` CodeLens ignored its argument, so the "Run" lens above any entry point ran the
   project default instead of the one it sat above. The server sends a lens for *every* entry point,
   each carrying its own symbol, so this was only visibly wrong once a file had more than one. The

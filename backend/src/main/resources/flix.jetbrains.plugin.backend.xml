@@ -123,7 +123,9 @@
 
 
     <!-- Registers the "flix.runMain" LSP command the Flix language server attaches to the "Run"
-         CodeLens above def main(). LSP4IJ maps LSP commands to IntelliJ actions 1:1 by id (see
+         CodeLens above an entry point. The id is the server's; the action is not limited to `main`,
+         and honours the entry-point symbol the command carries.
+         LSP4IJ maps LSP commands to IntelliJ actions 1:1 by id (see
          docs/DeveloperGuide.md#lsp-commands); without this the CodeLens fails with "Missing
          'flix.runMain' command... needs to be contributed by an IntelliJ plugin". Registered here
          (backend) alongside everything else rather than split into frontend, since LSP4IJ itself
@@ -132,7 +134,7 @@
     <actions>
         <action id="flix.runMain"
                 class="dev.wstein.flixplugin.FlixRunMainAction"
-                text="Flix: Run Main"
-                description="Runs `flix run` for the project (bound to the Flix language server's &quot;Run&quot; CodeLens above def main())"/>
+                text="Flix: Run Entry Point"
+                description="Runs the entry point the &quot;Run&quot; CodeLens sits above, via `flix run --entrypoint`; falls back to the project default when the server sends no symbol"/>
     </actions>
 </idea-plugin>

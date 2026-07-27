@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Handles the "flix.runMain" LSP command the Flix language server attaches to the "Run" CodeLens
@@ -45,7 +46,7 @@ public class FlixRunMainAction extends LSPCommandAction {
             return;
         }
         Path jar = FlixFork.resolveJar(project);
-        String entryPoint = entryPointOf(command.getArgumentAt(0));
+        String entryPoint = entryPointOf(command.getArguments());
 
         GeneralCommandLine commandLine = new GeneralCommandLine("java", "-jar", jar.toString(), "run");
         if (entryPoint != null) {
@@ -69,20 +70,31 @@ public class FlixRunMainAction extends LSPCommandAction {
     }
 
     /**
-     * The entry-point symbol carried by the command's first argument, or {@code null} to run the
-     * project default.
+     * The entry-point symbol carried by the command's arguments, or {@code null} to run the project
+     * default.
      *
-     * <p>Takes the argument rather than the {@link LSPCommand} so the interpretation can be tested
-     * on its own; {@code LSPCommand}'s constructor is package-private, and a test that cannot
-     * construct one would otherwise have to skip the part most worth checking.
+     * <p>Takes the argument list rather than the {@link LSPCommand} so the selection can be tested
+     * on its own, the empty case included; {@code LSPCommand}'s constructor is package-private, so
+     * a test that needed one could not exercise the part most worth checking.
+     *
+     * <p>Indexes the list here rather than calling {@code LSPCommand.getArgumentAt(0)}, which is
+     * unsafe for exactly the case this method is supposed to handle. Its bounds check is
+     * {@code index > arguments.size()}, so index 0 against an empty list falls through to
+     * {@code get(0)} and throws {@link IndexOutOfBoundsException} — turning "server sent no
+     * arguments", which should quietly run the project default, into a failed CodeLens click.
+     * {@link LSPCommand#getArguments()} returns an empty list instead of null and performs the same
+     * JSON conversion, so it is both safe and equivalent.
      *
      * <p>Defensive about the argument's shape on purpose: it arrives as JSON from a server this
      * plugin does not control, and anything unusable has to degrade to "run the default" rather
      * than emit {@code --entrypoint} with nothing after it, which the compiler rejects with an
      * error the user cannot act on.
      */
-    static @Nullable String entryPointOf(@Nullable Object argument) {
-        if (!(argument instanceof String symbol)) {
+    static @Nullable String entryPointOf(@Nullable List<?> arguments) {
+        if (arguments == null || arguments.isEmpty()) {
+            return null;
+        }
+        if (!(arguments.get(0) instanceof String symbol)) {
             return null;
         }
         String trimmed = symbol.trim();

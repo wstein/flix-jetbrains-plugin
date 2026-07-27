@@ -35,6 +35,33 @@ In all three cases `availableStrata()` contains only `"Java"` — but the class 
 `SourceFile = "Main.flix"` and real `.flix` line numbers, because `Smap.register` maps the
 primary source with the identity function.
 
+### Which lines are breakpointable at all depends on `--Xdebug`
+
+A breakpoint can only bind to a line the `LineNumberTable` mentions, and the fork emits those
+selectively. Of the 30 `addLoc` call sites under `phase/jvm`, **7 are gated on
+`flix.options.xdebug`** — and they cover the statement forms most code is made of:
+
+| Expression | `GenExpression.scala` |
+| --- | --- |
+| `Expr.Let` | `:1467`, `:1483` |
+| `Expr.ApplyDef` — ordinary function calls | `:1186` |
+| `Expr.ApplyClo` — closure calls | `:1125` |
+| `Expr.IfThenElse` | `:1376` |
+| `Expr.Stm` — statement sequences | `:1500`, `:1504` |
+
+So a program compiled **without** `--Xdebug` carries no line-number entry for a `let` binding, a
+call, an `if`, or a statement sequence, and a breakpoint on any of those lines can never verify no
+matter what the position manager does. The flag is not only about starting the JDWP agent; it
+changes what debug information exists in the class file.
+
+When a breakpoint refuses to verify, check the class before suspecting the position manager:
+
+```bash
+javap -l -p path/to/Class.class | grep -A20 LineNumberTable
+```
+
+A line absent from the table is a compiler-invocation problem, not a plugin one.
+
 ### The required platform API is public and stable
 
 Verified against IU-2026.1.3, `plugins/java/lib/modules/intellij.java.debugger.jar`:

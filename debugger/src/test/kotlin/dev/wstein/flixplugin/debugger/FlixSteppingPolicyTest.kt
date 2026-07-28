@@ -91,7 +91,7 @@ class FlixSteppingPolicyTest {
         // Re-entry into the stepped definition is not guaranteed -- the stepped line may be the last
         // one that executes. Without a bound the step would single-step to process exit instead of
         // stopping, which presents as a frozen IDE rather than as a wrong stop.
-        val scope = FlixSteppingListener.StepOverScope("Main.flix#42")
+        val scope = FlixSteppingCommands.StepOverScope("Main.flix#42")
         var granted = 0
         while (scope.consume()) {
             granted++

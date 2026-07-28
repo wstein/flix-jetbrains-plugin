@@ -43,7 +43,7 @@ registrations:
     com.intellij.debugger.javaDebugAware: dev.wstein.flixplugin.debugger.FlixJavaDebugAware
     com.intellij.debugger.positionManagerFactory: dev.wstein.flixplugin.debugger.FlixPositionManagerFactory
     com.intellij.debugger.extraSteppingFilter: dev.wstein.flixplugin.debugger.FlixSteppingFilter
-    com.intellij.debugger.steppingListener: dev.wstein.flixplugin.debugger.FlixSteppingListener
+    com.intellij.debugger.jvmSteppingCommandProvider: dev.wstein.flixplugin.debugger.FlixSteppingCommands
     com.intellij.configurationType: dev.wstein.flixplugin.run.FlixRunConfigurationType
     com.intellij.runConfigurationProducer: dev.wstein.flixplugin.run.FlixRunConfigurationProducer
     # Flix value presentation. Registered against the shared supertypes (Record$, Tagged$), so

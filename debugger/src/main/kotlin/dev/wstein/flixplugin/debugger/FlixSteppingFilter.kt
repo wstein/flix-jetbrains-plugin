@@ -70,7 +70,7 @@ import com.sun.jdi.request.StepRequest
  * and `Clo$main$399833` from `Sys/Env.flix` -- library code called from `main` is named
  * `Clo$main$…` just like `main`'s own code.
  *
- * So the distinction is carried rather than recovered. [FlixSteppingListener] records which Flix
+ * So the distinction is carried rather than recovered. [FlixSteppingCommands] records which Flix
  * definition a Step Over began in, [FlixDefinitionScope] answers which one any position sits in --
  * from the PSI, which needs no compiler support -- and this resumes the step whenever it surfaces
  * in a different definition. Step Into records no scope and therefore stops at the first Flix line
@@ -109,7 +109,7 @@ class FlixSteppingFilter : ExtraSteppingFilter {
     /**
      * Whether the step has not yet arrived back in the definition the Step Over began in.
      *
-     * Only consulted while a Step Over is in progress -- [FlixSteppingListener] records the scope
+     * Only consulted while a Step Over is in progress -- [FlixSteppingCommands] records the scope
      * and clears it for every other action -- so Step Into keeps stopping at the first Flix line it
      * reaches, which is what it should do.
      *
@@ -125,7 +125,7 @@ class FlixSteppingFilter : ExtraSteppingFilter {
      */
     private fun isOutsideStepOverScope(context: SuspendContext?, location: Location): Boolean {
         val process = context?.debugProcess ?: return false
-        val scope = FlixSteppingListener.scopeOf(process) ?: return false
+        val scope = FlixSteppingCommands.scopeOf(process) ?: return false
 
         val position = runCatching { process.positionManager.getSourcePosition(location) }.getOrNull()
         val here = FlixDefinitionScope.keyOf(position)
@@ -139,7 +139,7 @@ class FlixSteppingFilter : ExtraSteppingFilter {
         // the last one to execute. Without a budget the step would then single-step to process exit.
         if (!scope.consume()) {
             LOG.debug("step-over budget exhausted before returning to ${scope.key}; stopping here")
-            FlixSteppingListener.clearScope(process)
+            FlixSteppingCommands.clearScope(process)
             return false
         }
 

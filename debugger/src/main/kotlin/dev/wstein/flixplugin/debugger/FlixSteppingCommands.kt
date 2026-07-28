@@ -1,9 +1,10 @@
 package dev.wstein.flixplugin.debugger
 
 import com.intellij.debugger.engine.DebugProcess
-import com.intellij.debugger.engine.SteppingAction
-import com.intellij.debugger.engine.SteppingListener
+import com.intellij.debugger.engine.DebugProcessImpl
+import com.intellij.debugger.engine.MethodFilter
 import com.intellij.debugger.engine.SuspendContextImpl
+import com.intellij.debugger.impl.JvmSteppingCommandProvider
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.Key
 
@@ -19,8 +20,25 @@ import com.intellij.openapi.util.Key
  * by the time a step event arrives the difference the user asked for is no longer visible in the
  * stack -- it has to be carried there.
  *
- * `beforeSteppingStarted` is where it can be captured: it is the one point that knows both the
- * action the user chose and the position they chose it from.
+ * A stepping-command provider is where it can be captured: `DebuggerSession` consults one method
+ * per action, passing the suspend context the step is starting *from*, so which method is called
+ * says what the user chose and its argument says where.
+ *
+ * Every method here returns `null`, meaning "I am not supplying a command":
+ *
+ * ```java
+ * cmd = computeSafeIfAny(JvmSteppingCommandProvider.EP_NAME, h -> h.getStepOverCommand(ctx, ...));
+ * if (cmd == null) cmd = myDebugProcess.createStepOverCommand(ctx, ...);   // the platform's own
+ * ```
+ *
+ * Observing through a hook whose purpose is to *supply* something is a mild abuse, and worth being
+ * honest about -- but a benign one, because `null` leaves behaviour exactly as it was. That is not
+ * true of every such hook: `HotSwapVetoableListener` was rejected as an invalidation signal for the
+ * source cache precisely because its answer decides whether a hot swap happens.
+ *
+ * This replaced `SteppingListener`, which reads better but is annotated `@ApiStatus.Internal` --
+ * caught by the JetBrains Plugin Verifier on its first run against configured IDE targets, and a
+ * blocking finding rather than a warning.
  *
  * ## Scope of the recorded state
  *
@@ -30,14 +48,14 @@ import com.intellij.openapi.util.Key
  * it -- the failure that would cause is a step that runs away looking for a function it will never
  * re-enter.
  */
-class FlixSteppingListener : SteppingListener {
+class FlixSteppingCommands : JvmSteppingCommandProvider() {
 
-    override fun beforeSteppingStarted(context: SuspendContextImpl, action: SteppingAction) {
-        val process = context.debugProcess ?: return
-        if (action != SteppingAction.STEP_OVER) {
-            clear(process)
-            return
-        }
+    override fun getStepOverCommand(
+        context: SuspendContextImpl?,
+        ignoreBreakpoints: Boolean,
+        stepSize: Int,
+    ): DebugProcessImpl.ResumeCommand? {
+        val process = context?.debugProcess ?: return null
 
         val position = runCatching {
             context.location?.let { process.positionManager.getSourcePosition(it) }
@@ -46,13 +64,34 @@ class FlixSteppingListener : SteppingListener {
         val key = FlixDefinitionScope.keyOf(position)
         process.putUserData(STEP_OVER_SCOPE, key?.let(::StepOverScope))
         LOG.debug(if (key == null) "step over from outside a Flix def" else "step over within $key")
+        return null
     }
 
-    override fun beforeResume(context: SuspendContextImpl) {
-        context.debugProcess?.let(::clear)
-    }
+    /**
+     * Step Into records no scope, so the filter stops at the first Flix line it reaches.
+     *
+     * Clearing matters as much as recording: a scope left over from an earlier Step Over would
+     * confine this step to a function the user is no longer asking about.
+     */
+    override fun getStepIntoCommand(
+        context: SuspendContextImpl?,
+        ignoreFilters: Boolean,
+        smartStepFilter: MethodFilter?,
+        stepSize: Int,
+    ): DebugProcessImpl.ResumeCommand? = clearAndDecline(context)
 
-    private fun clear(process: DebugProcess) = process.putUserData(STEP_OVER_SCOPE, null)
+    override fun getStepOutCommand(
+        context: SuspendContextImpl?,
+        stepSize: Int,
+    ): DebugProcessImpl.ResumeCommand? = clearAndDecline(context)
+
+    // Run to Cursor is deliberately not overridden. It is not a step, so it never consults the
+    // filter, and clearing there would only add a path with nothing to clear.
+
+    private fun clearAndDecline(context: SuspendContextImpl?): DebugProcessImpl.ResumeCommand? {
+        context?.debugProcess?.let { it.putUserData(STEP_OVER_SCOPE, null) }
+        return null
+    }
 
     /**
      * The definition a Step Over is confined to, and how much further it may look for it.
@@ -95,6 +134,6 @@ class FlixSteppingListener : SteppingListener {
         /** Abandons the current Step Over scope, leaving stepping to the platform's own rules. */
         fun clearScope(process: DebugProcess) = process.putUserData(STEP_OVER_SCOPE, null)
 
-        private val LOG = Logger.getInstance(FlixSteppingListener::class.java)
+        private val LOG = Logger.getInstance(FlixSteppingCommands::class.java)
     }
 }

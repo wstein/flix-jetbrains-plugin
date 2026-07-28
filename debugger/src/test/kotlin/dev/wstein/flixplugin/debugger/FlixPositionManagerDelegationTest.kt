@@ -87,13 +87,18 @@ class FlixPositionManagerDelegationTest {
 
     @Test
     fun `this manager, by contrast, declares Flix and only Flix`() {
-        // The other half of the contract: because FlixPositionManager *does* declare its types, it
-        // is never offered a .java, .kt or .scala position, so returning empty from locationsOfLine
-        // cannot end the chain for a foreign language. That is what makes the empty-vs-throw choice
-        // safe rather than merely convenient.
-        // getDeclaredMethod either returns a Method or throws -- it never returns null, so the
-        // call itself is the assertion. Asserting `!= null` on the result would be dead code whose
-        // message could never print, which is the opposite of what the sibling tests above do.
-        FlixPositionManager::class.java.getDeclaredMethod("getAcceptedFileTypes")
+        // The other half of the contract: because FlixPositionManager *does* declare which file
+        // types it accepts, it is never offered a .java, .kt or .scala position, so returning empty
+        // from locationsOfLine cannot end the chain for a foreign language. That is what makes the
+        // empty-vs-throw choice safe rather than merely convenient.
+        //
+        // Asserted on isAcceptedFileType, not the deprecated getAcceptedFileTypes: only the former
+        // is overridden now, because overriding both says the same thing twice and the Plugin
+        // Verifier flags the deprecated one. getDeclaredMethod either returns a Method or throws,
+        // so the call itself is the assertion.
+        FlixPositionManager::class.java.getDeclaredMethod(
+            "isAcceptedFileType",
+            com.intellij.openapi.fileTypes.FileType::class.java,
+        )
     }
 }

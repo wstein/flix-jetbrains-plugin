@@ -50,8 +50,14 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         })
     }
 
-    override fun getAcceptedFileTypes(): Set<FileType> = setOf(FlixFileType.INSTANCE)
-
+    /**
+     * Declares the file types this manager answers for, which is what keeps
+     * `CompoundPositionManager` from offering it a `.java`, `.kt` or `.scala` position at all.
+     *
+     * Only [isAcceptedFileType] is overridden. The interface also carries `getAcceptedFileTypes`,
+     * whose default returns `null` meaning "every type" -- but it is deprecated, and overriding both
+     * says the same thing twice while failing the Plugin Verifier.
+     */
     override fun isAcceptedFileType(fileType: FileType): Boolean = fileType == FlixFileType.INSTANCE
 
     override fun getSourcePosition(location: Location?): SourcePosition? {
@@ -68,12 +74,12 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
             ?: throw NoDataException.INSTANCE
         val sourcePath = FlixSourceLocations.sourcePathOf(jdiLocation, stratum)
 
-        val file = ReadAction.compute<PsiFile?, RuntimeException> {
+        val file = ReadAction.computeBlocking<PsiFile?, RuntimeException> {
             FlixSourceFiles.find(debugProcess.project, sourceName, sourcePath)
         } ?: throw NoDataException.INSTANCE
 
         // SourcePosition is zero-based; JDI line numbers are one-based.
-        return ReadAction.compute<SourcePosition, RuntimeException> {
+        return ReadAction.computeBlocking<SourcePosition, RuntimeException> {
             SourcePosition.createFromLine(file, line - 1)
         }
     }

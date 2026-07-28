@@ -73,7 +73,7 @@ internal class FlixSourceCache(private val project: Project) {
 
         // One read action for the whole class rather than one per source name: entering a read
         // action is not free, and a class rarely declares more than a handful.
-        val resolved = ReadAction.compute<List<ResolvedSource>, RuntimeException> {
+        val resolved = ReadAction.computeBlocking<List<ResolvedSource>, RuntimeException> {
             declared.map { (name, path) ->
                 ResolvedSource(name, FlixSourceFiles.find(project, name, path)?.virtualFile)
             }

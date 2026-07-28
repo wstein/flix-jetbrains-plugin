@@ -42,8 +42,8 @@
              depth and the difference is no longer readable from the stack once stepping starts.
              beforeSteppingStarted is the one point that knows both the chosen action and the
              position it was chosen from. -->
-        <debugger.steppingListener
-                implementation="dev.wstein.flixplugin.debugger.FlixSteppingListener"/>
+        <debugger.jvmSteppingCommandProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixSteppingCommands"/>
 
         <!-- The canonical Flix run/debug configuration (ADR 0002, plan Phase 4). Registered here
              rather than in the backend module because Debug attaches IntelliJ's own Java debugger,

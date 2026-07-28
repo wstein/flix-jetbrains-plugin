@@ -49,7 +49,7 @@ internal object FlixDefinitionScope {
         val sourcePosition = position ?: return null
         if (sourcePosition.file.fileType != FlixFileType.INSTANCE) return null
 
-        return ReadAction.compute<String?, RuntimeException> {
+        return ReadAction.computeBlocking<String?, RuntimeException> {
             keyAt(sourcePosition.file, sourcePosition.line, sourcePosition.elementAt)
         }
     }

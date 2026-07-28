@@ -66,7 +66,7 @@ class FlixSteppingFilterTest {
         // Re-entry into the stepped definition is not guaranteed -- the stepped line may be the last
         // one that executes. Without this the step would single-step to process exit, which presents
         // as a frozen IDE rather than a wrong stop.
-        val scope = FlixSteppingListener.StepOverScope("Main.flix#42")
+        val scope = FlixSteppingCommands.StepOverScope("Main.flix#42")
         @Suppress("ControlFlowWithEmptyBody")
         while (scope.consume()) {
         }
@@ -75,7 +75,7 @@ class FlixSteppingFilterTest {
         assertFalse("an exhausted budget must stop, not keep stepping", filter.isApplicable(context))
         assertNull(
             "and it must clear the scope, or every later step inherits the exhausted one",
-            FlixSteppingListener.scopeOf(context.debugProcess),
+            FlixSteppingCommands.scopeOf(context.debugProcess),
         )
     }
 
@@ -99,9 +99,9 @@ class FlixSteppingFilterTest {
     private fun suspendContext(location: Location?, scope: Any?): SuspendContext {
         val userData = mutableMapOf<Key<*>, Any?>()
         scope?.let {
-            userData[FlixSteppingListener.STEP_OVER_SCOPE] =
-                it as? FlixSteppingListener.StepOverScope
-                    ?: FlixSteppingListener.StepOverScope(it as String)
+            userData[FlixSteppingCommands.STEP_OVER_SCOPE] =
+                it as? FlixSteppingCommands.StepOverScope
+                    ?: FlixSteppingCommands.StepOverScope(it as String)
         }
 
         // Returns null for every location, which is what a frame outside Flix produces. A position

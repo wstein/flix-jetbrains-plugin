@@ -106,6 +106,35 @@ Why the split falls that way: `Smap.build()` emits nothing until a class draws o
 `Main.flix` calls into the standard library (`Env.getArgs`, `GetOpt.getOpt`, `List.memberOf`), so
 inlining pulls foreign code in and SMAP always appears.
 
+### Rows 3–7 — the Flix → Java → Flix path
+
+`flix-lab` now carries plain Java for Flix to call, so the stepping checks have a target:
+
+| | |
+| --- | --- |
+| Java | `src/javalib/dev/wstein/flixlab/Greeter.java`, compiled with `-g` by the `javalib` source set |
+| Packaged by | `./gradlew javalibJar` → `vendor/javalib/flixlab-javalib.jar` |
+| On the classpath via | `flix.toml` `[jar-dependencies]` — the Flix compiler does not compile `.java` itself |
+| Called from | `Main.flix:48`, `Greeter.greeting()`, inside `helloFromJava()` |
+| Entered from | `Main.flix:52`, `println(helloFromJava())`, the first statement of `main` |
+
+Verified end to end: the program prints `Hello Java!` before its usual output.
+
+A scripted run for rows 3–7:
+
+| Step | Expect |
+| --- | --- |
+| Breakpoint `Main.flix:48`, then **Step Into** | `Greeter.java:22` — row 3 |
+| **Step Into** again at line 22 | `Greeter.java:29`, inside `subject()` — row 3 |
+| **Step Out**, then **Step Over** at line 23 | stays in Java, reaches line 24 — row 4 |
+| Inspect `subject` and `message` at line 24 | real names and values, not `arg0` — row 7 |
+| **Step Out** | back to `Main.flix:48`, then `:52` — row 5 |
+| Look at the stack while stopped in `subject()` | Flix and Java frames, each navigating correctly — row 6 |
+
+`Greeter` is deliberately three statements and a nested call rather than a one-line `return`. With a
+one-liner, Step Into and Step Out land on the same line, Step Over has nothing to step over, and
+there is no local to inspect — rows 3–7 would all pass without testing anything.
+
 ### Row 9 — a no-SMAP fixture, recipe verified
 
 A **self-contained** file, one that calls nothing from another file, produces no SMAP. Verified by

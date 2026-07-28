@@ -123,19 +123,31 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         // before their class loads still resolve, at the cost of one source-name comparison per
         // class.
         //
-        // The empty pattern is what expresses "every prepare". RequestManagerImpl applies the
-        // pattern with `if (!StringUtil.isEmpty(pattern)) addClassFilter(pattern)`, so an empty
-        // string installs no filter at all. A wildcard does the opposite of what it looks like:
-        // JDI restricts class patterns to an exact name or one that begins or ends with `*`
-        // (`java.*`, `*.Foo`), and a bare `*` is not a well-formed pattern -- the filter matches
-        // nothing, no prepare event ever arrives, and every breakpoint stays unresolved while
-        // looking correctly placed in the gutter.
+        // Both obvious spellings of "every class" are wrong, in opposite directions:
+        //
+        //   "*"  RequestManagerImpl applies a non-empty pattern with addClassFilter, and JDI
+        //        restricts class patterns to an exact name or one that begins or ends with `*`
+        //        (`java.*`, `*.Foo`). A bare `*` is not well-formed, so the filter matches nothing,
+        //        no prepare event ever arrives, and every breakpoint stays unresolved while looking
+        //        correctly placed in the gutter.
+        //
+        //   ""   installs no filter -- but the request carries SUSPEND_EVENT_THREAD, so the VM now
+        //        suspends on *every* class it loads, thousands of them, and the session stops deep
+        //        inside JDK code the user never marked.
+        //
+        // So the request stays unfiltered and the noise is removed with exclusions instead. Those
+        // are safe to state positively: user Flix code is never in these namespaces, and the Flix
+        // runtime and compiler are not code anyone sets a Flix breakpoint in.
         val request = debugProcess.requestsManager.createClassPrepareRequest(requestor, "")
         if (request == null) {
             LOG.debug("createPrepareRequests(${position.file.name}:${position.line + 1}): refused")
             return emptyList()
         }
-        LOG.debug("createPrepareRequests(${position.file.name}:${position.line + 1}): watching all prepares")
+        NON_FLIX_NAMESPACES.forEach { request.addClassExclusionFilter(it) }
+        LOG.debug(
+            "createPrepareRequests(${position.file.name}:${position.line + 1}): " +
+                "watching prepares outside ${NON_FLIX_NAMESPACES.joinToString()}",
+        )
         return listOf(request)
     }
 
@@ -190,6 +202,32 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     private data class Target(val file: VirtualFile, val baseName: String)
 
     private companion object {
+        /**
+         * Namespaces excluded from the class-prepare watch.
+         *
+         * The watch has to be unfiltered to catch Flix's generated class names, which encode the
+         * definition rather than the source file (`Def$main`, `Clo$main$400074`), so there is no
+         * positive pattern to match on. Excluding the runtime instead keeps the event volume sane:
+         * without this the request fires for every JDK class, and because it carries
+         * SUSPEND_EVENT_THREAD the session stops inside whatever JDK method happened to be running.
+         *
+         * Stated as things a Flix breakpoint can never live in -- the JDK, other JVM languages'
+         * runtimes, and Flix's own runtime and compiler -- rather than as a guess at what user code
+         * looks like. Deliberately *not* the DAP adapter's old `com.*`/`org.*`/`net.*` list, which
+         * would also exclude user Java, Kotlin and Scala.
+         */
+        private val NON_FLIX_NAMESPACES = listOf(
+            "java.*",
+            "javax.*",
+            "jdk.*",
+            "sun.*",
+            "com.sun.*",
+            "scala.*",
+            "kotlin.*",
+            "dev.flix.runtime.*",
+            "ca.uwaterloo.*",
+        )
+
         /**
          * Off by default; enable with `#dev.wstein.flixplugin.debugger` in
          * Help > Diagnostic Tools > Debug Log Settings.

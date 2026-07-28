@@ -6,6 +6,10 @@
 
 ### Added
 
+- **`CLAUDE.md`** — orientation for working in this repository: why the module split follows
+  dependencies rather than features, the platform behaviours that are counterintuitive enough to
+  have caused defects here, and how to decompile the IDE or probe a live VM when the answer is not
+  in this codebase.
 - **`flix-integration.yaml`** — one bounded contract for cross-module wiring, with
   `./gradlew checkIntegrationGlue` wired into `check`. It declares which class plays which role and
   which module registers it, and fails the build on drift in **both** directions: declared but not
@@ -139,6 +143,41 @@
 
 ### Fixed
 
+- **Debug could never have attached**, for two independent reasons, each silent.
+  `GenericDebuggerRunner` imposes two conditions on two *different* objects: `canRun` requires the
+  configuration to be a `ModuleRunProfile`, and `createContentDescriptor` requires the
+  `RunProfileState` to be a `RemoteConnectionCreator`. `LocatableConfigurationBase` supplies neither,
+  and the interface had been put on the configuration, where the platform never looks. Both failures
+  produce no exception and no log, which is why the first investigation blamed the position manager.
+  The assumed call order was inverted too — `getState` runs first, always — so the port handoff read
+  `null` every time. `FlixDebuggerRunnerGatesTest` pins both conditions.
+- **Breakpoints on some lines never bound, while adjacent lines did**, with nothing in the source to
+  tell them apart. The cause was in the compiler, not the plugin: when a single-expression function
+  is inlined into a call site in the same file, the call site's line and the inlined body's line were
+  emitted at one bytecode offset. A `LineNumberTable` entry is keyed by its offset, so the second
+  replaces the first and the replaced line stops existing for a debugger — absent from
+  `allLineLocations`, empty from `locationsOfLine`, unable to take a breakpoint, while `javap` still
+  shows it. Fixed in `flix-fork`; **this plugin now needs a compiler build containing that fix** for
+  breakpoints on such lines. Cross-file inlining was never affected, because SMAP gives the foreign
+  line a synthetic number of its own.
+- A breakpoint could be marked *"no executable code"* by a class that merely shared its file. One
+  `.flix` source compiles to dozens of classes, each covering part of it, and
+  `RequestManagerImpl.setInvalid` records the complaint only while the breakpoint has not yet bound —
+  so whichever class arrived first decided, and a class holding the line arriving late left the
+  breakpoint permanently marked invalid despite binding correctly. Class-prepare filtering and
+  `getAllClasses` now test the *line* rather than the file, which is what the platform's own
+  equivalent does.
+- A `.flix` breakpoint could bind inside unrelated Java library classes.
+  `CompoundPositionManager` stops at the first manager that returns *without throwing* and treats
+  `NoDataException` as "ask the next one" — and the next one, `PositionManagerImpl`, answers
+  unconditionally for every file type. Declining a foreign class by throwing therefore delegated the
+  question rather than answering it, and any class with code at that line number obliged. A Flix
+  position is now answered definitively, including when the answer is "nothing".
+- A debug launch did not reject an inherited JDWP agent. The check existed and was tested, but no
+  launch path called it: it had been written for the environment-variable form, and moving the agent
+  onto the command line left the guard behind. `JAVA_TOOL_OPTIONS` is still inherited by the
+  debuggee, so an agent there would load alongside ours and give the process two JDWP servers — the
+  state [ADR 0002][adr2] forbids, reported by the JVM as a transport error far from its cause.
 - `.flix` lines could not take a breakpoint at all. `DebuggerUtils.isBreakpointAware` returns true
   only when the file type reports `isJVMDebuggingSupported()` or a `JavaDebugAware` claims the file,
   and `JavaLineBreakpointTypeBase.canPutAtElement` refuses everything else -- so the position

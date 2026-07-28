@@ -6,6 +6,8 @@ import com.intellij.debugger.PositionManager
 import com.intellij.debugger.PositionManagerFactory
 import com.intellij.debugger.SourcePosition
 import com.intellij.debugger.engine.DebugProcess
+import com.intellij.debugger.engine.DebugProcessListener
+import com.intellij.debugger.engine.SuspendContext
 import com.intellij.debugger.requests.ClassPrepareRequestor
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
@@ -30,6 +32,23 @@ import org.flixlang.intellij.lang.FlixFileType
  * corrupt every other language's position manager in the session.
  */
 class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequestPositionManager {
+
+    /**
+     * Resolved Flix origins per loaded class, for the lifetime of one suspension.
+     *
+     * Deciding whether a class is Flix costs two JDWP round trips and a file-index lookup, and the
+     * answer was previously derived for every loaded class, twice per candidate, once per
+     * breakpoint. See [FlixSourceCache] for why it is cleared on resume rather than on a
+     * redefinition event.
+     */
+    private val sources = FlixSourceCache(debugProcess.project)
+
+    init {
+        debugProcess.addDebugProcessListener(object : DebugProcessListener {
+            override fun resumed(suspendContext: SuspendContext?) = sources.clear()
+            override fun processDetached(process: DebugProcess, closedByUser: Boolean) = sources.clear()
+        })
+    }
 
     override fun getAcceptedFileTypes(): Set<FileType> = setOf(FlixFileType.INSTANCE)
 
@@ -126,8 +145,9 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
      */
     override fun locationsOfLine(type: ReferenceType, position: SourcePosition): List<Location> {
         val target = flixTargetOf(position)
-        val stratum = FlixSourceLocations.stratumFor(type) ?: return noLocations(type, target)
-        val sourceNames = matchingSourceNames(type, stratum, target)
+        val declared = sources.sourcesOf(type)
+        val stratum = declared.stratum ?: return noLocations(type, target)
+        val sourceNames = declared.namesFor(target.file)
         if (sourceNames.isEmpty()) return noLocations(type, target)
 
         // One Flix line commonly compiles into several generated classes and several locations
@@ -293,31 +313,8 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
      * The cheap base-name filter comes first because [getAllClasses] runs this over every loaded
      * class, and the authoritative check touches the file index.
      */
-    private fun matchesSource(type: ReferenceType, target: Target): Boolean {
-        val stratum = FlixSourceLocations.stratumFor(type) ?: return false
-        return matchingSourceNames(type, stratum, target).isNotEmpty()
-    }
-
-    /**
-     * The JDI source names that identify [target] in [type].
-     *
-     * This is intentionally shared by forward binding and the later `locationsOfLine` query:
-     * using one selection rule for the former and a base-name approximation for the latter was
-     * enough to verify a breakpoint on some generated classes while leaving it unbound on others.
-     */
-    private fun matchingSourceNames(type: ReferenceType, stratum: String, target: Target): List<String> {
-        val sources = FlixSourceLocations.flixSourcesOf(type, stratum)
-            .filter { (name, _) -> FlixSourceLocations.couldReferToBaseName(name, target.baseName) }
-        if (sources.isEmpty()) return emptyList()
-
-        return ReadAction.compute<List<String>, RuntimeException> {
-            sources.mapNotNull { (name, path) ->
-                name.takeIf {
-                    FlixSourceFiles.find(debugProcess.project, name, path)?.virtualFile == target.file
-                }
-            }.distinct()
-        }
-    }
+    private fun matchesSource(type: ReferenceType, target: Target): Boolean =
+        sources.sourcesOf(type).declares(target.file)
 
     private data class Target(val file: VirtualFile, val baseName: String)
 

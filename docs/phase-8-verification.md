@@ -78,8 +78,8 @@ The plan asks for these specifically. 49 tests in `:debugger` cover most:
 | Multiple locations per line | ✅ `FlixSourceLocationsTest`, and the row-9 work above |
 | Class prepare | ⚠️ the requestor's filter rule is exercised indirectly; there is no test that drives a prepare event |
 | Stepping-filter wiring | ✅ `FlixSteppingFilterTest` — added after review; mutation-checked (inverting the arrived-check, dropping the budget, or stepping out instead of in all fail it) |
-| **Class redefinition** | ⬜ not covered |
-| **Stale cache invalidation** | ⬜ not covered |
+| **Class redefinition** | ✅ `FlixSourceCacheTest` — a hot swap keeps the same `ReferenceType`, so only invalidation can yield the new sources |
+| **Stale cache invalidation** | ✅ `FlixSourceCacheTest` — cleared on resume, which is when a redefinition can have happened |
 
 ---
 
@@ -136,8 +136,7 @@ Ordered by what blocks the milestone rather than by matrix position.
 3. **`verifyPlugin`** — the CI job existed but verified against no IDEs. Targets are now configured, so the next CI run is the first that checks anything; expect it to have something to say.
 4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
    with the respective plugin installed.
-5. **Class redefinition and stale-cache SMAP tests** — no coverage, and no known failure either.
-6. **`FlixPositionManager.getAllClasses` and the class-prepare filter** have no direct test, and the
+5. **`FlixPositionManager.getAllClasses` and the class-prepare filter** have no direct test, and the
    obstacle is now known rather than assumed. Both start from a `SourcePosition`, so the fixture must
    produce a file that is *both* typed as Flix **and** present in the file index — `FlixSourceFiles`
    resolves through the index, so a `LightVirtualFile` from `ParsingTestCase` fails the positive

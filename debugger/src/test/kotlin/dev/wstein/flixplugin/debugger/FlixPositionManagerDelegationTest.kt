@@ -91,7 +91,9 @@ class FlixPositionManagerDelegationTest {
         // is never offered a .java, .kt or .scala position, so returning empty from locationsOfLine
         // cannot end the chain for a foreign language. That is what makes the empty-vs-throw choice
         // safe rather than merely convenient.
-        val declared = FlixPositionManager::class.java.getDeclaredMethod("getAcceptedFileTypes")
-        assertTrue("FlixPositionManager must keep declaring its file types", declared != null)
+        // getDeclaredMethod either returns a Method or throws -- it never returns null, so the
+        // call itself is the assertion. Asserting `!= null` on the result would be dead code whose
+        // message could never print, which is the opposite of what the sibling tests above do.
+        FlixPositionManager::class.java.getDeclaredMethod("getAcceptedFileTypes")
     }
 }

@@ -62,16 +62,21 @@ losslessly and without crashes -- is documented in
 docs/intellij-flix-parser-evaluation.md and enforced by `FlixCorpusTest`.
 
 --------------------------------------------------------------------------------
-3. FlixDebugAdapter.java -- DAP<->JDI bridge
+3. FlixDebugAdapter.java -- DAP<->JDI bridge (REMOVED)
 --------------------------------------------------------------------------------
 
 Origin:   https://github.com/wstein/flix-lab (debug-adapter/src)
 License:  Apache License 2.0
 
-Vendored at backend/src/main/resources/dap/FlixDebugAdapter.java and kept in
-sync by scripts/sync-debug-adapter.sh. This copy serves the transitional DAP
-debugging path only; IntelliJ's native JVM debugger is the target backend. See
-docs/adr/0002-native-jvm-debugger.md.
+No longer present. This file was vendored at
+backend/src/main/resources/dap/FlixDebugAdapter.java and kept in sync by
+scripts/sync-debug-adapter.sh while DAP was the transitional debugging path.
+Both were removed once IntelliJ's native JVM debugger passed its gate; see
+docs/adr/0002-native-jvm-debugger.md. Nothing derived from it ships in the
+built plugin.
+
+Recorded here rather than deleted because the attribution applies to released
+versions that did carry it.
 
 --------------------------------------------------------------------------------
 4. IntelliJ Platform Gradle plugin template

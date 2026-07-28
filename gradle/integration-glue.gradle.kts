@@ -30,15 +30,22 @@ tasks.register("checkIntegrationGlue") {
 
     group = "verification"
     description = "Fails if the committed registrations disagree with flix-integration.yaml."
-    inputs.file(IntegrationGlue.manifestOf(root))
-    inputs.files(IntegrationGlue.MODULES.map { IntegrationGlue.descriptorOf(root, it) }.filter { it.exists() })
-
+    // Deliberately no inputs/outputs. verify() reads the manifest, every module descriptor, the
+    // generated matrix, and every .kt/.java source under the modules -- declaring a subset would
+    // invite an outputs declaration later and, with build caching enabled project-wide, produce
+    // cache hits that skip a check whose real inputs changed. This task is cheap; it always runs.
     doLast {
         val problems = IntegrationGlue.verify(root).toMutableList()
 
         // The matrix is committed, so a stale one is a review-visible diff rather than something
         // noticed only when the next person happens to regenerate it.
-        if (!matrix.exists() || matrix.readText() != IntegrationGlue.renderMatrix(root)) {
+        //
+        // Only compared when the manifest is otherwise sound: renderMatrix assumes the shape verify
+        // has just finished reporting on, so running it against a malformed manifest replaces a
+        // clean list of problems with an unrelated cast exception.
+        if (problems.isEmpty() &&
+            (!matrix.exists() || matrix.readText() != IntegrationGlue.renderMatrix(root))
+        ) {
             problems += "docs/flix-integration-matrix.md is stale -- run ./gradlew generateIntegrationGlue"
         }
 

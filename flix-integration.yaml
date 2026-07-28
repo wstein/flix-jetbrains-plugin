@@ -72,8 +72,11 @@ debugger:
   claimedFileExtensions:
     - flix
 
+# Action id -> its implementation class. Both halves are verified: the id must be registered and
+# the class must exist. Declared because the widened attribute scan now sees `class="..."`, and an
+# undeclared registration is a failure by design.
 actions:
-  runMain: flix.runMain
+  flix.runMain: dev.wstein.flixplugin.FlixRunMainAction
 
 # Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
 # comes back, because each would reintroduce a defect rather than merely add a feature.

@@ -6,9 +6,9 @@ dependencies {
         bundledModule("intellij.platform.rpc.backend")
         bundledModule("intellij.platform.backend")
 
-        // LSP4IJ provides the generic LSP + DAP client machinery this plugin builds on -- see
-        // README.md for why (native platform LSP support has no DAP equivalent yet, LSP4IJ's DAP
-        // client is the only generic path into IntelliJ today). Version matches what was verified
+        // LSP4IJ provides the generic LSP client machinery this plugin builds on. Its DAP client
+        // is deliberately unused: debugging goes through IntelliJ's own JVM debugger (ADR 0002),
+        // which is what lets one session cover Flix and every other JVM language. Version matches what was verified
         // working against 2025.2.6.2 in the single-module prototype this was ported from; LSP4IJ's
         // declared compatibility range (242+, no upper bound) should still resolve fine against
         // 2026.1.3, but that combination hasn't been build/run-verified yet.

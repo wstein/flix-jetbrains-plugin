@@ -12,9 +12,9 @@ import java.util.List;
 /**
  * Builds the command line and JDWP wiring for running or debugging a Flix program.
  *
- * <p>Shared rather than duplicated because three callers need the identical invocation -- the
- * {@code flix.runMain} CodeLens action, the vendored DAP adapter, and the native JVM debug
- * configuration -- and the invocation has non-obvious rules that were each learned from a failure:
+ * <p>Shared rather than duplicated because two callers need the identical invocation -- the
+ * {@code flix.runMain} CodeLens action and the native JVM debug configuration -- and the
+ * invocation has non-obvious rules that were each learned from a failure:
  *
  * <ul>
  *   <li><b>Options go after the subcommand.</b> The compiler's argument parser treats an option

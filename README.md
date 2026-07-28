@@ -1,152 +1,107 @@
 # Flix (IntelliJ Plugin)
 
-Flix language support and `--Xdebug` JDWP breakpoint debugging for the
+Flix language support and breakpoint debugging for the
 [wstein/flix-fork](https://github.com/wstein/flix-fork) Flix compiler build, for IntelliJ-based
-IDEs. Companion to [flix-lab](https://github.com/wstein/flix-lab)'s VS Code tooling: this plugin
-reuses the exact same `flix lsp` language server the official VS Code extension downloads (no
-reimplementation of completion/diagnostics/hover), and the exact same `FlixDebugAdapter.java`
-DAP↔JDI bridge as flix-lab's VS Code debug adapter, via [LSP4IJ][lsp4ij]'s generic LSP and DAP
-clients.
+IDEs.
+
+Completion, diagnostics and hover come from the same `flix lsp` language server the official VS
+Code extension downloads -- no reimplementation -- via [LSP4IJ][lsp4ij]'s LSP client. Debugging runs
+on IntelliJ's **own** JVM debugger rather than a separate debug protocol, so one session covers Flix
+and every other JVM language in the same process: step from Flix into Java or Kotlin and back, with
+each language's own breakpoints, source navigation and evaluator.
 
 ## Why LSP4IJ, not the native LSP API
 
-IntelliJ's own native LSP Client API (opened up to all users in the 2025.3 unified distribution)
-covers language features, but has no DAP equivalent. LSP4IJ's generic DAP client is the only
-generic path into IntelliJ's debugger for a custom, non-JVM-native protocol like DAP today, so
-LSP4IJ is used for both LSP and DAP here rather than mixing two different mechanisms.
+IntelliJ's own LSP Client API covers language features, but is available only to plugins in
+IntelliJ-based IDEs under conditions LSP4IJ does not impose, and running both clients against one
+server would mean two clients for one language. LSP4IJ is therefore the sole LSP client here.
+
+LSP4IJ also ships a generic DAP client. This plugin **does not use it**: debugging goes through
+IntelliJ's own JVM debugger instead ([ADR 0002][adr2]), which is what lets one session cover Flix
+and every other JVM language in the same process.
 
 ## What works, and what's still unverified
 
-- **Language features (LSP)**: live-verified against a real `runIde` session -- syntax
-  highlighting, diagnostics, and completion via `flix lsp`, working through LSP4IJ.
-- **Debugging (DAP)**: live-verified end-to-end -- attach to a `--Xdebug`-suspended target,
-  breakpoints resolve and hit, `evaluate` (dotted-path field access, method calls with literal
-  arguments, and array indexing) works, and the shared `FlixDebugAdapter.java` pretty-prints Flix
-  records/tagged unions instead of showing raw JVM identities. Getting here required finding and
-  fixing two real bugs in LSP4IJ's dispatch model
-  (not just wiring mistakes) -- see `FlixDebugAdapterDescriptor`'s javadoc and
-  `isDebuggableFile()`'s javadoc for the specifics: LSP4IJ picks the literal DAP command
-  (`launch`/`attach`) from `getDebugMode()` alone, and the Mappings-tab file association is never
-  consulted unless a descriptor explicitly checks `DAPRunConfigurationOptions`.
-- **`flix.runMain` CodeLens**: live-verified -- clicking "Run" above an entry point runs it and
-  shows output in a console, instead of failing with "Missing 'flix.runMain' command... needs to be
-  contributed by an IntelliJ plugin". The lens's symbol argument is honoured and passed as
-  `--entrypoint`, so the lens above `demo()` runs `demo`, not the project default.
+- **Language features (LSP)**: live-verified -- syntax highlighting, diagnostics and completion via
+  `flix lsp`, through LSP4IJ.
 - **Flix language support (PSI)**: a real `Language("Flix")`, file type, Grammar-Kit/JFlex parser
   and PSI, syntax highlighter, brace matcher, commenter, quote handler and folding, adopted from
-  [`intellij-flix`][intellij-flix] per [ADR 0001][adr1]. The adopted grammar parses 427 of 427
-  compilable files in the upstream Flix corpus; see the
+  [`intellij-flix`][intellij-flix] per [ADR 0001][adr1]. The adopted grammar parses **427 of 427**
+  compilable files in the upstream Flix corpus, up from 211 at adoption; see the
   [parser corpus evaluation](docs/intellij-flix-parser-evaluation.md). This replaced the bundled
-  TextMate fallback grammar, which a real file type deactivates.
-- **Gutter run arrow beside `def main`**: anchored on the declaration's name leaf, delegating to
-  the platform's generic `ExecutorAction`.
-- **Split Mode**: live-verified running as an actual split frontend+backend process pair
-  (`./gradlew runIdeSplitMode`) -- all of the above (LSP, DAP debugging, `flix.runMain`) confirmed
-  working with everything registered in the backend module and the frontend acting as a thin
-  client. One real bug found and fixed getting here: an XML comment containing `--` in
-  `flix.jetbrains.plugin.frontend.xml` made the *entire plugin* fail to load on both sides ("Cannot
-  load ... contains invalid plugin descriptor") -- `verifyPluginProjectConfiguration`/`buildPlugin`
-  both passed anyway; `./gradlew verifyPluginStructure` does catch it though (confirmed by
-  deliberately reintroducing one and rerunning it), it just doesn't fail the Gradle build over it,
-  so its output still needs to be read, not only its exit code.
-- **Launch-mode debugging**: live-verified -- clicking "Debug" on `Main.flix` with no existing run
-  configuration auto-created a "Flix (--Xdebug attach)" configuration named after the file, in
-  Launch mode, with no manual Mappings-tab step; the console showed it spawning
-  `flix run --Xdebug --yes` on a freshly-picked JDWP port, listening, and disconnecting cleanly
-  (exit code 0) once the program (no breakpoint set that run) ran to completion. Confirms both
-  halves: the `fileNamePatternMapping`/`prepareConfiguration` auto-configuration wiring, and
-  `FlixDebugAdapter.java`'s own launch capability, already live-verified independently from
-  `flix-lab`'s side (spawns `flix run --Xdebug`, streams output, attaches, hits breakpoints,
-  disconnect kills the process).
+  TextMate fallback, which a real file type deactivates.
+- **Debugging**: IntelliJ's own JVM debugger, per [ADR 0002][adr2]. The
+  [gate](docs/native-debugger-gate.md) is **Green** -- Flix and Java breakpoints in one session,
+  stepping in both directions, mixed stack navigation, Java locals and evaluation, and a Step Over
+  that stops on the next line of the *same Flix definition* rather than descending into everything
+  the line calls.
+- **`flix.runMain` CodeLens**: live-verified. The lens's symbol argument is honoured and passed as
+  `--entrypoint`, so the lens above `demo()` runs `demo`, not the project default.
+- **Gutter run arrow beside `def main`**: anchored on the declaration's name leaf, delegating to the
+  platform's generic `ExecutorAction`.
+- **Split Mode**: live-verified as an actual frontend+backend process pair
+  (`./gradlew runIdeSplitMode`), with everything registered backend-side and the frontend a thin
+  client. One real bug found getting here: an XML comment containing `--` made the *entire plugin*
+  fail to load on both sides, while `verifyPluginProjectConfiguration` and `buildPlugin` both
+  passed. `verifyPluginStructure` does detect it, but does not fail the build over it -- its output
+  has to be read, not just its exit code.
 
-## Launch-mode debugging ("click Debug on this file")
+**Not yet verified** -- see [verification coverage](docs/phase-8-verification.md) for the full
+matrix, which is explicit about what has been measured and what has not. The two that matter most:
+the native run configuration has never been exercised in a live session, and breakpoints on some
+Flix lines do not bind.
 
-Clicking the gutter/toolbar "Debug" icon on a `.flix` file auto-creates a Debug Adapter Protocol
-run configuration in Launch mode -- no manual "Edit Configurations" step needed. This works via
-two pieces, both required:
+## Debugging
 
-- A second `fileNamePatternMapping` in `flix.jetbrains.plugin.backend.xml` (`*.flix` ->
-  `flixDebugAdapter`, alongside the existing one pointing at the language server) makes `.flix`
-  files discoverable by LSP4IJ's built-in `DAPRunConfigurationProvider` in the first place --
-  without it, `.flix` files are invisible to that auto-creation step entirely (confirmed by
-  decompiling `DebugAdapterManager`/`DebugAdapterDescriptorFactory`; LSP4IJ 0.20.1 ships no sources
-  jar). `FlixDebugAdapterDescriptorFactory#prepareConfiguration` then fills in the resulting
-  configuration's own Mappings tab data too, which the base implementation does not do on its own.
-- `FlixDebugAdapter.java` gained real launch semantics: given a `program` argument it spawns
-  `flix run --Xdebug` itself (on a freshly-picked free JDWP port) instead of only ever attaching to
-  a JVM someone else already started. `FlixDebugAdapterDescriptor#getDapParameters` sends
-  launch-shaped arguments (`program`/`cwd`) when the run configuration's own mode is Launch, and
-  the original attach-shaped ones (`hostName`/`port`) otherwise -- see that class's javadoc.
+Press **Debug** on a `.flix` file, or use the gutter arrow beside `def main`. There is no setup
+step: the Flix run configuration is created from the declaration under the caret.
 
-The entry point always defaults to `main()` -- LSP4IJ's generic DAP run configuration UI has no
-field to override it, and there's no environment-variable escape hatch for this one since a launch
-needs a *different* value per file, not one fixed value for the whole IDE process. The flix command
-itself does have that escape hatch: it defaults to the `FLIX_DEBUG_COMMAND` environment variable if
-set, then `flix` on `PATH`. Export `FLIX_DEBUG_COMMAND=/path/to/scripts/flix-fork` (or wherever a
-project's `--Xdebug`-capable build lives) **before** launching the sandbox IDE -- e.g. before running
-`./gradlew runIdeSplitMode` in the same shell -- since it's read once when the adapter process
-starts, not on every launch. This repo's own `flix` on `PATH` isn't `--Xdebug`-capable at all (see
-Troubleshooting below), so debugging any `.flix` file in *this* repo via Launch mode needs this set.
+What happens is deliberately unremarkable. The configuration launches the Flix compiler with
+`run --Xdebug --yes` and a JDWP agent on a free port, and IntelliJ's own Java debugger attaches to
+it. This plugin speaks no debug protocol; it decides which port to listen on and hands that to the
+platform.
 
-### Troubleshooting: Debug fails near-instantly with no useful message
+`--Xdebug` is not optional, and is not only a JDWP switch. The compiler emits line numbers for
+`let`, calls, `if` and statement sequences **only** under it, and stops the inliner discarding
+programmer-written bindings. Without it most statements have no breakpointable line at all, and a
+breakpoint on one can never verify no matter what the IDE does.
 
-Symptom (live-verified against this repo itself): clicking Debug shows
-`Listening for DAP client on port <n>` and `[flix-debug-adapter] launching: flix run --Xdebug ...`,
-then almost immediately `Unset error message.` / `Disconnected successfully from the debug server.`
--- no breakpoint hit, no `flix run` output ever shown. LSP4IJ's Console here only renders the DAP
-*server* process's raw stdout/stderr, not the DAP protocol responses themselves, so a real failure
-inside the adapter (a bad `sendErrorResponse`) shows up as this same generic placeholder text rather
-than anything actionable. Two independent causes produce this exact symptom:
+### Which compiler is used
 
-- **Neither `FLIX_DEBUG_COMMAND` nor `flix` on `PATH` is a `--Xdebug`-capable build.**
-  `flix run --Xdebug` exits almost instantly if the resolved command doesn't understand `--Xdebug`
-  at all (e.g. an official Flix release rather than `wstein/flix-fork`) -- check with `which flix` /
-  `flix --version` in the same shell that launched the sandbox IDE. This repo's own `flix` isn't
-  `--Xdebug`-capable at all (only `scripts/flix-fork`'s vendored jar is), so debugging its `.flix`
-  files needs `export FLIX_DEBUG_COMMAND=/absolute/path/to/scripts/flix-fork` before launching the
-  IDE (see above) -- or the manual Attach flow below instead.
-- **An existing run configuration already matching the file gets reused as-is**, mode and all.
-  LSP4IJ's producer prefers an existing `DAPRunConfiguration` whose Mappings already cover the
-  clicked file over creating a fresh one (`DebugAdapterManager.findExistingConfigurationFor`) --
-  so a configuration you (or an earlier auto-creation) left in Attach mode with nothing listening on
-  its configured port gets silently reused and fails the same way. Check **Run \| Edit
-  Configurations** for a stale entry and either fix its Debug Mode or remove it so a fresh one gets
-  auto-created.
+`$FLIX_FORK_JAR` if set, otherwise the most recently modified `flix-vendor-*.jar` in the project
+root. Every process the plugin starts -- the language server and the debuggee -- resolves it the
+same way, so a debug session cannot run a different compiler than the editor was analysed with.
 
-## One-time setup per project (manual attach configuration)
+### When a breakpoint does not bind
 
-Launch mode (above) needs no setup. For attach mode -- connecting to a `--Xdebug` JVM you start
-yourself, e.g. via a shell script or a run task -- or to override the entry point/flix command
-launch mode can't:
+Check the class before suspecting the plugin:
 
-1. **Language features**: open a `.flix` file; LSP4IJ should offer to start the "Flix Language
-   Server" automatically. Requires a `flix-vendor-*.jar` in the project root (or `$FLIX_FORK_JAR`
-   set), the same convention `flix-lab/scripts/flix-fork` uses.
-2. **Debugging**: Run → Edit Configurations → + → Debug Adapter Protocol → Server tab, select
-   "Flix (--Xdebug attach)" → **Mappings tab, add `*.flix`** (required; LSP4IJ has no
-   plugin.xml-level file mapping for DAP servers, only this per-run-configuration UI step) →
-   Configuration tab, set Debug mode to Attach with the JDWP host/port your `--Xdebug` process is
-   listening on (defaults to `localhost:5005`).
+```console
+javap -l -p 'build/class/Def$yourFunction.class' | grep -A20 LineNumberTable
+```
+
+A line absent from the table is a compiler-invocation problem, not an IDE one. If the line *is*
+there, turn on the plugin's own logging -- sandbox IDEs launched by `runIde`/`runIdeSplitMode`
+already have it enabled -- and read which step declined:
+
+```console
+tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep dev.wstein
+```
+
+The [gate runbook](docs/native-debugger-gate.md) has a table mapping each log line to its cause.
 
 ## Relationship to flix-lab
 
-The embedded DAP server (`backend/src/main/resources/dap/FlixDebugAdapter.java`) is a **vendored
-copy** of `flix-lab/debug-adapter/src/FlixDebugAdapter.java` -- the same file the VS Code extension
-uses, not a fork -- rather than referenced by relative path, since this plugin lives in its own repo
-instead of as a subdirectory of `flix-lab`. The language layer has no equivalent second copy to
-drift from: this repo is its only home (the frozen `flix-lab/jetbrains-plugin/` prototype's copy is
-historical, not maintained).
+[flix-lab](https://github.com/wstein/flix-lab) is the companion project: a Flix workspace with VS
+Code tooling, and the fixture this plugin is developed against. It carries a `Greeter` in Java,
+Kotlin, Scala, Groovy and JRuby, all called from `Main.flix`, which is what makes mixed-language
+debugging testable.
 
-```console
-./gradlew checkDebugAdapterSync   # fails if the vendored copy has drifted
-./gradlew syncDebugAdapter        # re-syncs it from flix-lab
-```
-
-Both assume `flix-lab` is checked out as a sibling directory (`FLIX_LAB_DIR` env var to override) --
-see [scripts/sync-debug-adapter.sh](scripts/sync-debug-adapter.sh). Neither task is wired into the
-default `check`/`build` lifecycle: neither repo has a git remote configured yet, so there's no CI
-runner that could check out both and run it. Once `flix-lab` is pushed, the `--check` mode is ready
-to drop into a GitHub Actions job that checks out both repos.
+The two projects no longer share code. They did: a `FlixDebugAdapter.java` DAP&#8596;JDI bridge was
+vendored here and kept in sync by a script. That path was retired once IntelliJ's own JVM debugger
+proved out ([ADR 0002][adr2]), so the adapter now lives only in `flix-lab`, serving its VS Code
+client. What both projects still share is the compiler: the same `flix-vendor-*.jar` build of
+[wstein/flix-fork](https://github.com/wstein/flix-fork).
 
 ## Plugin structure
 
@@ -168,22 +123,24 @@ This repository implements a modular IntelliJ Platform plugin using content modu
 ├── debugger/               Debugger module -- Flix source positions for IntelliJ's JVM debugger
 │   ├── build.gradle.kts    depends on the Java plugin; optional, so non-Java IDEs still load
 │   └── src/
-│       ├── main/kotlin/dev/wstein/flixplugin/debugger/   PositionManager + source lookup
+│       ├── main/kotlin/dev/wstein/flixplugin/
+│       │   ├── debugger/   PositionManager, stepping policy, source lookup
+│       │   └── run/        the Flix run/debug configuration and its context producer
 │       └── test/kotlin/    JDI-stub tests for the dual-mode SMAP mapping rules
-├── backend/                Backend module -- LSP4IJ server + DAP registrations, flix.runMain
+├── backend/                Backend module -- LSP4IJ server registration, flix.runMain, gutter marker
 │   ├── build.gradle.kts    LSP4IJ dependency
 │   └── src/
 │       ├── main/
-│       │   ├── java/dev/wstein/flixplugin/   Flix*.java (LSP factory, DAP descriptor, run action, ...)
-│       │   └── resources/
-│       │       ├── dap/FlixDebugAdapter.java         vendored DAP server
-│       │       └── flix.jetbrains.plugin.backend.xml module descriptor
+│       │   ├── java/dev/wstein/flixplugin/   Flix*.java (LSP factory, run action, jar resolution)
+│       │   └── resources/flix.jetbrains.plugin.backend.xml  module descriptor
 │       └── test/java/dev/wstein/flixplugin/  FlixForkTest
 ├── frontend/                Frontend module -- placeholder, no genuinely frontend-only UI yet
-├── shared/                  Shared module -- empty, no cross-boundary RPC contracts needed
+├── shared/                  Shared module -- compiler-jar resolution and launch command
 ├── src/
 │   ├── main/resources/META-INF/plugin.xml   Root descriptor, declares the content modules
 │   └── test/kotlin/        FlixPluginDescriptorTest -- registration-wiring invariants
+├── buildSrc/               Build logic -- the integration-glue contract checker
+├── flix-integration.yaml   Cross-module wiring contract; checked by `./gradlew checkIntegrationGlue`
 ├── build.gradle.kts        Root build -- assembles the final plugin, splitMode = true
 ├── gradle.properties
 └── settings.gradle.kts
@@ -276,52 +233,49 @@ the generator's defaults, but that's unverified.
 
 ## Direction: one language owner, native JVM debugging
 
-Two architectural decisions are now recorded in [`docs/adr/`](docs/adr/README.md) and are being
-implemented in phases. They change where language support and debugging come from:
+Two architecture decisions shape the plugin, both recorded in [`docs/adr/`](docs/adr/):
 
-- **[ADR 0001][adr1] -- one language owner and one LSP client.** Flix PSI is adopted from
-  [`flix/intellij-flix`][intellij-flix]'s Grammar-Kit/JFlex language layer rather than hand-porting
-  the Flix compiler's `Lexer.scala`/`Parser2.scala` (measured at ~7,200 lines). That layer already
-  provides a `Language("Flix")`, a full parser and PSI, editor support, and the `def main` gutter
-  marker this plugin lacks. LSP4IJ remains the single LSP client.
-- **[ADR 0002][adr2] -- IntelliJ's Java debugger is the sole JDWP owner.** Flix compiles to JVM
-  bytecode, and `flix-fork` emits a JSR-45/SMAP `"Flix"` stratum, so the platform Java debugger can
-  debug Flix directly through a `PositionManager`. That yields mixed Flix/Java stacks, frame-specific
-  expression evaluation, conditional and exception breakpoints, and source-JAR resolution without
-  reimplementing each capability inside a debug adapter. The DAP path stays functional until the
-  native path passes its gate.
+- [**ADR 0001**][adr1] -- one `Language("Flix")`, adopted from [`intellij-flix`][intellij-flix]
+  rather than reimplemented. Two language owners means two parsers and two file types, and which
+  one wins depends on load order.
+- [**ADR 0002**][adr2] -- IntelliJ's own Java debugger is the sole JDWP owner. Two debuggers cannot
+  share one debuggee: they compete for suspension, breakpoints and lifecycle.
 
-**Status.** ADR 0001 has landed in full. ADR 0002 has landed its first step: a `debugger` content
-module registers a `PositionManagerFactory`, so IntelliJ's stock **Remote JVM Debug** configuration
-attached to a `flix run --Xdebug` process resolves `.flix` frames to real source and lines. A
-dedicated Flix run/debug configuration and a Flix line-breakpoint type are not built yet, and the
-mixed Flix/Java stepping matrix has not been exercised in a live IDE session -- so the DAP path
-remains the supported way to debug, and is still registered.
+**Status.** Both are implemented. The [native debugger gate](docs/native-debugger-gate.md) is
+**Green**: Flix and Java breakpoints in one session, stepping in both directions, mixed stack
+navigation, Java evaluation, and Flix-aware Step Over, with one JDWP owner throughout. The DAP path
+has been removed. What remains is verification rather than construction -- see
+[verification coverage](docs/phase-8-verification.md), which is explicit about which rows have been
+measured and which have not.
+
+The property this buys, which a Flix-only debug adapter could not: a Flix frame can step into Java,
+Kotlin or Scala and back, with each language's own plugin owning its breakpoints, source positions
+and evaluator inside the same debug process.
 
 ## Known gaps
 
-- Launch-mode debugging ("click Debug on this file") always uses `main()` as the entry point --
-  there's no field in LSP4IJ's generic DAP run configuration UI to override it, and no
-  environment-variable escape hatch either (a launch needs a different entry point per file, not
-  one fixed value for the whole IDE process). A project needing `--entrypoint` still needs the
-  manual Attach configuration. The flix command itself *is* overridable now, via the
-  `FLIX_DEBUG_COMMAND` environment variable (see the Launch-mode debugging section above).
-- Debugging by default still runs through LSP4IJ's DAP client. The native path ([ADR 0002][adr2])
-  currently covers *source positions* only: attach a **Remote JVM Debug** configuration to a
-  `flix run --Xdebug` process and Flix frames resolve, with full Java behaviour for Java frames in
-  the same session. A Flix run/debug configuration and a Flix line-breakpoint type are still to
-  come, and the mixed Flix/Java stepping matrix in ADR 0002 has not been exercised in a live IDE.
-- An unfinished *expression* can absorb the following top-level declaration, because Flix permits a
-  local `def` as an expression and the grammar has no positional way to decline one. Upstream's
-  `Parser2` breaks out of an expression at a declaration keyword; this grammar does not. The
-  declaration is not lost, only nested. See
-  [the evaluation](docs/intellij-flix-parser-evaluation.md#error-recovery).
-- `FlixDebugAdapter`'s `evaluate` DAP request supports dotted-path field access, method calls with
-  literal arguments, and array indexing, but not arithmetic or nested expressions as call
-  arguments -- a full expression evaluator would mean compiling arbitrary Flix source against the
-  running program.
-- No formatter or linter is currently configured for this repo (Qodana provides static analysis,
-  but that's a separate, heavier tool, not a fast local lint/format step).
+- **The native run/debug configuration has never been exercised in a live session.** It was built
+  after the debugger gate, which ran entirely through a hand-made Remote JVM Debug configuration.
+  With the DAP path removed there is no fallback if it misbehaves. Two blocking defects in it were
+  found by review and fixed (`GenericDebuggerRunner` requires `ModuleRunProfile` on the
+  configuration *and* `RemoteConnectionCreator` on the state); neither fix is confirmed live.
+- **Breakpoints on some Flix lines do not bind.** In `flix-lab`'s `Main.flix`, lines calling into
+  Kotlin/Scala/Groovy/JRuby do not bind while adjacent lines do. Artifact inspection has ruled out
+  bytecode presence, class coverage, SMAP mapping and reachability -- the failing and working lines
+  are indistinguishable in the class files. Tracked as row 9 of the
+  [verification coverage](docs/phase-8-verification.md).
+- **Flix values in CPS frames are not presented.** A `Clo$` continuation keeps its state in fields
+  (`l0`..`l8`, `pc`) rather than locals, because the frame must survive suspension and resumption,
+  so the variables view is empty for those frames. The values are present and reachable; reading
+  them needs Flix-aware renderers, which the plan places after this milestone. Direct `Def$` frames
+  show variables normally.
+- **`verifyPlugin` has never been run.** The task exists; nothing invokes it.
+- **Exception breakpoints, JDK/library source attachment, class redefinition and stale-cache
+  invalidation** have no coverage -- and no known failure either.
+- **Kotlin, Scala and Groovy interop is unmeasured.** `flix-lab` now carries a `Greeter` in five
+  languages, which is the fixture for it, but no session has exercised them. Kotlin coroutine
+  debugging is explicitly **not** claimed: it needs the Kotlin debugger's agent injected into an
+  externally launched JVM, which has not been proven.
 
 ## License
 
@@ -329,7 +283,7 @@ Apache License 2.0 -- see [`LICENSE`](LICENSE).
 
 [`NOTICE`](NOTICE) records the provenance of every derived component: the imported
 `intellij-flix` revision, the upstream Flix revision the grammar and token inventory are derived
-from (pinned as `flixCorpusCommit` in `gradle.properties`), and `flix-lab`'s `FlixDebugAdapter.java`.
+from (pinned as `flixCorpusCommit` in `gradle.properties`), and the Flix revision the grammar derives from.
 
 ## Useful links
 

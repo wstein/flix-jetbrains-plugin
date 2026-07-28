@@ -1,11 +1,10 @@
 <idea-plugin>
     <!-- Module descriptors use <dependencies><plugin id="..."/></dependencies> for external-plugin
          deps; classic <depends> tags are explicitly disallowed here (confirmed against
-         https://plugins.jetbrains.com/docs/intellij/modular-plugins.html). LSP4IJ is kept for both
-         LSP and DAP, rather than switching the LSP half to the native intellij.platform.lsp module
-         this scaffold originally suggested, since DAP debugging has no native-platform equivalent
-         at all; using one mechanism for both is simpler than mixing two, and LSP4IJ is already
-         fully verified working from the single-module prototype. -->
+         https://plugins.jetbrains.com/docs/intellij/modular-plugins.html). LSP4IJ is the LSP client, rather
+         than the native intellij.platform.lsp module this scaffold originally suggested, and is
+         fully verified working. It once also served DAP; that path was retired in favour of
+         IntelliJ's own JVM debugger (ADR 0002), so only the LSP half remains. -->
     <dependencies>
         <module name="intellij.platform.backend"/>
         <module name="intellij.platform.kernel.backend"/>
@@ -66,7 +65,8 @@
              produced by the highlighting pass and resolved through ExecutorAction against
              run-configuration producers – both backend concerns under split mode. Registering it in
              a module that loads in *both* processes produced two arrows on the line: the backend
-             one found the DAP producer and built the correct menu, while the frontend one had no
+             one found the run-configuration producer (then the DAP one, since removed) and built
+             the correct menu, while the frontend one had no
              producers to offer and rendered "Nothing here".
              The contributor class itself stays in the language module, which owns FlixDefDecl; the
              module dependency above makes it resolvable from here. -->

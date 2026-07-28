@@ -72,16 +72,48 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         return matched
     }
 
+    /**
+     * The locations in [type] that implement [position].
+     *
+     * ## Why a non-Flix class returns empty rather than [NoDataException]
+     *
+     * The two are not interchangeable, and treating them as such planted breakpoints in unrelated
+     * library code. `CompoundPositionManager` stops at the **first manager that returns without
+     * throwing**, and treats [NoDataException] as "ask the next one":
+     *
+     * ```java
+     * for (pm : myPositionManagers)
+     *   if (acceptsFileType(pm, fileType))
+     *     try { result = pm.locationsOfLine(type, position); break; }
+     *     catch (NoDataException) { /* next */ }
+     * ```
+     *
+     * The next one is the platform's `PositionManagerImpl`, and it answers unconditionally:
+     *
+     * ```java
+     * try { return DebuggerUtilsAsync.locationsOfLineSync(type, "Java", null, position.getLine() + 1); }
+     * catch (AbsentInformationException e) { return Collections.emptyList(); }
+     * ```
+     *
+     * It never inspects the file type -- and it never declines, because it does not override
+     * `getAcceptedFileTypes()`, which defaults to `null`, which `isAcceptedFileType` reads as
+     * "every type". So delegating a `.flix` position asks "which locations in this class are at
+     * line N?" of a class that has nothing to do with Flix. Any class with code at line N answers,
+     * and `LineBreakpoint.createRequestForPreparedClass` plants a real request there. A breakpoint
+     * on `Main.flix:52` then stops in whatever library class happened to load with a line 52.
+     *
+     * A `.flix` position can only be resolved by this manager -- nothing else understands Flix
+     * sources -- so "this class was not compiled from that file" is a final answer, not an
+     * abstention. Returning it as one ends the chain.
+     *
+     * The asymmetry with [getSourcePosition] is deliberate: that one is keyed on a *location*, and
+     * a non-Flix location genuinely belongs to another manager, so it must keep delegating.
+     */
     override fun locationsOfLine(type: ReferenceType, position: SourcePosition): List<Location> {
         val target = flixTargetOf(position)
-        val stratum = FlixSourceLocations.stratumFor(type) ?: throw NoDataException.INSTANCE
+        val stratum = FlixSourceLocations.stratumFor(type) ?: return noLocations(type, target)
         val sourceNames = matchingSourceNames(type, stratum, target)
-        if (sourceNames.isEmpty()) {
-            if (LOG.isDebugEnabled) {
-                LOG.debug("locationsOfLine(${type.name()}): no source name matches ${target.baseName}")
-            }
-            throw NoDataException.INSTANCE
-        }
+        if (sourceNames.isEmpty()) return noLocations(type, target)
 
         // One Flix line commonly compiles into several generated classes and several locations
         // within them -- closures and lambdas each get their own. Returning all of them is what
@@ -115,7 +147,7 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     ): List<ClassPrepareRequest> {
         // Guarantees the position is Flix before requesting anything, so a breakpoint in another
         // language never produces a class-prepare request owned by this manager.
-        flixTargetOf(position)
+        val target = flixTargetOf(position)
 
         // Flix compiles a source file into many classes whose names it chooses -- Def$main,
         // Clo$main$400074 and so on -- so there is no class-name pattern to filter on. Watching
@@ -138,7 +170,19 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         // So the request stays unfiltered and the noise is removed with exclusions instead. Those
         // are safe to state positively: user Flix code is never in these namespaces, and the Flix
         // runtime and compiler are not code anyone sets a Flix breakpoint in.
-        val request = debugProcess.requestsManager.createClassPrepareRequest(requestor, "")
+        //
+        // What a name pattern would have done, the requestor does instead: [FlixSourcesOnly] drops
+        // every prepared class that was not compiled from this breakpoint's file, so the breakpoint
+        // itself only ever sees its own classes. This is the platform's own idiom for a position
+        // whose classes cannot be named up front -- `PositionManagerImpl.createPrepareRequests`
+        // wraps the requestor the same way for anonymous classes -- and `RequestManagerImpl`
+        // supports it explicitly: `callbackOnPrepareClasses` registers the request against the
+        // original requestor, and `deleteRequest` handles a differing `REQUESTOR` property, so the
+        // request is still torn down with the breakpoint.
+        val request = debugProcess.requestsManager.createClassPrepareRequest(
+            FlixSourcesOnly(requestor, target),
+            "",
+        )
         if (request == null) {
             LOG.debug("createPrepareRequests(${position.file.name}:${position.line + 1}): refused")
             return emptyList()
@@ -149,6 +193,39 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
                 "watching prepares outside ${NON_FLIX_NAMESPACES.joinToString()}",
         )
         return listOf(request)
+    }
+
+    /**
+     * Passes a class-prepare event on only when the prepared class was compiled from [target].
+     *
+     * The watch cannot be narrowed by name, so it sees every class the VM loads. Handing those
+     * straight to the breakpoint is wrong twice over: it asks the position manager chain to resolve
+     * a Flix line against unrelated classes, and `LineBreakpoint.createRequestForPreparedClass`
+     * marks the breakpoint invalid -- "no executable code at line N in <class>" -- for each one that
+     * has no such line. Filtering here means the breakpoint is only ever told about its own classes.
+     *
+     * Checks the single prepared type rather than calling [getAllClasses], which the platform's
+     * equivalent does: this runs once per class load, and [getAllClasses] walks every loaded class.
+     */
+    private inner class FlixSourcesOnly(
+        private val delegate: ClassPrepareRequestor,
+        private val target: Target,
+    ) : ClassPrepareRequestor {
+        override fun processClassPrepare(process: DebugProcess, type: ReferenceType) {
+            if (!matchesSource(type, target)) return
+            if (LOG.isDebugEnabled) {
+                LOG.debug("prepared ${type.name()}: compiled from ${target.baseName}, resolving")
+            }
+            delegate.processClassPrepare(process, type)
+        }
+    }
+
+    /** No locations, and why -- see [locationsOfLine] for why this is not [NoDataException]. */
+    private fun noLocations(type: ReferenceType, target: Target): List<Location> {
+        if (LOG.isDebugEnabled) {
+            LOG.debug("locationsOfLine(${type.name()}): not compiled from ${target.baseName}")
+        }
+        return emptyList()
     }
 
     /** The breakpoint's file, or [NoDataException] if it is not Flix. */

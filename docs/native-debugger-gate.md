@@ -248,14 +248,47 @@ Then reproduce and read `idea.log`. Each line names one step:
 
 | Line | Meaning |
 | --- | --- |
-| `createPrepareRequests(...): watching all prepares` | the breakpoint asked to be told about future classes |
+| `createPrepareRequests(...): watching prepares outside java.*, …` | the breakpoint asked to be told about future classes |
+| `prepared Clo$main$…: compiled from Main.flix, resolving` | a prepared class was accepted and handed to the breakpoint |
 | `getAllClasses(Main.flix:44): 0 of N loaded classes matched` | no loaded class claims that source — expected before the class loads, a problem afterwards |
-| `locationsOfLine(Clo$main$…): no source name matches Main.flix` | the class was reached but its recorded source name did not resolve to this file |
+| `locationsOfLine(Clo$main$…): not compiled from Main.flix` | the class was offered but is not this file's — normal and frequent |
 | `locationsOfLine(..., names=[...], line=44): 0 location(s)` | the class and file matched, but the line has no code — check `javap -l` |
 | *(nothing at all)* | the manager was never consulted; the breakpoint is not reaching it |
 
 The last row is the important one: it separates "my mapping is wrong" from "I am not being asked",
 and those have entirely different causes.
+
+### If it binds *too much* — stopping in unrelated Java
+
+Fixed in `2026-07-28`, and recorded because the cause is invisible from this plugin's code and the
+symptom looks nothing like its origin.
+
+A breakpoint on `Main.flix:52` stopped in arbitrary JDK and library classes. The chain:
+
+1. Flix class names encode the definition, not the file, so the class-prepare watch is unfiltered
+   and sees every class the VM loads.
+2. Each one reached `LineBreakpoint.createRequestForPreparedClass`, which asks
+   `CompoundPositionManager.locationsOfLine(thatClass, Main.flix:52)`.
+3. `FlixPositionManager` threw `NoDataException` — intending "not mine".
+4. But `CompoundPositionManager` reads `NoDataException` as **"ask the next manager"**, not as
+   "no". The next manager is the platform's `PositionManagerImpl`, which does not override
+   `getAcceptedFileTypes()` — so it accepts `.flix` positions — and answers unconditionally with
+   `locationsOfLine(type, "Java", null, 52)`.
+5. Any class with code at line 52 returned a location, and a real breakpoint request was planted
+   there.
+
+Two fixes, both in `FlixPositionManager`:
+
+- `locationsOfLine` returns an **empty list** for a Flix position in a non-Flix class. Nothing else
+  can resolve a `.flix` position, so "not compiled from that file" is a final answer and must end
+  the chain rather than delegate.
+- the class-prepare requestor is wrapped so a foreign class never reaches the breakpoint at all —
+  otherwise each one marks it invalid with *"no executable code at line 52 in `<class>`"*. This is the
+  platform's own idiom; `PositionManagerImpl` wraps the requestor the same way for anonymous
+  classes.
+
+Both are pinned by `FlixPositionManagerDelegationTest`, which asserts the platform facts directly so
+an IDE upgrade that changes them fails loudly.
 
 ## Results
 
@@ -389,7 +422,7 @@ neither in the reverse mapping that rows 5 and 6 confirm:
 
 | Item | Row | Where it goes |
 | --- | --- | --- |
-| `.flix` breakpoint binding, end to end | 1, 8, 9 | re-run — the exclusion-filter fix at `a3012a5` has not been exercised for this |
+| `.flix` breakpoint binding, end to end | 1, 8, 9 | re-run — the cause of the over-binding was found and fixed after this run; see *If it binds too much* above |
 | Step Over inside Flix stops on a Flix line | 14 | Phase 4, as a stepping policy; not a mapping change |
 
 Proceeding to the native run/debug configuration is **not** blocked by row 14. It is blocked by

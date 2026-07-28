@@ -99,6 +99,33 @@ The correction not to make: the DAP adapter's broad `com.*`/`org.*`/`net.*` step
 would remove user Java, Kotlin and Scala from stepping — the frames this architecture exists to
 reach — to fix a problem confined to Flix's own generated bridges.
 
+### `NoDataException` means "ask the next manager", not "no"
+
+A consequence of the composition model, and the one that is easiest to get backwards, because the
+natural reading of the name is the wrong one.
+
+`CompoundPositionManager` stops at the first manager that returns **without throwing**, and treats
+`NoDataException` as an instruction to continue down the chain. The manager at the end of that chain
+is the platform's `PositionManagerImpl`, and it answers unconditionally — it never inspects the file
+type, and it never declines, because it does not override `getAcceptedFileTypes()`, whose interface
+default of `null` means "every type".
+
+So for any file type this plugin owns, `NoDataException` does not decline. It delegates a Flix
+question to a manager that will answer it in Java terms. `locationsOfLine` is where that bites:
+asked "which locations of class C are at line 52?" for a `.flix` position, the Java manager answers
+for *any* class with a line 52, and the breakpoint is planted there.
+
+The rule that follows:
+
+| Method | Keyed on | For something we do not own |
+| --- | --- | --- |
+| `getSourcePosition` | a JDI `Location` | **throw** — a non-Flix location genuinely belongs to another manager |
+| `locationsOfLine`, `getAllClasses`, `createPrepareRequests` | a `SourcePosition` | **throw** only if the *position* is not Flix; otherwise answer definitively, including "nothing" |
+
+The asymmetry is the point. Ownership of a *location* is shared; ownership of a `.flix` *position*
+is not, because no other manager understands Flix sources. Once the position is ours, every answer
+we give is final.
+
 ### The required platform API is public and stable
 
 Verified against IU-2026.1.3, `plugins/java/lib/modules/intellij.java.debugger.jar`:

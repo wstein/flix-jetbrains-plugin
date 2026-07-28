@@ -95,13 +95,66 @@ public final class FlixLaunchCommand {
      * set heap or encoding options, and silently dropping the user's settings when a debug session
      * starts would change how the program runs only while being debugged -- the hardest kind of
      * difference to notice.
+     *
+     * @throws JdwpAlreadyConfiguredException if the inherited options already load a debug agent
      */
     public static @NotNull String withJdwpAgent(@Nullable String existingOptions, int port, boolean suspend) {
-        String agent = JDWP_AGENT.formatted(suspend ? "y" : "n", port);
-        if (existingOptions == null || existingOptions.isBlank()) {
-            return agent;
+        String inherited = existingOptions == null ? "" : existingOptions.strip();
+        String alreadyPresent = findJdwpAgent(inherited);
+        if (alreadyPresent != null) {
+            throw new JdwpAlreadyConfiguredException(alreadyPresent);
         }
-        return existingOptions.strip() + " " + agent;
+        String agent = JDWP_AGENT.formatted(suspend ? "y" : "n", port);
+        return inherited.isEmpty() ? agent : inherited + " " + agent;
+    }
+
+    /**
+     * The inherited debug-agent option, or {@code null} if there is none.
+     *
+     * <p>Tokenizes rather than substring-matching, so an option that merely mentions the text --
+     * {@code -Dsomething=-agentlib:jdwp}, a value in a property -- is not mistaken for one that
+     * loads an agent.
+     *
+     * <p>Both spellings are checked. {@code -agentlib:jdwp} is current; {@code -Xrunjdwp} is the
+     * pre-JVMTI form, still accepted by every HotSpot and still what older tooling and copied
+     * shell snippets emit.
+     */
+    public static @Nullable String findJdwpAgent(@Nullable String options) {
+        if (options == null || options.isBlank()) {
+            return null;
+        }
+        for (String token : options.strip().split("\\s+")) {
+            if (token.startsWith("-agentlib:jdwp") || token.startsWith("-Xrunjdwp")) {
+                return token;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Raised when the environment already loads a debug agent.
+     *
+     * <p>Appending a second one is not a redundancy: two agents mean two JDWP servers competing for
+     * suspension, breakpoints and lifecycle, which is the state ADR 0002 forbids. The JVM's own
+     * failure for this is a startup error about transport initialization, far from the setting that
+     * caused it, so this refuses in the IDE where the user can act on it.
+     */
+    public static final class JdwpAlreadyConfiguredException extends IllegalStateException {
+        private final String inheritedAgent;
+
+        JdwpAlreadyConfiguredException(@NotNull String inheritedAgent) {
+            super("JAVA_TOOL_OPTIONS already loads a debug agent (" + inheritedAgent + "), so this "
+                    + "launch would start a second one. Two agents cannot share a debuggee: they "
+                    + "compete for suspension, breakpoints and lifecycle. Remove the agent from "
+                    + "JAVA_TOOL_OPTIONS and let the run configuration supply it, or attach to the "
+                    + "existing one with a Remote JVM Debug configuration instead.");
+            this.inheritedAgent = inheritedAgent;
+        }
+
+        /** The offending option, for a caller that wants to name it in its own message. */
+        public @NotNull String getInheritedAgent() {
+            return inheritedAgent;
+        }
     }
 
     /**

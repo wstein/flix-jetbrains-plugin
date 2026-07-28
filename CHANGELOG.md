@@ -26,6 +26,12 @@
   extension point's interface, every language extension targets `Flix`, and exactly one file type
   claims `*.flix`. It caught an invalid `--` sequence inside an XML comment on its first run — the
   same class of defect that previously made the whole plugin fail to load.
+- `FlixLaunchCommand` refuses to launch when `JAVA_TOOL_OPTIONS` already loads a debug agent,
+  in either the current `-agentlib:jdwp` or the legacy `-Xrunjdwp` spelling. Appending a second one
+  would give the debuggee two JDWP servers competing for suspension, breakpoints and lifecycle --
+  the state ADR 0002 forbids -- and the JVM reports that as a transport error at startup, far from
+  the setting that caused it. Detection tokenizes rather than substring-matches, so an ordinary
+  option that merely mentions the text is preserved.
 - `FlixLaunchCommand` in the `shared` module, building the Flix run and debug invocations in one
   place for the CodeLens action and the forthcoming native JVM debug configuration. It pins the
   ordering rules that are easy to get wrong and hard to diagnose: options must follow the `run`

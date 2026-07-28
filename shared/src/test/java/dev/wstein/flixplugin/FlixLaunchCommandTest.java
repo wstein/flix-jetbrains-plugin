@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -102,6 +103,63 @@ public class FlixLaunchCommandTest {
     @Test
     public void jdwpAgentIgnoresABlankExistingValue() {
         assertTrue(FlixLaunchCommand.withJdwpAgent("   ", 5005, true).startsWith("-agentlib:jdwp="));
+    }
+
+    // --- inherited debug agents ------------------------------------------------------------
+
+    @Test
+    public void refusesToAddASecondAgentAlongsideAgentlib() {
+        // Appending would give the debuggee two JDWP servers competing for suspension, breakpoints
+        // and lifecycle -- the state ADR 0002 forbids. The JVM's own failure is a transport error
+        // at startup, far from the setting that caused it.
+        var thrown = assertThrows(
+                FlixLaunchCommand.JdwpAlreadyConfiguredException.class,
+                () -> FlixLaunchCommand.withJdwpAgent(
+                        "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005",
+                        5006,
+                        true));
+        assertTrue(thrown.getInheritedAgent().startsWith("-agentlib:jdwp"));
+        assertTrue(
+                "the message must say what to do, not only what is wrong",
+                thrown.getMessage().contains("Remote JVM Debug"));
+    }
+
+    @Test
+    public void refusesToAddASecondAgentAlongsideTheLegacyXrunjdwp() {
+        // The pre-JVMTI spelling. Still accepted by every HotSpot, and still what older tooling and
+        // copied shell snippets emit, so detecting only -agentlib would miss real cases.
+        assertThrows(
+                FlixLaunchCommand.JdwpAlreadyConfiguredException.class,
+                () -> FlixLaunchCommand.withJdwpAgent(
+                        "-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8000", 5005, true));
+    }
+
+    @Test
+    public void refusesRegardlessOfWhereTheAgentSitsInTheOptions() {
+        assertThrows(
+                FlixLaunchCommand.JdwpAlreadyConfiguredException.class,
+                () -> FlixLaunchCommand.withJdwpAgent(
+                        "-Xmx2g -agentlib:jdwp=transport=dt_socket,address=*:5005 -Dfoo=bar",
+                        5006,
+                        true));
+    }
+
+    @Test
+    public void preservesOrdinaryOptionsThatMerelyMentionTheAgent() {
+        // A substring match would reject this. Tokenizing does not: the value of a -D property is
+        // not an option that loads an agent, and refusing it would block a legitimate launch.
+        String merged = FlixLaunchCommand.withJdwpAgent("-Dexample=-agentlib:jdwp -Xmx2g", 5005, true);
+        assertTrue(merged.startsWith("-Dexample=-agentlib:jdwp -Xmx2g "));
+        assertTrue(merged.endsWith("address=*:5005"));
+    }
+
+    @Test
+    public void findsNoAgentInOrdinaryOptions() {
+        assertNull(FlixLaunchCommand.findJdwpAgent(null));
+        assertNull(FlixLaunchCommand.findJdwpAgent("   "));
+        assertNull(FlixLaunchCommand.findJdwpAgent("-Xmx2g -Dfile.encoding=UTF-8"));
+        // -agentlib for something other than jdwp is not a debug agent.
+        assertNull(FlixLaunchCommand.findJdwpAgent("-agentlib:jvmtiprof"));
     }
 
     @Test

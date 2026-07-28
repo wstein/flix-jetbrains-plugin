@@ -36,40 +36,6 @@
         <languageMapping language="Flix"
                          serverId="flixLanguageServer"
                          languageId="flix"/>
-
-        <!-- This second mapping (same extension point, serverId pointed at the debug adapter
-             instead of the language server) is what makes "click Debug on this file" work for
-             .flix files at all: DebugAdapterManager.findDebugAdapterServerFor() consults exactly
-             this serverId to mappings table to recognize a file as debuggable *before* any run
-             configuration exists, which is what LSP4IJ's built-in DAPRunConfigurationProvider
-             (a LazyRunConfigurationProducer of DAPRunConfiguration) needs to auto-create one from
-             context. Without it, .flix files were invisible to that discovery step entirely,
-             confirmed by decompiling DebugAdapterManager/DebugAdapterDescriptorFactory (0.20.1
-             ships no sources jar); FlixDebugAdapterDescriptorFactory#prepareConfiguration then
-             fills in the resulting configuration's own Mappings tab data, which this extension
-             point entry does NOT do by itself (it only makes the file discoverable, not
-             debuggable once a configuration exists, see that override's javadoc). -->
-        <fileNamePatternMapping patterns="*.flix"
-                                serverId="flixDebugAdapter"
-                                languageId="flix"/>
-
-        <debugAdapterServer id="flixDebugAdapter"
-                            name="Flix (--Xdebug attach)"
-                            factoryClass="dev.wstein.flixplugin.FlixDebugAdapterDescriptorFactory">
-            <description><![CDATA[
-            Attaches to a Flix program started with <code>--Xdebug</code>
-            (<code>JAVA_TOOL_OPTIONS=-agentlib:jdwp=...</code>), translating JDI to DAP via the
-            bundled <code>FlixDebugAdapter.java</code> -- the identical adapter this project's VS
-            Code extension uses, started here with its "--port" socket transport instead of stdio
-            since LSP4IJ's DAP client only ever connects to a debug adapter over a socket.
-            <p><b>After creating a "Flix (--Xdebug attach)" run configuration, you must add a
-            <code>*.flix</code> mapping to it on the "Mappings" tab before breakpoints in .flix
-            files are recognized</b> -- LSP4IJ has no plugin.xml-level file mapping for DAP servers
-            (unlike its LSP languageMapping above), only this per-run-configuration UI
-            step.</p>
-            ]]></description>
-        </debugAdapterServer>
-
     </extensions>
 
     <!-- LSP4IJ registers several of its features only for language="TEXT" and language="textmate".

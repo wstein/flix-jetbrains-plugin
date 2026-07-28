@@ -6,6 +6,13 @@
 
 ### Added
 
+- **A native Flix run/debug configuration.** Run executes the resolved Flix compiler; Debug launches
+  it with `--Xdebug` and a JDWP agent on a free port, and IntelliJ's own Java debugger attaches. One
+  configuration type covers both, since they differ only in the invocation. A context producer turns
+  any `def` into one, which is what the gutter arrow and the Run/Debug context menu act on.
+- `FlixJar`, in the platform-free `shared` module, now owns the compiler-jar resolution rule so the
+  LSP wiring and the run configuration — in modules that cannot depend on each other — cannot
+  disagree about which compiler to launch.
 - `LICENSE` (Apache 2.0) and `NOTICE`, recording the provenance of every derived component: the
   imported `intellij-flix` revision, the upstream Flix revision the grammar derives from, and
   `flix-lab`'s `FlixDebugAdapter.java`. The repository previously carried no license at all.
@@ -92,6 +99,23 @@
   whose plain `flix` on `PATH` doesn't support `--Xdebug`.
 
 ### Removed
+
+- **The DAP debugging path**, replaced by IntelliJ's own JVM debugger (Phase 6 of the plan, after
+  the Phase-3 gate went green). Gone: the `debugAdapterServer` registration, the DAP
+  `fileNamePatternMapping`, `FlixDebugAdapterDescriptor` and its factory, the vendored
+  `backend/src/main/resources/dap/FlixDebugAdapter.java`, `scripts/sync-debug-adapter.sh`, and the
+  `checkDebugAdapterSync`/`syncDebugAdapter` Gradle tasks that existed only to keep the vendored
+  copy from drifting.
+
+  Two debuggers cannot share one debuggee — they compete for suspension, breakpoints and lifecycle
+  — so this is a replacement rather than an addition. The adapter remains canonical in `flix-lab`
+  for its VS Code client; only the IntelliJ-side copy and its registrations are gone.
+
+  What this buys: one session now covers Flix and every other JVM language in the same process,
+  with each language's own breakpoints, source navigation and evaluator. That was unreachable
+  through a Flix-only debug adapter.
+
+  LSP4IJ stays — it is still the LSP client. Only its DAP client is no longer used.
 
 - The bundled TextMate grammar and all five of its attachment points: `FlixTextMateBundleProvider`,
   its extension registration, `backend/src/main/resources/textmate-bundle/`, the

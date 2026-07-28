@@ -186,6 +186,22 @@ sessions in this plugin.
    then its IntelliJ-side registration, descriptor, factory and vendored adapter copy are
    removed. The canonical adapter continues to serve VS Code from `flix-lab`.
 
+## Status of the DAP path
+
+**Retired, 2026-07-28.** The decision above allowed the DAP client to stay as a fallback until the
+native path passed its gate. That gate is Green, so the fallback is gone: the `debugAdapterServer`
+registration, the DAP `fileNamePatternMapping`, `FlixDebugAdapterDescriptor` and its factory, the
+vendored adapter source, and the Gradle tasks that kept the vendored copy from drifting.
+
+Removed rather than kept behind a flag, because the invariant this ADR rests on is that exactly one
+debugger owns the debuggee. A dormant second implementation is only one registration away from
+violating it, and a fallback nobody exercises is a fallback nobody can trust.
+
+The adapter itself is unaffected — it remains canonical in `flix-lab` for its VS Code client. What
+was removed is the IntelliJ-side copy and the registrations that made it reachable here.
+
+LSP4IJ remains the LSP client. Only its DAP client is no longer used.
+
 ## Consequences
 
 - Java parity comes for free: mixed Flix/Java stacks, frame-specific expression

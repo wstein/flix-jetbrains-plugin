@@ -84,6 +84,23 @@ class FlixSteppingPolicyTest {
         assertTrue(FlixSourceLocations.isFlixRuntime(runtimeLocation("dev.flix.runtime.Result\$")))
     }
 
+    // --- the runaway guard -------------------------------------------------------------------
+
+    @Test
+    fun `a step-over scope spends a finite budget and then gives up`() {
+        // Re-entry into the stepped definition is not guaranteed -- the stepped line may be the last
+        // one that executes. Without a bound the step would single-step to process exit instead of
+        // stopping, which presents as a frozen IDE rather than as a wrong stop.
+        val scope = FlixSteppingListener.StepOverScope("Main.flix#42")
+        var granted = 0
+        while (scope.consume()) {
+            granted++
+            if (granted > 100_000) break // fail loudly rather than hang the suite
+        }
+        assertTrue("the budget must be finite", granted in 1..100_000)
+        assertFalse("an exhausted scope stays exhausted", scope.consume())
+    }
+
     // --- JDI stubs ---------------------------------------------------------------------------
 
     /** A class compiled from a `.flix` file, as JDI reports it. */

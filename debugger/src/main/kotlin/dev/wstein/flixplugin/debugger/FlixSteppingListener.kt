@@ -43,11 +43,9 @@ class FlixSteppingListener : SteppingListener {
             context.location?.let { process.positionManager.getSourcePosition(it) }
         }.getOrNull()
 
-        val scope = FlixDefinitionScope.keyOf(position)
-        process.putUserData(STEP_OVER_SCOPE, scope)
-        if (LOG.isDebugEnabled) {
-            LOG.debug(if (scope == null) "step over from outside a Flix def" else "step over within $scope")
-        }
+        val key = FlixDefinitionScope.keyOf(position)
+        process.putUserData(STEP_OVER_SCOPE, key?.let(::StepOverScope))
+        LOG.debug(if (key == null) "step over from outside a Flix def" else "step over within $key")
     }
 
     override fun beforeResume(context: SuspendContextImpl) {
@@ -56,11 +54,45 @@ class FlixSteppingListener : SteppingListener {
 
     private fun clear(process: DebugProcess) = process.putUserData(STEP_OVER_SCOPE, null)
 
+    /**
+     * The definition a Step Over is confined to, and how much further it may look for it.
+     *
+     * The budget exists because re-entry is not guaranteed: the stepped line may be the last one
+     * that executes, and without a bound the step would single-step to process exit rather than
+     * stopping. Exhausting it stops where the step happens to be, which is the same outcome as
+     * having no policy at all -- a worse stop, never a hang.
+     *
+     * Mutable without synchronization on purpose: every access happens on the debugger manager
+     * thread, which is single-threaded, and the platform asserts as much.
+     */
+    internal class StepOverScope(val key: String) {
+        private var remaining = MAX_INTERMEDIATE_STOPS
+
+        /** Spends one unit of budget; `false` once it is gone. */
+        fun consume(): Boolean {
+            if (remaining <= 0) return false
+            remaining--
+            return true
+        }
+    }
+
     internal companion object {
-        private val STEP_OVER_SCOPE = Key.create<String?>("flix.stepOverScope")
+        /**
+         * How many locations outside the stepped definition may be passed through.
+         *
+         * Generous rather than tuned: adjacent Flix lines are a handful of frames apart, and a step
+         * over a call that does real work is still far below this. It is a runaway guard, not a
+         * policy knob.
+         */
+        private const val MAX_INTERMEDIATE_STOPS = 5_000
+
+        private val STEP_OVER_SCOPE = Key.create<StepOverScope?>("flix.stepOverScope")
 
         /** The definition a Step Over is currently confined to, or `null` if none is in progress. */
-        fun scopeOf(process: DebugProcess?): String? = process?.getUserData(STEP_OVER_SCOPE)
+        fun scopeOf(process: DebugProcess?): StepOverScope? = process?.getUserData(STEP_OVER_SCOPE)
+
+        /** Abandons the current Step Over scope, leaving stepping to the platform's own rules. */
+        fun clearScope(process: DebugProcess) = process.putUserData(STEP_OVER_SCOPE, null)
 
         private val LOG = Logger.getInstance(FlixSteppingListener::class.java)
     }

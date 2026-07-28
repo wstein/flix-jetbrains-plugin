@@ -107,21 +107,45 @@ class FlixSteppingFilter : ExtraSteppingFilter {
     }
 
     /**
-     * Whether this Flix line belongs to a different definition than the Step Over started in.
+     * Whether the step has not yet arrived back in the definition the Step Over began in.
      *
      * Only consulted while a Step Over is in progress -- [FlixSteppingListener] records the scope
      * and clears it for every other action -- so Step Into keeps stopping at the first Flix line it
      * reaches, which is what it should do.
+     *
+     * The destination is stated positively: **stop only in the stepped definition.** Anywhere else
+     * is somewhere the step is passing through, and that includes frames with no Flix definition at
+     * all. Reading "no Flix definition here" as "stop" was the first version of this, and it halted
+     * a Step Over inside `Greeter.java` the moment the stepped line called into Java -- the one
+     * thing Step Over most obviously must not do.
+     *
+     * Frames belonging to other languages are only skipped *while a Flix Step Over is running*,
+     * which the user started from a Flix line. Their breakpoints are untouched: this decides where
+     * a step stops, not where the debugger may suspend.
      */
     private fun isOutsideStepOverScope(context: SuspendContext?, location: Location): Boolean {
         val process = context?.debugProcess ?: return false
         val scope = FlixSteppingListener.scopeOf(process) ?: return false
 
         val position = runCatching { process.positionManager.getSourcePosition(location) }.getOrNull()
-        val here = FlixDefinitionScope.keyOf(position) ?: return false
-        if (here == scope) return false
+        val here = FlixDefinitionScope.keyOf(position)
+        if (here == scope.key) {
+            if (LOG.isDebugEnabled) LOG.debug("arrived back in ${scope.key}, stopping")
+            return false
+        }
 
-        if (LOG.isDebugEnabled) LOG.debug("stepping over $here, not the stepped definition $scope")
+        // Bounded so a step can never run away. The stepped definition is normally re-entered within
+        // a few frames, but it is not guaranteed to be re-entered at all -- the stepped line may be
+        // the last one to execute. Without a budget the step would then single-step to process exit.
+        if (!scope.consume()) {
+            LOG.debug("step-over budget exhausted before returning to ${scope.key}; stopping here")
+            FlixSteppingListener.clearScope(process)
+            return false
+        }
+
+        if (LOG.isDebugEnabled) {
+            LOG.debug("passing through ${here ?: location.declaringType()?.name()}, want ${scope.key}")
+        }
         return true
     }
 

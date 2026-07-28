@@ -78,6 +78,40 @@ class FlixSourceLocationsTest {
         assertNull(FlixSourceLocations.lineNumberOf(location(type, "Main.flix", line = -1)))
     }
 
+    // --- the shape Flix actually generates --------------------------------------------------
+
+    /**
+     * Measured over the 325 `Clo$main$*` classes `flix-lab` compiles under `--Xdebug`
+     * (2026-07-28, `javap -p -l`):
+     *
+     * | Method | Line-number table |
+     * | --- | --- |
+     * | `invoke()` | **0 of 325** carry one at all |
+     * | `applyFrame(Value$)` | **260 of 325** carry exactly one entry, at bytecode offset 0 |
+     *
+     * Both are consequences of the CPS transformation: each continuation frame covers one source
+     * line, and `invoke()` is a synthetic bridge that only calls `applyFrame`. They are inputs this
+     * mapping has to handle rather than incidental compiler output, so they are pinned here -- if a
+     * future Flix release emits line numbers for `invoke()`, this test says so directly instead of
+     * the change surfacing as a behavioural difference in a live session.
+     */
+    @Test
+    fun `declines the synthetic invoke bridge, which carries no line table`() {
+        // JDI reports -1 for every location in a method with no LineNumberTable. Declining is
+        // correct: there is no Flix line to navigate to, and inventing one would send the user to a
+        // position the frame is not at.
+        val type = referenceType(listOf("Java"), "Java", listOf("Main.flix"))
+        assertNull(FlixSourceLocations.lineNumberOf(location(type, "Main.flix", line = -1)))
+    }
+
+    @Test
+    fun `resolves a continuation frame whose method holds a single line`() {
+        // The 80% case. One line entry at offset 0 is a complete, correct frame -- not a degenerate
+        // one -- and must resolve like any other.
+        val type = referenceType(listOf("Java"), "Java", listOf("Main.flix"))
+        assertEquals(53, FlixSourceLocations.lineNumberOf(location(type, "Main.flix", line = 53)))
+    }
+
     @Test
     fun `survives a class that throws AbsentInformationException`() {
         val type = referenceType(listOf("Java"), "Java", sourceNames = null, throwOnSourceNames = true)

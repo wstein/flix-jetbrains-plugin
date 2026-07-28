@@ -259,24 +259,76 @@ and those have entirely different causes.
 
 ## Results
 
+Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3012a5`.
+
 | # | Check | Result |
 | --- | --- | --- |
-| 1 | A `.flix` breakpoint set before its class loads becomes verified and hits | |
-| 2 | A `.java` breakpoint verifies and hits in the same session | |
-| 3 | Step Into moves Flix → project Java | |
-| 4 | Step Over stays in Java | |
-| 5 | Step Out returns to the correct Flix line | |
-| 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | |
-| 7 | Java locals, watches and expression evaluation work in a Java frame | |
-| 8 | A breakpoint in a **SMAP** class verifies and hits | |
-| 9 | A breakpoint in a **no-SMAP** class verifies and hits — needs the self-contained fixture below | |
-| 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | |
-| 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | |
-| 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | |
-| 10 | Duplicate bare-name `Main.flix` binds to **neither** rather than to the wrong one — or *not reachable*, with evidence | |
-| 11 | Pause, continue, terminate and detach behave | |
-| 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | |
-| 13 | All of the above under `runIdeSplitMode` as well as `runIde` | |
+| 1 | A `.flix` breakpoint set before its class loads becomes verified and hits | **not established** — see below |
+| 2 | A `.java` breakpoint verifies and hits in the same session | ✅ `Greeter.java:22` and `:29` both verified and hit |
+| 3 | Step Into moves Flix → project Java | ✅ |
+| 4 | Step Over stays in Java | ✅ |
+| 5 | Step Out returns to the correct Flix line | ✅ returns to `Main.flix:53`, the line after the call |
+| 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | ✅ `applyFrame:53, Clo$main$400067` navigates to `Main.flix:53` |
+| 7 | Java locals, watches and expression evaluation work in a Java frame | ✅ in Java frames. ⚠️ the Flix frame shows *Variables are not available* |
+| 8 | A breakpoint in a **SMAP** class verifies and hits | see 1 |
+| 9 | A breakpoint in a **no-SMAP** class verifies and hits — needs the self-contained fixture below | not run |
+| 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | not reachable |
+| 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | not reachable |
+| 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | not reachable |
+| 10 | Duplicate bare-name `Main.flix` binds to **neither** rather than to the wrong one — or *not reachable*, with evidence | **not reachable** — project sources arrive as `Input.RealFile`, which records an absolute path, so a bare duplicate base name cannot be produced from a project file |
+| 11 | Pause, continue, terminate and detach behave | ✅ |
+| 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | ✅ `0`, and the console shows `Connected to the target VM` |
+| 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
+| 14 | **Step Over inside Flix advances to the next Flix line** | ❌ **new** — lands in decompiled bytecode; see below |
+
+Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
+5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
+common is the *forward* direction and stepping policy, neither of which row 5/6 touches.
+
+### Row 14 — Step Over inside Flix does not stop on a Flix boundary
+
+**Yellow.** Not a mapping defect, and deliberately not fixed here.
+
+Observed: stopped at `Main.flix:53` (`let args = Env.getArgs();`) in frame
+`applyFrame:53, Clo$main$400067`, F8 lands in `invoke():-1` of the *same* class, and the editor opens
+the decompiled `Clo$main$400067.class` instead of any Flix source.
+
+The cause is measurable in the class files. Over the 325 `Clo$main$*` classes `flix-lab` compiles
+under `--Xdebug` (`javap -p -l`, 2026-07-28):
+
+| Method | Line-number table |
+| --- | --- |
+| `invoke()` | **0 of 325** carry one at all |
+| `applyFrame(Value$)` | **260 of 325** carry exactly one entry, at bytecode offset 0 |
+
+Both follow from the CPS transformation: each continuation frame covers a single source line, and
+`invoke()` is a synthetic bridge that only calls `applyFrame`.
+
+That makes the JDI contract for Step Over — *run until the line number changes **within this frame**,
+or the frame pops* — unsatisfiable in 80% of Flix frames. The line can never change, so the step
+always terminates on frame pop, in a caller with no line table. `FlixPositionManager` then correctly
+declines it (`lineNumberOf` rejects `-1`), the platform finds no source, and falls back to the
+decompiler. Every component behaves as specified; the specification is a Java-shaped one.
+
+So Flix needs a stepping *policy*, not another mapping rule. The position manager resolves
+source ↔ bytecode and nothing else; it has no say in where a step stops. Two extension points in
+`IU-2026.1.3` can supply one:
+
+| EP | Interface | Fit |
+| --- | --- | --- |
+| `com.intellij.debugger.extraSteppingFilter` | `ExtraSteppingFilter` | says "do not stop here, keep stepping". Smallest change; would carry the step past `invoke()` and the trampoline to the next frame with a real Flix line. |
+| `com.intellij.debugger.jvmSteppingCommandProvider` | — | replaces the step command outright. More control, more surface. |
+
+Neither is proven. The filter's risk is the `dev.flix.runtime` trampoline between continuations:
+whether stepping through it terminates promptly, or costs a JDWP round trip per bytecode, has to be
+measured rather than assumed.
+
+**Deferred to Phase 4**, which is where the plan already places stepping work ("add Flix-specific
+stepping filters only where tests prove they are necessary" — this row is that proof). It does not
+block the gate: mixed Flix ↔ Java breakpoints, stack navigation and Java evaluation all work, and
+Step Over inside Flix is a refinement of a working session rather than a missing capability. It must
+not be answered with the DAP adapter's old broad `com.*`/`org.*`/`net.*` exclusions, which would take
+user Java, Kotlin and Scala out of stepping — the very frames this path exists to reach.
 
 ### Known open question: `let args` — evidence before any fix
 
@@ -284,6 +336,20 @@ A breakpoint on `let args = …` did not verify under the DAP path even though `
 line present at bytecode offset 0. It is the only line at offset 0 — the entry of the CPS
 continuation frame `applyFrame` — and `locationsOfLine("Flix", "Main.flix", 43)` returned nothing
 for it while every other line resolved.
+
+**Narrowed on 2026-07-28, without changing the plan below.** Two facts arrived from the row-14
+survey and the native session:
+
+1. *Offset 0 is not anomalous.* 260 of 325 `Clo$main$*` classes carry exactly one line entry in
+   `applyFrame`, at offset 0. This is the ordinary shape of a CPS continuation, not a marker of a
+   line the compiler failed to place. Any hypothesis resting on "offset 0 is suspicious" is out.
+2. *Reverse resolution of this very line works natively.* The session stopped in
+   `applyFrame:53, Clo$main$400067` and navigated to `Main.flix:53` — the same construct, one line
+   later in the fixture, resolving correctly through `FlixPositionManager.getSourcePosition`.
+
+Together those move the suspicion from the mapping to the DAP adapter's own lookup, which is the
+"no change here" outcome in the table below — but that is an inference, not the measurement. The
+queries still decide it, and the forward direction remains genuinely untested.
 
 **Run these two queries against the live VM before changing anything**, and record both results:
 
@@ -310,11 +376,32 @@ rather than a defect.
 
 ## Verdict
 
-**Green** — all of 1–13. Proceed to the native run/debug configuration, which is what lets the
+### Recorded verdict, 2026-07-28: **Yellow**
+
+The architectural question the gate exists to answer is settled affirmatively. IntelliJ's Java
+debugger is the sole JDWP owner (row 12), it debugs Flix and Java in one session, Flix frames appear
+in the stack and navigate to `.flix` source, Java breakpoints and evaluation are unaffected, and
+split mode behaves identically to `runIde`. Nothing here points at Red — no extension point turned
+out to be unusable, and no position proved unmappable.
+
+Two bounded items remain, both in the *forward* direction (source → bytecode) or in stepping policy,
+neither in the reverse mapping that rows 5 and 6 confirm:
+
+| Item | Row | Where it goes |
+| --- | --- | --- |
+| `.flix` breakpoint binding, end to end | 1, 8, 9 | re-run — the exclusion-filter fix at `a3012a5` has not been exercised for this |
+| Step Over inside Flix stops on a Flix line | 14 | Phase 4, as a stepping policy; not a mapping change |
+
+Proceeding to the native run/debug configuration is **not** blocked by row 14. It is blocked by
+row 1, which is the gate's central claim and still unmeasured.
+
+### Criteria
+
+**Green** — all of 1–14. Proceed to the native run/debug configuration, which is what lets the
 gutter's Debug action replace the DAP path.
 
-**Yellow** — mixed breakpoints work but class-prepare timing, source lookup or split-mode placement
-needs bounded fixes. Time-box and re-run.
+**Yellow** — mixed breakpoints work but class-prepare timing, source lookup, stepping policy or
+split-mode placement needs bounded fixes. Time-box and re-run.
 
 **Red** — the required Java-debugger extension points are unusable for this IDE, or Flix positions
 cannot be mapped reliably. Record the evidence and fall back to extending the single DAP/JDI

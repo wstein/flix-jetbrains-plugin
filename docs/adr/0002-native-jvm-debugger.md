@@ -62,6 +62,43 @@ javap -l -p path/to/Class.class | grep -A20 LineNumberTable
 
 A line absent from the table is a compiler-invocation problem, not a plugin one.
 
+### CPS makes Java's Step Over semantics inapplicable to Flix frames
+
+`--Xdebug` decides *which* lines exist. The CPS transformation decides how they are **distributed
+across methods**, and that has its own consequence — one the position manager cannot address,
+because it is not a mapping question.
+
+Measured over the 325 `Clo$main$*` classes `flix-lab` compiles under `--Xdebug`
+(`javap -p -l`, 2026-07-28):
+
+| Method | Line-number table |
+| --- | --- |
+| `invoke()` | **0 of 325** carry one at all |
+| `applyFrame(Value$)` | **260 of 325** carry exactly one entry, at bytecode offset 0 |
+
+Each continuation frame covers a single source line; `invoke()` is a synthetic bridge that only
+calls `applyFrame`.
+
+JDI defines Step Over as *run until the line number changes within this frame, or the frame pops*.
+In a frame holding one line, the first clause can never fire, so the step always ends on frame pop —
+in `invoke()`, which has no line table, so there is no source to show and the IDE falls back to the
+decompiler.
+
+Two things follow, and they are the reason this is recorded here rather than as a bug:
+
+1. **Flix needs a stepping policy, and it is a separate concern from position mapping.**
+   `PositionManager` answers "what source is this location?"; it has no say in where a step stops.
+   The extension points that do are `com.intellij.debugger.extraSteppingFilter` and
+   `com.intellij.debugger.jvmSteppingCommandProvider`, both public in IU-2026.1.3.
+2. **This does not weaken the decision.** Breakpoints, stack navigation, frame-specific evaluation
+   and Flix ↔ Java transitions all work through the native debugger; a DAP adapter would face the
+   identical bytecode and the identical problem, with none of the cross-language benefit. The
+   trade-off is that Flix stepping needs code the Java case gets for free.
+
+The correction not to make: the DAP adapter's broad `com.*`/`org.*`/`net.*` step exclusions. They
+would remove user Java, Kotlin and Scala from stepping — the frames this architecture exists to
+reach — to fix a problem confined to Flix's own generated bridges.
+
 ### The required platform API is public and stable
 
 Verified against IU-2026.1.3, `plugins/java/lib/modules/intellij.java.debugger.jar`:

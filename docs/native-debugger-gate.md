@@ -81,6 +81,10 @@ javap -l -p 'build/class/Clo$main$NNNNN.class' | grep -A30 LineNumberTable
   report a **bare** `SourceFile`. If either reports a path, disambiguation resolves it and the
   refusal branch never runs — the check would pass without testing anything.
 
+Class shape is **test input, not incidental output**. Rows 10a–10c exist so the fixture's three
+properties are recorded alongside the result: a green row 10 means nothing unless the class that
+produced it was actually ambiguous.
+
 ## Results
 
 | # | Check | Result |
@@ -94,30 +98,43 @@ javap -l -p 'build/class/Clo$main$NNNNN.class' | grep -A30 LineNumberTable
 | 7 | Java locals, watches and expression evaluation work in a Java frame | |
 | 8 | A breakpoint in a **SMAP** class verifies and hits | |
 | 9 | A breakpoint in a **no-SMAP** class verifies and hits | |
+| 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | |
+| 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | |
+| 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | |
 | 10 | Duplicate bare-name `Main.flix` binds to **neither** rather than to the wrong one | |
 | 11 | Pause, continue, terminate and detach behave | |
 | 12 | **No DAP process starts** — `ps aux \| grep FlixDebugAdapter` finds nothing | |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | |
 
-### Known open question
+### Known open question: `let args` — evidence before any fix
 
 A breakpoint on `let args = …` did not verify under the DAP path even though `javap -l` shows the
 line present at bytecode offset 0. It is the only line at offset 0 — the entry of the CPS
 continuation frame `applyFrame` — and `locationsOfLine("Flix", "Main.flix", 43)` returned nothing
-for it while other lines resolved. Worth checking whether the native path behaves the same, and
-whether the default stratum returns the location where `"Flix"` does not:
+for it while every other line resolved.
+
+**Run these two queries against the live VM before changing anything**, and record both results:
 
 ```java
-rt.locationsOfLine("Flix", "Main.flix", 43)
-rt.locationsOfLine(rt.defaultStratum(), "/abs/path/Main.flix", 43)
+rt.locationsOfLine("Flix", "Main.flix", 43)                        // preferred stratum
+rt.locationsOfLine(rt.defaultStratum(), "/abs/path/Main.flix", 43) // default stratum
 ```
 
-If the default stratum resolves it and `"Flix"` does not, the fix is a fallback in
-`FlixPositionManager.locationsOfLine` when the preferred stratum yields nothing.
+| Outcome | Reading | Action |
+| --- | --- | --- |
+| Both empty | The line is not addressable in this class at all; offset 0 is not the issue. | Look elsewhere — likely which class holds the line. |
+| Both return a location | The lookup is fine; the DAP adapter's failure was its own. | No change here. |
+| Default returns, `"Flix"` does not | A stratum-translation edge at offset 0. | *Then*, and only then, add a default-stratum fallback in `FlixPositionManager.locationsOfLine`. |
+
+The `"Flix"` preference is not incidental — it is what makes an inlined frame resolve to the file it
+came from rather than to the wrong line of the enclosing one. Falling back before the evidence
+supports it would trade that precision away to chase a symptom, and the loss would only show up in
+inlined code, which is the hardest place to notice it.
 
 Note also that at offset 0 the binding has not executed — `Env.getArgs()` runs after — so stopping
 there would show `args` unbound. "Stop at `let args`" and "stop before the call producing it" are
-the same position in CPS.
+the same position in CPS, which may make this a question about what the breakpoint should *mean*
+rather than a defect.
 
 ## Verdict
 

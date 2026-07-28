@@ -6,7 +6,7 @@ Written to be read before claiming the milestone complete. A row marked **not ru
 that will probably pass; it is a row nobody has measured. Where a row is unreachable, the evidence
 for that is recorded rather than the conclusion alone.
 
-Status as of 2026-07-28, at `4160531`. 203 automated tests, 0 failures.
+Status as of 2026-07-28, at `982c190`. 225 automated tests, 0 failures.
 
 | | Meaning |
 | --- | --- |
@@ -23,9 +23,10 @@ Status as of 2026-07-28, at `4160531`. 203 automated tests, 0 failures.
 | --- | --- | --- |
 | 1 | Adopted parser, recovery, fuzz, incremental-edit, editor, folding and gutter tests pass | ✅ 92 tests in `:language` — `FlixParsingTest`, `FlixErrorRecoveryTest`, `FlixRareSyntaxTest`, `FlixRareSyntaxRecoveryTest`, `FlixRareSyntaxFuzzTest`, `FlixIncrementalEditTest`, `FlixEditorBasicsTest`, `FlixFoldingTest`, `FlixRunLineMarkerContributorTest` |
 | 2 | The 428-file corpus is lossless, error-free, and matches the declaration/`def main` oracle | ✅ **427 of 427 (100%)**, up from 211 (49.3%) at adoption; one documented exclusion. `FlixCorpusTest`, see [parser evaluation](intellij-flix-parser-evaluation.md) |
-| 3 | Exactly one language, file type, parser, highlighter, gutter marker, LSP session and run configuration | ✅ `FlixPluginDescriptorTest` (8 checks) plus `checkIntegrationGlue`, which now fails the build on a class registered in two modules |
+| 3 | Exactly one language, file type, parser, highlighter, gutter marker, LSP session and run configuration | ✅ `FlixPluginDescriptorTest` (8 checks) and `checkIntegrationGlue` statically; `FlixAssembledPluginTest` at runtime |
 | 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ⚠️ `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases). Diagnostics verified live during the fork LSP fix — 5 resolution errors before, 0 after, through a scripted LSP handshake — and confirmed in the IDE. **Completion and hover have never been exercised in a test or a recorded session.** |
 | 5 | `checkIntegrationGlue`, build and plugin verification pass | ⚠️ `checkIntegrationGlue` and `build` pass and run in `check`. `verifyPlugin` has a dedicated CI job on every push and pull request, which `releaseDraft` depends on — but until now **no IDE targets were configured**, so it had nothing to compare against and reported success without checking anything. Targets are now declared; the first run against them has not happened. |
+| 6 | Root-plugin integration tests: every content-module descriptor loads in the assembled plugin, exactly one Flix language stack, backend-only extensions absent from the frontend | ✅ `FlixAssembledPluginTest` — asserted through platform lookups, so it fails if a module drops out of `<content>` or a registration lands in the wrong module. Fault-injected: a second `runLineMarkerContributor` registration fails it |
 
 ---
 

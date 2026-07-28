@@ -49,6 +49,9 @@ internal class FlixLaunch(
     companion object {
         const val LOCALHOST: String = "localhost"
 
+        /** Inherited by the debuggee, so an agent here is loaded alongside ours. */
+        const val JAVA_TOOL_OPTIONS: String = "JAVA_TOOL_OPTIONS"
+
         /**
          * A launch for [jar], allocating a debug port only when [debug].
          *
@@ -60,6 +63,15 @@ internal class FlixLaunch(
             val port = if (!debug) {
                 null
             } else {
+                // Before allocating anything: the debuggee inherits this process's environment, so
+                // an agent already in JAVA_TOOL_OPTIONS would be loaded alongside the one this
+                // launch adds. Two agents cannot share a debuggee (ADR 0002), and the JVM reports
+                // that as a transport error at startup rather than as a configuration problem.
+                try {
+                    FlixLaunchCommand.requireNoInheritedJdwpAgent(System.getenv(JAVA_TOOL_OPTIONS))
+                } catch (e: FlixLaunchCommand.JdwpAlreadyConfiguredException) {
+                    throw ExecutionException(e.message, e)
+                }
                 try {
                     FlixLaunchCommand.findFreePort()
                 } catch (e: IOException) {

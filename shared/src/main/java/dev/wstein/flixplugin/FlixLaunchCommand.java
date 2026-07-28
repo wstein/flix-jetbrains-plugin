@@ -129,12 +129,30 @@ public final class FlixLaunchCommand {
      */
     public static @NotNull String withJdwpAgent(@Nullable String existingOptions, int port, boolean suspend) {
         String inherited = existingOptions == null ? "" : existingOptions.strip();
-        String alreadyPresent = findJdwpAgent(inherited);
+        requireNoInheritedJdwpAgent(inherited);
+        String agent = jdwpAgent(port, suspend);
+        return inherited.isEmpty() ? agent : inherited + " " + agent;
+    }
+
+    /**
+     * Refuses to continue if {@code options} already loads a debug agent.
+     *
+     * <p>The rule belongs beside the others rather than at each call site: a debug launch adds an
+     * agent, and it must not add a second one. Two agents cannot share a debuggee -- they compete
+     * for suspension, breakpoints and lifecycle -- and the JVM's own complaint is a transport
+     * initialization error at startup, far from the setting that caused it.
+     *
+     * <p>Needed even though {@link #debug(Path, String, int, boolean)} puts the agent on the
+     * command line rather than in the environment: the launched process still inherits
+     * {@code JAVA_TOOL_OPTIONS}, so an agent there is loaded alongside the one on the command line.
+     *
+     * @throws JdwpAlreadyConfiguredException naming the offending option and what to do instead
+     */
+    public static void requireNoInheritedJdwpAgent(@Nullable String options) {
+        String alreadyPresent = findJdwpAgent(options);
         if (alreadyPresent != null) {
             throw new JdwpAlreadyConfiguredException(alreadyPresent);
         }
-        String agent = jdwpAgent(port, suspend);
-        return inherited.isEmpty() ? agent : inherited + " " + agent;
     }
 
     /**

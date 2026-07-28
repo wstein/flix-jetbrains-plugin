@@ -201,6 +201,28 @@ public class FlixLaunchCommandTest {
     }
 
     @Test
+    public void requireNoInheritedJdwpAgentRefusesAnAgentAndPassesAnythingElse() {
+        // The launch path calls this before allocating a port. It is not covered by withJdwpAgent's
+        // own check: the run configuration puts the agent on the command line rather than in the
+        // environment, so nothing else would look at JAVA_TOOL_OPTIONS at all -- and the debuggee
+        // inherits it regardless.
+        assertThrows(
+                FlixLaunchCommand.JdwpAlreadyConfiguredException.class,
+                () -> FlixLaunchCommand.requireNoInheritedJdwpAgent(
+                        "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"));
+        assertThrows(
+                FlixLaunchCommand.JdwpAlreadyConfiguredException.class,
+                () -> FlixLaunchCommand.requireNoInheritedJdwpAgent("-Xrunjdwp:transport=dt_socket"));
+
+        // Must not refuse an ordinary environment, or every debug launch fails on a machine that
+        // happens to set heap options.
+        FlixLaunchCommand.requireNoInheritedJdwpAgent(null);
+        FlixLaunchCommand.requireNoInheritedJdwpAgent("");
+        FlixLaunchCommand.requireNoInheritedJdwpAgent("-Xmx2g -Dfile.encoding=UTF-8");
+        FlixLaunchCommand.requireNoInheritedJdwpAgent("-Dexample=-agentlib:jdwp");
+    }
+
+    @Test
     public void findsNoAgentInOrdinaryOptions() {
         assertNull(FlixLaunchCommand.findJdwpAgent(null));
         assertNull(FlixLaunchCommand.findJdwpAgent("   "));

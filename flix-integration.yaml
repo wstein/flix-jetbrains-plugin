@@ -46,6 +46,10 @@ registrations:
     com.intellij.debugger.steppingListener: dev.wstein.flixplugin.debugger.FlixSteppingListener
     com.intellij.configurationType: dev.wstein.flixplugin.run.FlixRunConfigurationType
     com.intellij.runConfigurationProducer: dev.wstein.flixplugin.run.FlixRunConfigurationProducer
+    # Flix value presentation. Registered against the shared supertypes (Record$, Tagged$), so
+    # every compiled specialisation is covered without naming it.
+    com.intellij.debugger.compoundRendererProvider.record: dev.wstein.flixplugin.debugger.FlixRecordRenderer
+    com.intellij.debugger.compoundRendererProvider.tagged: dev.wstein.flixplugin.debugger.FlixTaggedRenderer
 
 lsp4ij:
   languageServerId: flixLanguageServer

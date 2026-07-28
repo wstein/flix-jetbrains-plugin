@@ -56,5 +56,16 @@
              the context menu act on. Scoped to .flix files. -->
         <runConfigurationProducer
                 implementation="dev.wstein.flixplugin.run.FlixRunConfigurationProducer"/>
+
+        <!-- Flix values carry their shape in a form the Java debugger cannot read: a record is a
+             linked list of label/value/rest nodes, and a tagged union is a class whose name ends in
+             the tag. Unrendered they show as {RecordExtend$Obj@1234}, which says nothing. Both are
+             registered against the shared supertype, so every specialisation is covered without
+             naming it. Value$ is deliberately not rendered: it is a union struct with nine fields
+             and no discriminator, so no reader could say which one is live. -->
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixRecordRenderer"/>
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixTaggedRenderer"/>
     </extensions>
 </idea-plugin>

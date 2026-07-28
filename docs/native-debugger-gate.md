@@ -75,15 +75,85 @@ javap -l -p 'build/class/Clo$main$NNNNN.class' | grep -A30 LineNumberTable
 
 - **SMAP class** — has `SourceDebugExtension`. Its `sourceNames("Flix")` are bare (`Main.flix`)
   while `SourceFile` is an absolute path. Exercises stratum selection.
-- **No-SMAP class** — no `SourceDebugExtension`. Only the default stratum, and `SourceFile` may be
-  absolute. Exercises the dual-mode fallback.
+- **No-SMAP class** — no `SourceDebugExtension`. Only the default stratum. Exercises the dual-mode
+  fallback.
 - **Ambiguity** needs *two* `Main.flix` in different modules whose classes carry **no** SMAP and
   report a **bare** `SourceFile`. If either reports a path, disambiguation resolves it and the
   refusal branch never runs — the check would pass without testing anything.
 
+The survey below records what this project actually produces, so rows 8–10 can be set up rather
+than guessed at.
+
 Class shape is **test input, not incidental output**. Rows 10a–10c exist so the fixture's three
 properties are recorded alongside the result: a green row 10 means nothing unless the class that
 produced it was actually ambiguous.
+
+### Fixture survey of `flix-lab`, 2026-07-28
+
+Taken from `build/class` after a `--Xdebug` build, so these are facts about the fixture rather than
+expectations of it.
+
+| | Finding |
+| --- | --- |
+| Classes sourced from the project's `Main.flix` | **17, all with SMAP**, all reporting the absolute path `/Users/werner/github.com/wstein/flix-lab/src/flix/Main.flix` |
+| Classes without SMAP | 295 among `*main*`, but all from *library* files — `Nec.flix`, `Sys/Env.flix` — which live inside the compiler jar and are not navigable project sources |
+| `Main.flix` files in the project | **one** |
+
+So **row 8 is ready** — use `Def$main` or any `Clo$main$…` from that file — while **rows 9 and 10
+have no fixture as things stand**.
+
+Why the split falls that way: `Smap.build()` emits nothing until a class draws on a second file, and
+`Main.flix` calls into the standard library (`Env.getArgs`, `GetOpt.getOpt`, `List.memberOf`), so
+inlining pulls foreign code in and SMAP always appears.
+
+### Row 9 — a no-SMAP fixture, recipe verified
+
+A **self-contained** file, one that calls nothing from another file, produces no SMAP. Verified by
+compiling this and inspecting the result:
+
+```flix
+def twice(x: Int32): Int32 = x + x
+
+def compute(): Int32 =
+    let a = twice(21);
+    let b = a + 1;
+    b
+
+def main(): Unit \ IO =
+    let r = compute();
+    println(r)
+```
+
+```text
+Def$compute   smap=no   SourceFile="/private/tmp/smaptest/Selfcontained.flix"   lines 3 4 5 6
+Def$main      smap=no   SourceFile="/private/tmp/smaptest/Selfcontained.flix"   lines 8 9 10
+```
+
+Add such a file to the project and breakpoint inside it. Note lines 4 and 5 — both `let` bindings —
+carry line numbers, which is worth knowing for the `let args` question below.
+
+### Row 10 — determine reachability before trying to test it
+
+The precondition is a **bare** `SourceFile`, and a project file appears never to produce one.
+`Source.name` resolves per input kind:
+
+- `Input.RealFile(path, _) => path.toString` — project files, which `flix run` supplies as absolute
+  paths. Observed absolute in every case above, with and without SMAP.
+- `Input.FileInPackage(_, virtualPath, _, _) => virtualPath` — files inside a package, which *are*
+  bare (`Nec.flix`) or short relative (`Sys/Env.flix`).
+
+Only package sources report bare names, and the compiler carries one copy of each. So the
+duplicate-bare-name collision the refusal guards against does not appear to be reachable from
+ordinary project sources at all.
+
+If that holds, record row 10 as **not reachable**, with the evidence, rather than leaving it blank or
+marking it green off a fixture that never exercised it. The refusal in
+`FlixSourceFiles.choose` stays either way: it costs nothing, and "cannot currently happen" is a
+weaker guarantee than "cannot happen".
+
+To disprove it, the shape needed is two `.fpkg` dependencies each carrying a `Main.flix`, both
+unpacked as navigable sources. If you build that, record it — it turns a defensive branch into a
+tested one.
 
 ## Results
 
@@ -97,11 +167,11 @@ produced it was actually ambiguous.
 | 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | |
 | 7 | Java locals, watches and expression evaluation work in a Java frame | |
 | 8 | A breakpoint in a **SMAP** class verifies and hits | |
-| 9 | A breakpoint in a **no-SMAP** class verifies and hits | |
+| 9 | A breakpoint in a **no-SMAP** class verifies and hits — needs the self-contained fixture below | |
 | 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | |
 | 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | |
 | 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | |
-| 10 | Duplicate bare-name `Main.flix` binds to **neither** rather than to the wrong one | |
+| 10 | Duplicate bare-name `Main.flix` binds to **neither** rather than to the wrong one — or *not reachable*, with evidence | |
 | 11 | Pause, continue, terminate and detach behave | |
 | 12 | **No DAP process starts** — `ps aux \| grep FlixDebugAdapter` finds nothing | |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | |

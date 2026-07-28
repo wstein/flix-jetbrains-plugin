@@ -137,10 +137,19 @@ Ordered by what blocks the milestone rather than by matrix position.
 4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
    with the respective plugin installed.
 5. **Class redefinition and stale-cache SMAP tests** — no coverage, and no known failure either.
-6. **`FlixPositionManager.getAllClasses` and the class-prepare filter** have no direct test. Both
-   need a real `Project` for `SourcePosition`, and this module already mixes `ParsingTestCase` with a
-   mock application in a way that has caused cross-test interference. The rules they compose are
-   covered; the composition is not.
+6. **`FlixPositionManager.getAllClasses` and the class-prepare filter** have no direct test, and the
+   obstacle is now known rather than assumed. Both start from a `SourcePosition`, so the fixture must
+   produce a file that is *both* typed as Flix **and** present in the file index — `FlixSourceFiles`
+   resolves through the index, so a `LightVirtualFile` from `ParsingTestCase` fails the positive
+   case, while `BasePlatformTestCase` gives an indexed file whose type is plain text because a
+   debugger-module fixture does not load the language module's `fileType` registration. Registering
+   it in the test is not available either: `FileTypeManagerEx.registerFileType` does not exist in
+   IU-2026.1.3.
+
+   A workable route is to move the test to the `language` module, which owns that registration, or
+   to give the debugger module a fixture that loads the language descriptor. Neither is a
+   two-line change, and the rules being composed are individually covered, so this is recorded as a
+   known gap rather than closed badly.
 
 Nothing here is blocked on a decision. Every item is a measurement someone has to take, or a test
 someone has to find a safe fixture for.

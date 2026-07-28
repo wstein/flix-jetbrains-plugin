@@ -310,6 +310,43 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
 | 14 | **Step Over inside Flix advances to the next Flix line** | ✅ confirmed live, 2026-07-28 |
 
+### Some lines could not take a breakpoint — a compiler defect, now fixed
+
+Breakpoints on `Main.flix` lines 102–105 never bound while 101, 106 and 107 did, with nothing in the
+source distinguishing them. Four rounds of plugin-side investigation found nothing, because there
+was nothing to find: every artifact said the lines were equivalent.
+
+They were not. The `LineNumberTable` held two entries at one bytecode offset:
+
+```text
+line 102: 208     <- println(helloFromKotlin())
+line  59: 208     <- KotlinGreeter.greeting(), inlined into it
+line 103: 288
+line  66: 288
+```
+
+An entry is keyed by its offset, so the second does not add a mapping — it **replaces** the first.
+The replaced line then does not exist for a debugger: absent from `allLineLocations`,
+`locationsOfLine` empty, no breakpoint can bind. `javap` shows both entries, which is why reading
+the class file suggested the lines were fine.
+
+Cross-file inlining escapes this because `Smap` gives the foreign line a synthetic number; same-file
+inlining passes the line through unchanged and the two collide. Line 101 escaped by accident — its
+entry sits at offset 0, the prologue, while the inlined body landed at 128.
+
+Fixed in `flix-fork` (`LineNumbers.emit` now keeps one entry per offset, the call site winning).
+Proven with a JDI probe asking the live VM directly:
+
+| Line | Addressable before | after |
+| --- | --- | --- |
+| 101 | 1 | 1 |
+| 102–105 | **0** | **1** |
+| 106, 107 | 1 | 1 |
+
+**The lesson for future rows:** `javap` showing a line in the table does not mean a debugger can
+bind to it. Ask the VM — `locationsOfLine` is the only authority, and a short JDI probe answers in
+one run what class-file inspection could not answer in four attempts.
+
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
 common is the *forward* direction and stepping policy, neither of which row 5/6 touches.

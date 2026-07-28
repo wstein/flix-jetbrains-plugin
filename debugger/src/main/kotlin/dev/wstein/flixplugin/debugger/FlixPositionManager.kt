@@ -59,14 +59,29 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         }
     }
 
+    /**
+     * The already-loaded classes that can host a breakpoint at [position].
+     *
+     * Classes are required to hold the **line**, not merely to come from the same file, for the
+     * reason spelled out on [FlixLineOnly]: `Breakpoint.createOrWaitPrepare` calls
+     * `createRequestForPreparedClass` on everything returned here, and each class without the line
+     * answers *"no executable code"* — which sticks if it lands before the class that does have it.
+     * One `.flix` file compiles to many classes, each covering a different part of it, so file-level
+     * matching returns mostly classes that cannot host the breakpoint.
+     *
+     * The cheap file test runs first and the JDI line query only for what survives it, so the extra
+     * accuracy costs a query per candidate rather than per loaded class.
+     */
     override fun getAllClasses(position: SourcePosition): List<ReferenceType> {
         val target = flixTargetOf(position)
         val loaded = debugProcess.virtualMachineProxy.allClasses()
-        val matched = loaded.filter { type -> matchesSource(type, target) }
+        val matched = loaded.filter { type ->
+            matchesSource(type, target) && locationsOfLine(type, position).isNotEmpty()
+        }
         if (LOG.isDebugEnabled) {
             LOG.debug(
                 "getAllClasses(${target.baseName}:${position.line + 1}): " +
-                    "${matched.size} of ${loaded.size} loaded classes matched",
+                    "${matched.size} of ${loaded.size} loaded classes hold that line",
             )
         }
         return matched
@@ -180,7 +195,7 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         // original requestor, and `deleteRequest` handles a differing `REQUESTOR` property, so the
         // request is still torn down with the breakpoint.
         val request = debugProcess.requestsManager.createClassPrepareRequest(
-            FlixSourcesOnly(requestor, target),
+            FlixLineOnly(requestor, position),
             "",
         )
         if (request == null) {
@@ -196,25 +211,53 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     }
 
     /**
-     * Passes a class-prepare event on only when the prepared class was compiled from [target].
+     * Passes a class-prepare event on only when the prepared class actually contains [position]'s
+     * line.
      *
      * The watch cannot be narrowed by name, so it sees every class the VM loads. Handing those
      * straight to the breakpoint is wrong twice over: it asks the position manager chain to resolve
      * a Flix line against unrelated classes, and `LineBreakpoint.createRequestForPreparedClass`
-     * marks the breakpoint invalid -- "no executable code at line N in <class>" -- for each one that
-     * has no such line. Filtering here means the breakpoint is only ever told about its own classes.
+     * marks the breakpoint invalid -- *"no executable code at line N in <class>"* -- for every one
+     * that has no such line.
      *
-     * Checks the single prepared type rather than calling [getAllClasses], which the platform's
-     * equivalent does: this runs once per class load, and [getAllClasses] walks every loaded class.
+     * ## Why the test is the line and not the file
+     *
+     * Filtering on the source file alone is not enough, and the way it fails is a race rather than
+     * an outright error. One Flix source compiles to many classes -- `Main.flix` produces 27 -- and
+     * each covers only part of the file. Line 102 of that file exists in **2** of the 27. Forwarding
+     * all 27 means 25 of them tell the breakpoint it has no executable code.
+     *
+     * Whether that sticks depends on arrival order, because `RequestManagerImpl.setInvalid` records
+     * the complaint only while the breakpoint has not yet bound anywhere:
+     *
+     * ```java
+     * public void setInvalid(Requestor requestor, String message) {
+     *    if (!this.isVerified(requestor)) { this.myRequestWarnings.put(requestor, message); }
+     * }
+     * ```
+     *
+     * and nothing removes it afterwards -- `registerRequest` does not touch `myRequestWarnings`. So
+     * a class holding the line arriving first leaves the breakpoint valid, and one arriving after
+     * the others leaves it permanently marked invalid despite binding correctly. Observed exactly
+     * that way: adjacent lines of one function, identical in every respect that matters, some
+     * verified and some not.
+     *
+     * Testing the line removes the race rather than narrowing it: a class that cannot host the
+     * breakpoint is never mentioned to it. This is what the platform's own equivalent does --
+     * `PositionManagerImpl` wraps its requestor with `getAllClasses(position).contains(type)`, a
+     * *position* test, not a file test.
+     *
+     * Asking [locationsOfLine] about the one class that just prepared is much cheaper than the
+     * platform's `getAllClasses`, which walks every loaded class on every prepare.
      */
-    private inner class FlixSourcesOnly(
+    private inner class FlixLineOnly(
         private val delegate: ClassPrepareRequestor,
-        private val target: Target,
+        private val position: SourcePosition,
     ) : ClassPrepareRequestor {
         override fun processClassPrepare(process: DebugProcess, type: ReferenceType) {
-            if (!matchesSource(type, target)) return
+            if (locationsOfLine(type, position).isEmpty()) return
             if (LOG.isDebugEnabled) {
-                LOG.debug("prepared ${type.name()}: compiled from ${target.baseName}, resolving")
+                LOG.debug("prepared ${type.name()}: holds ${position.file.name}:${position.line + 1}, resolving")
             }
             delegate.processClassPrepare(process, type)
         }

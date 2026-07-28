@@ -296,7 +296,7 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 
 | # | Check | Result |
 | --- | --- | --- |
-| 1 | A `.flix` breakpoint set before its class loads becomes verified and hits | **not established** — see below |
+| 1 | A `.flix` breakpoint set before its class loads becomes verified and hits | ✅ after the over-binding fix below |
 | 2 | A `.java` breakpoint verifies and hits in the same session | ✅ `Greeter.java:22` and `:29` both verified and hit |
 | 3 | Step Into moves Flix → project Java | ✅ |
 | 4 | Step Over stays in Java | ✅ |
@@ -312,7 +312,7 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 11 | Pause, continue, terminate and detach behave | ✅ |
 | 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | ✅ `0`, and the console shows `Connected to the target VM` |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
-| 14 | **Step Over inside Flix advances to the next Flix line** | ❌ **new** — lands in decompiled bytecode; see below |
+| 14 | **Step Over inside Flix advances to the next Flix line** | fix implemented, awaiting a live re-run; see below |
 
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
@@ -356,12 +356,35 @@ Neither is proven. The filter's risk is the `dev.flix.runtime` trampoline betwee
 whether stepping through it terminates promptly, or costs a JDWP round trip per bytecode, has to be
 measured rather than assumed.
 
-**Deferred to Phase 4**, which is where the plan already places stepping work ("add Flix-specific
-stepping filters only where tests prove they are necessary" — this row is that proof). It does not
-block the gate: mixed Flix ↔ Java breakpoints, stack navigation and Java evaluation all work, and
-Step Over inside Flix is a refinement of a working session rather than a missing capability. It must
-not be answered with the DAP adapter's old broad `com.*`/`org.*`/`net.*` exclusions, which would take
-user Java, Kotlin and Scala out of stepping — the very frames this path exists to reach.
+#### Implemented — `FlixSteppingFilter`
+
+Once row 1 went green, Phase 4 was unblocked and this was built as the plan specifies ("add
+Flix-specific stepping filters only where tests prove they are necessary" — this row is that proof).
+
+`com.intellij.debugger.extraSteppingFilter` was chosen over `jvmSteppingCommandProvider`: it is the
+smaller surface, and `RequestHint.processSteppingFilters` consults it at exactly the decision this
+needs — *stop here, or step again, and how far*.
+
+The policy is one rule: **resume stepping, with `STEP_INTO`, whenever the step lands in Flix
+machinery that has no Flix line; stop as soon as it reaches one.**
+
+`STEP_INTO` rather than `STEP_OUT` is deliberate. The trampoline driving one continuation into the
+next is a loop within a single frame, so stepping out of it would leave the loop entirely and skip
+every continuation still to run. Stepping in walks forward and descends into the next `applyFrame`.
+
+Isolation holds by construction: the rule requires the frame to be Flix's — compiled from a `.flix`
+file, or in `dev.flix.runtime.` — so no `.java`, `.kt` or `.scala` stop is ever suppressed. Notably
+that includes a Java class compiled without `-g`, which has no line numbers either; "no line
+information" alone is deliberately *not* the trigger, and `FlixSteppingPolicyTest` pins that case.
+The DAP adapter's old broad `com.*`/`org.*`/`net.*` exclusions were not used and must not be — they
+would take user Java, Kotlin and Scala out of stepping, the very frames this path exists to reach.
+
+**Known cost, not yet measured.** A stretch of runtime work with no intervening Flix line is
+single-stepped rather than run. Between adjacent source lines that is a few frames. A long
+computation staying inside the runtime — a Datalog solve is the case to watch — would be stepped
+instruction by instruction. It is bounded rather than unbounded, because `DebugProcessImpl.doStep`
+applies the configured stepping filters as class exclusions on the step request, so `java.*` and
+friends are not entered. Measure before assuming a Datalog fixture is usable under a step.
 
 ### Known open question: `let args` — evidence before any fix
 
@@ -420,13 +443,13 @@ out to be unusable, and no position proved unmappable.
 Two bounded items remain, both in the *forward* direction (source → bytecode) or in stepping policy,
 neither in the reverse mapping that rows 5 and 6 confirm:
 
-| Item | Row | Where it goes |
+| Item | Row | State |
 | --- | --- | --- |
-| `.flix` breakpoint binding, end to end | 1, 8, 9 | re-run — the cause of the over-binding was found and fixed after this run; see *If it binds too much* above |
-| Step Over inside Flix stops on a Flix line | 14 | Phase 4, as a stepping policy; not a mapping change |
+| `.flix` breakpoint binding, end to end | 1 | ✅ green once the over-binding cause was fixed; see *If it binds too much* above |
+| Step Over inside Flix stops on a Flix line | 14 | fix implemented as `FlixSteppingFilter`; awaiting a live re-run |
+| A no-SMAP fixture, and duplicate base names | 8, 9 | still to run; row 10 is not reachable |
 
-Proceeding to the native run/debug configuration is **not** blocked by row 14. It is blocked by
-row 1, which is the gate's central claim and still unmeasured.
+Row 1 was the gate's central claim and is now met. What remains is coverage, not capability.
 
 ### Criteria
 

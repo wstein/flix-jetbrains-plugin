@@ -88,8 +88,11 @@ Two things follow, and they are the reason this is recorded here rather than as 
 
 1. **Flix needs a stepping policy, and it is a separate concern from position mapping.**
    `PositionManager` answers "what source is this location?"; it has no say in where a step stops.
-   The extension points that do are `com.intellij.debugger.extraSteppingFilter` and
-   `com.intellij.debugger.jvmSteppingCommandProvider`, both public in IU-2026.1.3.
+   Implemented as `FlixSteppingFilter` on `com.intellij.debugger.extraSteppingFilter`, chosen over
+   `jvmSteppingCommandProvider` for its smaller surface: `RequestHint.processSteppingFilters`
+   consults it at exactly the decision needed. One rule — resume with `STEP_INTO` while the step is
+   in Flix machinery with no Flix line — and it requires the frame to be Flix's, so no other
+   language's stop is ever suppressed.
 2. **This does not weaken the decision.** Breakpoints, stack navigation, frame-specific evaluation
    and Flix ↔ Java transitions all work through the native debugger; a DAP adapter would face the
    identical bytecode and the identical problem, with none of the cross-language benefit. The

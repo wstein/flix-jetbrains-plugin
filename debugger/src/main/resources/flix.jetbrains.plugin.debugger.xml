@@ -27,5 +27,13 @@
 
         <debugger.positionManagerFactory
                 implementation="dev.wstein.flixplugin.debugger.FlixPositionManagerFactory"/>
+
+        <!-- Where a step may stop, which the position manager has no say in. Flix's CPS output puts
+             one source line in each continuation frame and none at all in the generated invoke()
+             bridges, so Java's "run until the line changes in this frame" always ends on frame pop,
+             in bytecode with no source. This carries the step on to the next Flix line. Scoped to
+             Flix's own frames, so Java, Kotlin and Scala stepping is untouched. -->
+        <debugger.extraSteppingFilter
+                implementation="dev.wstein.flixplugin.debugger.FlixSteppingFilter"/>
     </extensions>
 </idea-plugin>

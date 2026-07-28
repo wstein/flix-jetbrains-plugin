@@ -97,6 +97,36 @@ internal object FlixSourceLocations {
         return line.takeIf { it > 0 }
     }
 
+    /** The package holding Flix's runtime support classes -- `Frame$`, `Result$`, `Thunk$`. */
+    const val RUNTIME_PACKAGE: String = "dev.flix.runtime."
+
+    /**
+     * Whether [location] is inside Flix's own execution machinery with no Flix line to show.
+     *
+     * This is the predicate that decides where Flix stepping may **not** stop, and both halves are
+     * load-bearing:
+     *
+     *  - *no Flix line.* A location with one is a place the user can see, so stepping stops there.
+     *  - *Flix machinery.* Either a class compiled from a `.flix` file -- the generated `invoke()`
+     *    bridges, which carry no `LineNumberTable` at all -- or Flix's runtime package, which holds
+     *    the trampoline that drives one continuation into the next.
+     *
+     * The conjunction is what keeps other languages untouched. A `.java`, `.kt` or `.scala` frame
+     * fails the second half whether or not it has line information, so this can never suppress a
+     * stop the Java, Kotlin or Scala debugger intended -- including a Java frame compiled without
+     * `-g`, which has no line numbers either.
+     */
+    fun isMachineryWithoutFlixLine(location: Location): Boolean {
+        if (lineNumberOf(location) != null) return false
+        return isFlixLocation(location) || isFlixRuntime(location)
+    }
+
+    /** Whether [location] is in Flix's runtime support package rather than in compiled Flix code. */
+    fun isFlixRuntime(location: Location): Boolean {
+        val declaringType = runCatching { location.declaringType().name() }.getOrNull() ?: return false
+        return declaringType.startsWith(RUNTIME_PACKAGE)
+    }
+
     /** The recorded source path for [location] in [stratum], or `null` if absent. */
     fun sourcePathOf(location: Location, stratum: String): String? =
         runCatching { location.sourcePath(stratum) }.getOrNull()

@@ -303,8 +303,8 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 5 | Step Out returns to the correct Flix line | ✅ returns to `Main.flix:53`, the line after the call |
 | 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | ✅ `applyFrame:53, Clo$main$400067` navigates to `Main.flix:53` |
 | 7 | Java locals, watches and expression evaluation work in a Java frame | ✅ in Java frames. ⚠️ the Flix frame shows *Variables are not available* |
-| 8 | A breakpoint in a **SMAP** class verifies and hits | **not reachable** — `flix-lab` compiles 16 800 classes and **0** carry a `SourceDebugExtension`; see below |
-| 9 | A breakpoint in a **no-SMAP** class verifies and hits | ✅ — this is what row 1 exercised; every class in the fixture is this shape |
+| 8 | A breakpoint in a **SMAP** class verifies and hits | ✅ — every class from the project's `Main.flix` carries SMAP, so row 1 exercised this path |
+| 9 | A breakpoint in a **no-SMAP** class verifies and hits | not run — needs the self-contained fixture below; no project class in `flix-lab` has this shape |
 | 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | not reachable |
 | 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | not reachable |
 | 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | not reachable |
@@ -318,29 +318,58 @@ Reverse mapping — JDI location → `.flix` file and line — is therefore **co
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
 common is the *forward* direction and stepping policy, neither of which row 5/6 touches.
 
-### Row 8 — no SMAP anywhere, and why that is not a compiler defect
+### Row 8 — SMAP is emitted, and the fork needs no change
 
-`flix-lab` compiles **16 800 classes and none carries a `SourceDebugExtension`**. That is not a fork
-regression, and it does not need fixing:
+**Correction, 2026-07-28.** An earlier revision of this section reported "16 800 classes and 0 carry
+a `SourceDebugExtension`" and concluded row 8 was unreachable. That measurement was wrong and the
+conclusion with it. BSD `grep` silently suppresses matches in binary files without `-a`, and
+`strings` misparses these class files as Mach-O and aborts — both returned zero for a string that is
+plainly present. The correct count:
 
-- the vendored compiler **is** the fork — `ca/uwaterloo/flix/language/phase/jvm/Smap.class` is in
-  `flix-vendor-2026.07.24.1.jar`;
-- `Smap.build()` returns `None` when `foreign.isEmpty`, and `foreign` gains an entry only when a
-  class contains a `SourceLocation` from a *different* `.flix` file than its own. Every class in
-  this build draws on one source, so the answer is correct rather than missing;
-- the `"Flix"` stratum exists for cross-file inlining. Without such inlining there is nothing to
-  translate, and the default stratum already carries real `.flix` line numbers — which is exactly
-  what rows 1 and 9 confirm works.
+| | |
+| --- | --- |
+| Top-level classes | 16 800 |
+| Carrying `SourceDebugExtension` | **4 218** (25%) |
 
-So the dual-mode position manager is not redundant, it is simply always taking its second path here.
-**Keep both paths.** Zero SMAP is a property of this build, not a proof that inlining never produces
-a multi-source class.
+Recorded because the failure mode is silent: a scan that returns zero looks exactly like a scan that
+found nothing to report. Use `grep -a` on class files, and verify any zero against a single file
+known to match before believing it.
 
-One question is open and cheap to answer if it ever matters: whether `--Xdebug` suppresses the
-cross-file inlining that would create SMAP. If it does, SMAP and debugging are mutually exclusive by
-construction and the `"Flix"` stratum can never appear in a debuggable build. Compile the same
-project without `--Xdebug` and re-scan for `SourceDebugExtension`. Not run; nothing currently
-depends on the answer.
+A real SMAP body from `Clo$main$399829`, showing the cross-file inlining the dual-mode design was
+built for:
+
+```text
+SMAP
+Clo$main$399829.flix
+Flix
+*S Flix
+*F
++ 1 Main.flix
+/Users/werner/github.com/wstein/flix-lab/src/flix/Main.flix
++ 2 Nec.flix
+Nec.flix
++ 3 List.flix
+List.flix
+*L
+1#1,55:1
+605#2,1:56
+1340#3,1:57
+*E
+```
+
+So the fork is behaving correctly and needs no change:
+
+- `Smap.build()` emits whenever a class draws on a second file, and here it does — `Main.flix`
+  primary, with `Nec.flix:605` and `List.flix:1340` mapped to synthetic lines 56 and 57;
+- inlined code keeps the callee's own file and line rather than being reattributed to the call site,
+  which is what makes stepping into inlined library code land somewhere truthful;
+- the `"Flix"` stratum is live, not dead code, so **both** paths of the position manager are
+  exercised in a normal build.
+
+What follows for the gate: **row 8 is green**, because every class compiled from the project's
+`Main.flix` carries SMAP and row 1's breakpoint therefore bound through the `"Flix"` stratum. **Row
+9 is the one still missing a fixture** — the no-SMAP classes in this project all come from library
+files inside the compiler jar, which are not navigable project sources.
 
 ### Row 14 — Step Over inside Flix does not stop on a Flix boundary
 
@@ -529,7 +558,7 @@ neither in the reverse mapping that rows 5 and 6 confirm:
 | --- | --- | --- |
 | `.flix` breakpoint binding, end to end | 1 | ✅ green once the over-binding cause was fixed; see *If it binds too much* above |
 | Step Over inside Flix stops on a Flix line | 14 | fix implemented as `FlixSteppingFilter`; awaiting a live re-run |
-| A no-SMAP fixture, and duplicate base names | 8, 9 | still to run; row 10 is not reachable |
+| A no-SMAP fixture | 9 | still to run — row 8 is green, row 10 is not reachable |
 
 Row 1 was the gate's central claim and is now met. What remains is coverage, not capability.
 

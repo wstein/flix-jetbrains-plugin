@@ -22,6 +22,8 @@
         <p>Completion, diagnostics and hover come from the same <code>flix lsp</code> language
         server the official VS Code extension downloads — no reimplementation — via
         <a href="https://plugins.jetbrains.com/plugin/23257-lsp4ij">LSP4IJ</a>'s LSP client.</p>
+        <p>Debugging requires the Java plugin, so it is unavailable in IDEs that do not bundle one.
+        Language support is not: that part loads everywhere.</p>
     ]]></description>
 
     <content>

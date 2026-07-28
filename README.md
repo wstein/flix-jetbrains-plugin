@@ -46,6 +46,13 @@ and every other JVM language in the same process.
   passed. `verifyPluginStructure` does detect it, but does not fail the build over it -- its output
   has to be read, not just its exit code.
 
+### In an IDE without the Java plugin
+
+Language support works: syntax, parsing, folding, the LSP features, the gutter marker. Only the
+debugger module needs the Java plugin, and it is declared optional, so an IDE without one **skips
+it and loads the rest** rather than failing. Debugging is the single feature that is unavailable
+there — not the plugin.
+
 **Not yet verified** -- see [verification coverage](docs/phase-8-verification.md) for the full
 matrix, which is explicit about what has been measured and what has not. The two that matter most:
 the native run configuration has never been exercised in a live session, and breakpoints on some

@@ -45,11 +45,30 @@ Rows map to the [native-debugger gate](native-debugger-gate.md), which is **Gree
 | 7 | Java locals, watches/evaluation, **and exception breakpoints** work in Java frames | ✅ locals and evaluation (gate row 7); exception breakpoints now too. `FlixDebugProbe --exception java.lang.IllegalStateException` stopped at the throw in `Greeter.java:45`, reported the catch location as `Greeter.java:38`, and showed the Java frames over `Clo$main$399986 Main.flix:52`. Caught *and* uncaught were requested: a breakpoint that only saw uncaught throws would miss every recovered failure. Flix `Clo$` frames show no variables — not a defect, see the gate's *Why some Flix frames show no variables* |
 | 8 | Attached project/library/JDK Java sources resolve through the platform debugger | ⚠️ project sources ✅ — stepping into `Greeter.java` lands on the right lines, and the stacks above navigate. JDK and library source *attachment* ⬜: it is the IDE matching a `-sources.jar` to a frame, which happens above JDI and therefore cannot be probed. It is also stock platform behaviour this plugin neither extends nor intercepts |
 | 9 | **Multiple generated classes for one Flix source do not duplicate or miss breakpoints** | ✅ — the cause was a compiler defect, not a plugin one; see below |
-| 10 | Pause, continue, terminate and detach have correct lifecycle semantics | ✅ gate row 11 |
-| 11 | A launch failure or missing Flix jar produces an actionable error and no orphan process | ⚠️ **the error half is now automated.** `FlixRunConfigurationTest` asserts that `checkConfiguration` refuses through the assembled plugin's own configuration type, and that the message names both the file to supply and the `FLIX_FORK_JAR` override — "not found" is not actionable. Fault-injected: silencing the check fails it. `FlixJarTest` (7 cases) covers resolution itself. **The orphan-process half remains untested**: nothing is spawned when the jar is missing, so there is nothing to orphan on *that* path, but a process that dies after JDWP attach has not been exercised |
+| 10 | Pause, continue, terminate and detach have correct lifecycle semantics | ✅ gate row 11, and detach measured separately below: attaching and then disposing resumes the debuggee, which runs to completion and exits by itself |
+| 11 | A launch failure or missing Flix jar produces an actionable error and no orphan process | ✅ **both halves.** *Error:* `FlixRunConfigurationTest` asserts `checkConfiguration` refuses through the assembled plugin's own configuration type and that the message names both the file to supply and the `FLIX_FORK_JAR` override — "not found" is not actionable. Fault-injected: silencing the check fails it. `FlixJarTest` (7 cases) covers resolution. *Orphan:* measured on a live debuggee, see below |
 | — | *(added by review)* The two `GenericDebuggerRunner` gates are satisfied | ✅ `FlixDebuggerRunnerGatesTest` — both were failing, which is why Debug could never have attached |
 | — | *(added by review)* The attach port matches the port on the debuggee's command line | ✅ `FlixLaunchTest` |
 | 12 | No DAP process or second JDI/JDWP client starts | ✅ gate row 12, and now structurally enforced: `checkIntegrationGlue` fails the build if a `debugAdapterServer` is registered while the backend is `intellijJvm` |
+
+### Rows 10 and 11 — what an orphan actually requires
+
+Both were measured against a live debuggee launched with the command line `FlixLaunchCommand`
+builds, since the question is about process lifetime rather than about any code this plugin runs.
+
+| Situation | Result |
+| --- | --- |
+| Launched, **nobody ever attaches** | Alive indefinitely and making no progress — 25 s later the output had not grown by a byte. This is the orphan, and nothing in the JVM resolves it |
+| Launched, attached, then **detached** (`VirtualMachine.dispose`) | Resumed, ran to completion, printed its output and exited on its own. No orphan |
+
+The first row is the reason `startProcess` returns a `KillableColoredProcessHandler` rather than a
+plain one: `suspend=y` is required so a breakpoint on the first line can bind before the program
+moves, and its cost is a process that waits forever if the session never starts. The platform
+killing that handler is the only thing that cleans it up — so the two `GenericDebuggerRunner` gates
+fixed in `e18ec1b` were not merely "no session starts", they were "no session starts *and* a
+compiler JVM is left waiting".
+
+The second row is the reassuring one, and it is why Detach needs no special handling.
 
 ### Row 9 — resolved, and it was not the plugin
 
@@ -131,7 +150,10 @@ Ordered by what blocks the milestone rather than by matrix position.
 1. **The manual smoke test's Run and Debug rows.** The run configuration has never been exercised in
    a session, and three defects were found in it by review rather than by use — including two that
    made a debug session impossible. With DAP retired there is no fallback, so this is the highest
-   risk item and the one that unblocks the most.
+   risk item and the one that unblocks the most. It is now also the *narrowest*: everything the IDE
+   would do after pressing the arrow — launch, attach, bind, hit, walk mixed stacks, catch
+   exceptions, detach — has been exercised over JDWP against the same command line. What remains
+   unproven is the gesture and its wiring.
 2. **The per-frame evaluator**, interop row 2's last clause. Which evaluator the IDE offers when
    stopped in a Kotlin frame is decided by the IDE, so no JDI probe can observe it. Breakpoints,
    binding and the mixed stack are proven; this one clause needs the IDE.

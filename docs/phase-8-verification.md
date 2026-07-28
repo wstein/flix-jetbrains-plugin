@@ -25,7 +25,7 @@ Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 | 2 | The 428-file corpus is lossless, error-free, and matches the declaration/`def main` oracle | ✅ **427 of 427 (100%)**, up from 211 (49.3%) at adoption; one documented exclusion. `FlixCorpusTest`, see [parser evaluation](intellij-flix-parser-evaluation.md) |
 | 3 | Exactly one language, file type, parser, highlighter, gutter marker, LSP session and run configuration | ✅ `FlixPluginDescriptorTest` (8 checks) and `checkIntegrationGlue` statically; `FlixAssembledPluginTest` at runtime |
 | 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ✅ all four. `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases); the rest are exercised by [`scripts/flix-lsp-probe.py`](../scripts/flix-lsp-probe.py) against the real server — hover returns `def println(x: a): Unit \ IO` with docs, completion returns 6 items while typing, diagnostics report 0 errors on a clean file and reported 5 before the fork LSP fix |
-| 5 | `checkIntegrationGlue`, build and plugin verification pass | ⚠️ `checkIntegrationGlue` and `build` pass and run in `check`. `verifyPlugin` has a dedicated CI job on every push and pull request, which `releaseDraft` depends on — but until now **no IDE targets were configured**, so it had nothing to compare against and reported success without checking anything. Targets are now declared; the first run against them has not happened. |
+| 5 | `checkIntegrationGlue`, build and plugin verification pass | ✅ all three, and `verifyPlugin` now actually checks something. It had a CI job on every push and pull request, which `releaseDraft` depends on, but **no IDE targets were configured** — so it compared against nothing and reported success. With `IC-2026.1.3` and `IU-2026.1.3` declared, its first real run found **8 violations**: three uses of `SteppingListener`, which is `@ApiStatus.Internal`, and five deprecated APIs. Both are fixed — the stepping hook moved to the public `JvmSteppingCommandProvider` — and both targets now report **Compatible**. This also corrected a claim made earlier in this document's own history, that every extension point in use was public |
 | 6 | Root-plugin integration tests: every content-module descriptor loads in the assembled plugin, exactly one Flix language stack, backend-only extensions absent from the frontend | ✅ `FlixAssembledPluginTest` — asserted through platform lookups, so it fails if a module drops out of `<content>` or a registration lands in the wrong module. Fault-injected: a second `runLineMarkerContributor` registration fails it |
 
 ---
@@ -46,7 +46,7 @@ Rows map to the [native-debugger gate](native-debugger-gate.md), which is **Gree
 | 8 | Attached project/library/JDK Java sources resolve through the platform debugger | ⬜ not run. Stepping into `Greeter.java` works, but JDK and library source attachment was never exercised |
 | 9 | **Multiple generated classes for one Flix source do not duplicate or miss breakpoints** | ✅ — the cause was a compiler defect, not a plugin one; see below |
 | 10 | Pause, continue, terminate and detach have correct lifecycle semantics | ✅ gate row 11 |
-| 11 | A launch failure or missing Flix jar produces an actionable error and no orphan process | ⚠️ `FlixRunConfiguration.checkConfiguration` resolves the jar in the dialog so the failure is reported where it can be acted on, and `FlixJar` names the remedy (`FlixJarTest`, 7 cases). **The orphan-process half is untested.** |
+| 11 | A launch failure or missing Flix jar produces an actionable error and no orphan process | ⚠️ **the error half is now automated.** `FlixRunConfigurationTest` asserts that `checkConfiguration` refuses through the assembled plugin's own configuration type, and that the message names both the file to supply and the `FLIX_FORK_JAR` override — "not found" is not actionable. Fault-injected: silencing the check fails it. `FlixJarTest` (7 cases) covers resolution itself. **The orphan-process half remains untested**: nothing is spawned when the jar is missing, so there is nothing to orphan on *that* path, but a process that dies after JDWP attach has not been exercised |
 | — | *(added by review)* The two `GenericDebuggerRunner` gates are satisfied | ✅ `FlixDebuggerRunnerGatesTest` — both were failing, which is why Debug could never have attached |
 | — | *(added by review)* The attach port matches the port on the debuggee's command line | ✅ `FlixLaunchTest` |
 | 12 | No DAP process or second JDI/JDWP client starts | ✅ gate row 12, and now structurally enforced: `checkIntegrationGlue` fails the build if a `debugAdapterServer` is registered while the backend is `intellijJvm` |
@@ -93,8 +93,8 @@ most of these rows runnable for the first time. JRuby is beyond what the plan as
 | # | Requirement | Status |
 | --- | --- | --- |
 | 1 | **Required:** Flix → Java → Flix-return, with breakpoints, stepping, stack, locals, evaluation, exceptions, source lookup | ✅ for breakpoints, stepping, stack, locals and evaluation (gate rows 3–7, `Greeter.java`). ⬜ exceptions and library/JDK source lookup |
-| 2 | **Required:** Flix → Kotlin/JVM → Java → Flix-return, `.kt` and `.java` breakpoints, frame-specific evaluators | ⬜ **now testable** — `vendor/kotlinlib`, called from `Main.flix:102` |
-| 3 | **Required:** Kotlin inline-function and lambda frames do not steal or mis-map Flix positions | ⬜ needs a fixture with an inline function; the current Kotlin `Greeter` has none |
+| 2 | **Required:** Flix → Kotlin/JVM → Java → Flix-return, `.kt` and `.java` breakpoints, frame-specific evaluators | ⚠️ **breakpoints and mixed stack proven; the evaluator is not.** [`scripts/FlixDebugProbe.java`](../scripts/FlixDebugProbe.java) armed `Greeter.kt:18` in one session launched from Flix: bound in 1 class, hit, and the stack read `Greeter.kt:18` over `Clo$main$400234 Main.flix:102` over `Def$main Exit.flix:45`. Each frame resolved through its own stratum. Which *evaluator* the IDE offers per frame is an IDE-side choice a JDI probe cannot observe |
+| 3 | **Required:** Kotlin inline-function and lambda frames do not steal or mis-map Flix positions | ✅ `Greeter.kt` now has `private inline fun decorate(...)` taking a lambda, which emits both `*S Kotlin` and `*S KotlinDebug` strata. Line 18 (the call site) and 17, 22 are addressable; line 42 (the inline body) is not, because inlined bodies map to synthetic lines under `KotlinDebug` — the Kotlin plugin's stratum to resolve, not ours. The mis-mapping this row guards against cannot occur: the position manager declines every non-`.flix` file type (row 9), and the stack above shows the Flix frames under an inlining Kotlin frame keeping their correct lines |
 | 4 | **Conditional:** coroutine parity, if claimed | ✖ **not claimed.** The plan forbids claiming it without proving the Kotlin debugger's coroutine agent is injected into an externally launched JVM. It is not, and no such claim is made |
 | 5 | **Optional Scala profile:** Flix → Scala 3 → Java → Flix-return | ⬜ **now testable** — `vendor/scalalib`, called from `Main.flix:103`. Requires the Scala plugin installed |
 | 6 | **Optional Scala profile:** inline, extension and given-generated frames | ⬜ needs a fixture using those constructs |
@@ -114,9 +114,9 @@ plugin owes every other JVM language, and it is the one row that cannot regress 
 | Adopted PSI and highlighting without TextMate | ✅ TextMate removed; highlighting confirmed in use |
 | One green arrow beside `def main` | ✅ confirmed live; the earlier duplicate was fixed by backend-only registration |
 | Run uses the canonical Flix configuration | ⬜ not run — the configuration landed in `7451ba4` |
-| Debug opens the native JVM debugger | ⬜ **not run**, and three defects were fixed on the way to it, none confirmed live: a stale `DAPConfiguration` hijacking the gutter arrow (cleared), a producer building an unregistered configuration type (`fa7f2df`), and — the substantive one — both `GenericDebuggerRunner` conditions unsatisfied, so no debug session could ever have started (`e18ec1b`) |
-| Flix, Java and Kotlin breakpoints coexist | ⚠️ Flix + Java ✅; Kotlin ⬜ |
-| Stepping crosses Flix↔Java and Flix↔Kotlin | ⚠️ Flix↔Java ✅ (gate rows 3–5); Flix↔Kotlin ⬜ |
+| Debug opens the native JVM debugger | ⬜ **not run**, and three defects were fixed on the way to it, none confirmed live: a stale `DAPConfiguration` hijacking the gutter arrow (cleared), a producer building an unregistered configuration type (`fa7f2df`), and — the substantive one — both `GenericDebuggerRunner` conditions unsatisfied, so no debug session could ever have started (`e18ec1b`). What *is* now proven is everything downstream of the button: `FlixDebugProbe` attaches to the exact command line `FlixLaunchCommand` builds, binds, hits and walks mixed stacks. That narrows a failure here to the gesture and its wiring |
+| Flix, Java and Kotlin breakpoints coexist | ⚠️ Flix + Java ✅. Kotlin binds and hits at JDI level in a Flix-launched session (interop row 2); coexistence *as IDE breakpoints* is unrun |
+| Stepping crosses Flix↔Java and Flix↔Kotlin | ⚠️ Flix↔Java ✅ (gate rows 3–5). Flix↔Kotlin: the call crossing is proven by the mixed stack; stepping across it in an IDE is unrun |
 | With the Scala plugin, a run crosses Flix↔Scala 3 | ⬜ |
 | Mixed stack frames navigate correctly | ✅ gate row 6 |
 | LSP behaviour unchanged | ✅ and improved — the fork's Plain-LSP never loaded workspace jars; fixed and verified, 5 errors → 0 |
@@ -132,9 +132,12 @@ Ordered by what blocks the milestone rather than by matrix position.
    a session, and three defects were found in it by review rather than by use — including two that
    made a debug session impossible. With DAP retired there is no fallback, so this is the highest
    risk item and the one that unblocks the most.
-2. **Required interop rows 2 and 3** — Kotlin. The fixture exists; row 3 additionally needs an
-   inline function, which the current Kotlin `Greeter` does not have.
-3. **`verifyPlugin`** — the CI job existed but verified against no IDEs. Targets are now configured, so the next CI run is the first that checks anything; expect it to have something to say.
+2. **The per-frame evaluator**, interop row 2's last clause. Which evaluator the IDE offers when
+   stopped in a Kotlin frame is decided by the IDE, so no JDI probe can observe it. Breakpoints,
+   binding and the mixed stack are proven; this one clause needs the IDE.
+3. **Exception breakpoints and JDK/library source lookup** (rows 2.7, 2.8). Both are stock platform
+   behaviour that this plugin neither extends nor obstructs, which is why they rank here rather than
+   higher — but neither has been run.
 4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
    with the respective plugin installed.
 5. **Flix values in CPS frames.** A `Clo$` frame's state lives in fields `l0`…`l8` plus `pc`, not

@@ -122,6 +122,17 @@ java scripts/FlixLineProbe.java <jdwp-port> Main.flix <first-line> <last-line>
 
 Reach for it before reading bytecode, not after.
 
+`scripts/FlixDebugProbe.java` is the next step up: it arms one line, waits for the hit and prints the
+stack, which is how mixed-language frames become visible without an IDE.
+
+```console
+java scripts/FlixDebugProbe.java <jdwp-port> Greeter.kt 18
+```
+
+Between them these cover everything a debug session does *after* launch, against the same command
+line `FlixLaunchCommand` builds. What they cannot cover is the gesture — pressing the gutter arrow,
+and which evaluator the IDE picks per frame. Keep that boundary explicit when reporting evidence.
+
 ## The Flix compiler
 
 Resolved as `$FLIX_FORK_JAR`, else the newest `flix-vendor-*.jar` in the project root. Non-obvious

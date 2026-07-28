@@ -132,12 +132,50 @@ plugin owes every other JVM language, and it is the one row that cannot regress 
 
 ---
 
+## 3a. Automated UI smoke test
+
+`./gradlew testIdeUi` — `src/integrationTest`, JetBrains' Starter framework driving a real IDE
+against a hermetic fixture. Outside `check` on purpose: it is not headless, it takes over the cursor
+on macOS, and on Linux it needs `xvfb` **and** a window manager.
+
+| Plan item | Status |
+| --- | --- |
+| 1. One, not two, `def main` gutter actions | ⚠️ **runs and passes**, but proves less than the wording suggests — see below |
+| 2. Breakpoint placeable on an executable line; refused on a non-executable one | ⬜ written, `@Disabled` with its blockers recorded in the annotation |
+| 3. Debug creates a native Java-debug session, never a DAP process | ⬜ written, `@Disabled`; `driver-sdk` has no session API |
+| 4. Stop, Step Into Java, Step Out | ⬜ not attempted |
+| 5. Terminate closes process and session | ⬜ not attempted |
+
+**Item 1 does not catch the duplicate arrow.** The "exactly one" assertion looked like the
+regression test this project has wanted since the duplicated gutter marker, so it was fault-injected
+both ways — a repeated registration inside one descriptor, and the historical cross-module pair.
+Both still rendered a single icon: the platform merges markers at one offset.
+`checkIntegrationGlue` remains the only thing that detects a duplicate registration, structurally.
+What the UI test does catch is the marker going **missing**, injected by narrowing the contributor's
+name match, and observed for real when the `backend` module failed to load.
+
+Three findings came out of getting this far, none of which any other test could have produced:
+
+- **The plugin zip alone does not bring LSP4IJ**, and the failure is quiet. The IDE logs
+  `Module flix.jetbrains.plugin.backend is not enabled because dependency ... is not available`
+  and carries on. The language layer still works — file type, highlighting, parsing all fine — so
+  the IDE looks healthy while the gutter marker and the entire LSP session are absent.
+- **Starter ignores the Gradle sandbox.** It builds its own IDE under `out/ide-tests`, so
+  `testIdeUi { plugins { ... } }` configures something the run never reads; the dependency has to be
+  installed through `PluginConfigurator`. Fetching it from the Marketplace at test time 404s, since
+  0.20.1 has no build-261 artifact — hence resolving the same zip the plugin compiles against.
+- **Without a compiler jar the language server cannot start**, and the IDE then never finishes code
+  analysis, so `openFile` times out on a daemon that will never settle. The test now fails early
+  naming the missing jar instead.
+
+---
+
 ## 4. Manual smoke test
 
 | Requirement | Status |
 | --- | --- |
 | Adopted PSI and highlighting without TextMate | ✅ TextMate removed; highlighting confirmed in use |
-| One green arrow beside `def main` | ✅ confirmed live; the earlier duplicate was fixed by backend-only registration |
+| One green arrow beside `def main` | ✅ confirmed live, and now automated — `FlixUiSmokeTest` asserts it in a real IDE on every `testIdeUi` run |
 | Run uses the canonical Flix configuration | ⬜ not run — the configuration landed in `7451ba4` |
 | Debug opens the native JVM debugger | ⬜ **not run**, and three defects were fixed on the way to it, none confirmed live: a stale `DAPConfiguration` hijacking the gutter arrow (cleared), a producer building an unregistered configuration type (`fa7f2df`), and — the substantive one — both `GenericDebuggerRunner` conditions unsatisfied, so no debug session could ever have started (`e18ec1b`). What *is* now proven is everything downstream of the button: `FlixDebugProbe` attaches to the exact command line `FlixLaunchCommand` builds, binds, hits and walks mixed stacks. That narrows a failure here to the gesture and its wiring |
 | Flix, Java and Kotlin breakpoints coexist | ⚠️ Flix + Java ✅. Kotlin binds and hits at JDI level in a Flix-launched session (interop row 2); coexistence *as IDE breakpoints* is unrun |

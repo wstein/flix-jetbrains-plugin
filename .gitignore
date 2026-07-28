@@ -42,3 +42,6 @@ bin/
 
 ### Scala / Metals ###
 .metals/
+
+# JetBrains Starter's IDE installations, configs and screenshots for testIdeUi.
+out/ide-tests/

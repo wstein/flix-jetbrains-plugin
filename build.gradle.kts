@@ -17,6 +17,40 @@ subprojects {
     apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
 }
 
+// UI smoke test -- see src/integrationTest and docs/phase-8-verification.md.
+//
+// Its own source set and its own task, deliberately outside `check`. This is not a headless test:
+// it launches a real IDE and drives real Swing components through an AWT robot, which on macOS
+// takes over the cursor and on Linux needs xvfb plus a window manager. A suite that ran it by
+// default would be a suite people stop running.
+//
+// Declared before `dependencies` because that block names `integrationTestImplementation`, and a
+// source set's configurations do not exist until it does.
+//
+// Run with: ./gradlew testIdeUi
+sourceSets {
+    create("integrationTest") {
+        compileClasspath += sourceSets.main.get().output
+        runtimeClasspath += sourceSets.main.get().output
+    }
+}
+
+val integrationTestImplementation: Configuration by configurations.getting {
+    extendsFrom(configurations.testImplementation.get())
+}
+
+// The LSP4IJ distribution, resolved so the UI test can install it into the IDE Starter builds.
+//
+// Starter creates its own IDE installation under `out/ide-tests` and ignores the Gradle sandbox, so
+// `testIdeUi { plugins {} }` cannot supply it. Downloading from the Marketplace at test time was the
+// obvious alternative and fails: 0.20.1 has no build-261 artifact to fetch, so the request 404s.
+// Taking the same artifact the plugin is compiled against removes both the network and the chance
+// of testing against a different version than the one shipped.
+val lsp4ijDistribution: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
@@ -29,6 +63,11 @@ dependencies {
         pluginModule(implementation(project(":backend")))
 
         testFramework(TestFrameworkType.Platform)
+
+        // Starter drives the UI smoke test. Its version is not written by hand: the plugin resolves
+        // it from the platform's own build number, so the driver can never drift from the IDE it
+        // drives -- which is the failure that makes a UI test flake rather than fail.
+        testFramework(TestFrameworkType.Starter, configurationName = "integrationTestImplementation")
 
         // Test-scoped only. Root-plugin integration tests need to name debugger APIs
         // (SourcePosition, DebugProcess) to drive FlixPositionManager against the assembled plugin,
@@ -50,10 +89,55 @@ dependencies {
     // programmatically and needs no descriptor at all.
     testImplementation(project(":language"))
     testImplementation("junit:junit:4.13.2")
+
+    // The UI smoke test drives a real IDE, so it needs JUnit 5 and Starter's own transitive
+    // surface: the API returns Kodein `DI` and coroutine `Deferred` in public signatures.
+    integrationTestImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    integrationTestImplementation("org.kodein.di:kodein-di-jvm:7.20.2")
+    integrationTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.1")
+
+    // Gradle needs the launcher on the *runtime* classpath to start a JUnit 5 task at all; without
+    // it the task fails before loading a single test, with a message about the platform rather than
+    // about the missing artifact.
+    "integrationTestRuntimeOnly"("org.junit.platform:junit-platform-launcher:1.11.4")
+
+    lsp4ijDistribution("com.jetbrains.plugins:com.redhat.devtools.lsp4ij:0.20.1@zip")
+
+    // `kotlin.stdlib.default.dependency = false` keeps the stdlib out of the shipped plugin, which
+    // is correct there -- the platform provides it. Here it is not: Starter reaches Kodein, Kodein
+    // reaches kotlin-reflect, and reflect against an older stdlib dies on a missing internal class
+    // (`KotlinGenericDeclaration`) with a stack trace naming neither. Pinned together on purpose.
+    integrationTestImplementation(kotlin("stdlib"))
+    integrationTestImplementation(kotlin("reflect"))
 }
 
 tasks.test {
     useJUnit()
+}
+
+val testIdeUi by intellijPlatformTesting.testIdeUi.registering {
+    // Split mode is how this plugin actually ships, but the driver selects a different runner for a
+    // frontend/backend pair and that path is unproven here. The gutter and breakpoint gestures being
+    // asserted are frontend-side either way, so the single-process run tests the same gestures
+    // without also testing the harness. Split-mode UI coverage stays an open question, recorded as
+    // such rather than half-configured.
+    splitMode = false
+
+    task {
+        useJUnitPlatform()
+        testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+        classpath = sourceSets["integrationTest"].runtimeClasspath
+
+        // Inherited so the test can resolve a compiler jar the same way the plugin does.
+        environment("FLIX_FORK_JAR", providers.environmentVariable("FLIX_FORK_JAR").getOrElse(""))
+
+        // Resolved inside the provider rather than at configuration time, so the configuration
+        // cache is not asked to serialize a resolved artifact set.
+        val lsp4ij = lsp4ijDistribution.elements.map { it.first().asFile.absolutePath }
+        jvmArgumentProviders.add(
+            CommandLineArgumentProvider { listOf("-Dpath.to.lsp4ij=${lsp4ij.get()}") },
+        )
+    }
 }
 
 intellijPlatform {

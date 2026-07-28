@@ -154,6 +154,31 @@ rules, all encoded in `FlixLaunchCommand` and pinned by tests:
   line numbers *only* under it. Without it most statements have no breakpointable line.
 - The JDWP agent goes before `-jar`; everything after it is the compiler's own argument list.
 
+## The UI smoke test
+
+`./gradlew testIdeUi` runs `src/integrationTest` through JetBrains' Starter framework against a real
+IDE. It is **not** in `check`: it drives real Swing components with an AWT robot, so it takes over
+the cursor on macOS and needs `xvfb` plus a window manager on Linux.
+
+It requires a compiler jar (`FLIX_FORK_JAR`, or `flix-vendor-*.jar` in the repo root). Without one
+the language server cannot start and the IDE never finishes code analysis, so `openFile` times out
+waiting for a daemon that will never settle.
+
+Three things about this harness are counterintuitive:
+
+- **Starter ignores the Gradle sandbox.** It builds its own IDE under `out/ide-tests`, so
+  `testIdeUi { plugins { ... } }` configures something the run never reads. Plugin dependencies go
+  in through `PluginConfigurator`. LSP4IJ comes from the `lsp4ijDistribution` configuration rather
+  than the Marketplace, which has no build-261 artifact for the pinned version.
+- **Installing only the plugin zip silently drops `backend`.** The IDE logs one line about the
+  missing LSP4IJ dependency and carries on, so highlighting works while the gutter marker and the
+  LSP session are gone.
+- **The driver counts lines from 0**; the editor gutter displays from 1.
+
+When adding an assertion, fault-inject it. The "exactly one gutter marker" assertion reads like a
+duplicate-arrow regression test and is not one — duplicate registrations still render a single icon,
+because the platform merges markers at one offset.
+
 ## Testing
 
 - `debugger` and `shared` use JDI/plain stubs — no platform fixture, so they run fast.

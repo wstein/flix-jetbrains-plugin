@@ -313,9 +313,9 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 4 | Step Over stays in Java | ✅ |
 | 5 | Step Out returns to the correct Flix line | ✅ returns to `Main.flix:53`, the line after the call |
 | 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | ✅ `applyFrame:53, Clo$main$400067` navigates to `Main.flix:53` |
-| 7 | Java locals, watches and expression evaluation work in a Java frame | ✅ in Java frames. ⚠️ the Flix frame shows *Variables are not available* |
+| 7 | Java locals, watches and expression evaluation work in a Java frame | ✅ in Java frames, and in Flix `Def$` frames. ⚠️ Flix `Clo$` frames show *Variables debug info not available* — see below |
 | 8 | A breakpoint in a **SMAP** class verifies and hits | ✅ — every class from the project's `Main.flix` carries SMAP, so row 1 exercised this path |
-| 9 | A breakpoint in a **no-SMAP** class verifies and hits | not run — needs the self-contained fixture below; no project class in `flix-lab` has this shape |
+| 9 | A breakpoint in a **no-SMAP** class verifies and hits | ✅ `Def$noSmapFixture` at `Main.flix:63`, with `n = 20` shown |
 | 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | not reachable |
 | 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | not reachable |
 | 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | not reachable |
@@ -554,7 +554,7 @@ rather than a defect.
 
 ## Verdict
 
-### Recorded verdict, 2026-07-28: **Yellow**
+### Recorded verdict, 2026-07-28: **Green**
 
 The architectural question the gate exists to answer is settled affirmatively. IntelliJ's Java
 debugger is the sole JDWP owner (row 12), it debugs Flix and Java in one session, Flix frames appear
@@ -562,18 +562,40 @@ in the stack and navigate to `.flix` source, Java breakpoints and evaluation are
 split mode behaves identically to `runIde`. Nothing here points at Red — no extension point turned
 out to be unusable, and no position proved unmappable.
 
-Two bounded items remain, both in the *forward* direction (source → bytecode) or in stepping policy,
-neither in the reverse mapping that rows 5 and 6 confirm:
+Rows 1–9 and 11–14 are confirmed live: breakpoints in both languages, mixed stepping in both
+directions, stack navigation, Java evaluation, lifecycle, split mode, Flix-aware Step Over, and both
+strata of the position manager — `Def$noSmapFixture` resolves through the default stratum while
+`Def$main` resolves through `"Flix"`, in one session. Row 10 is not reachable, with evidence.
 
-Every capability the gate exists to prove is now confirmed live: breakpoints in both languages,
-mixed stepping in both directions, stack navigation, Java evaluation, lifecycle, split mode, and
-Flix-aware Step Over. One JDWP owner throughout, and no DAP process.
+What remains is a follow-up feature rather than a gap in the proof:
 
 | Item | Row | State |
 | --- | --- | --- |
-| A no-SMAP fixture | 9 | the only measurable row not yet run; the fixture now exists — see *Row 9* above |
 | Duplicate bare base names | 10 | not reachable, with evidence |
-| Variables in a **Flix** frame | 7 | Java frames work; a Flix frame reports *Variables debug info not available*. Not a mapping problem — the generated frames carry no `LocalVariableTable`. Belongs with Flix value presentation, which the plan already places after this milestone. |
+| Variables in a **CPS** frame | 7 | see *Why some Flix frames show no variables* below — a follow-up feature, not a gate failure |
+
+### Why some Flix frames show no variables
+
+Row 9 sharpened this. It is not "Flix frames have no variables"; it depends on how the declaration
+was compiled:
+
+| Frame | `LocalVariableTable` | Lines in the method | What the user sees |
+| --- | --- | --- | --- |
+| `Def$noSmapFixture.staticApply` | **full** — `n`, `doubled`, `shifted` | 62, 63, 64, 65 — sequential | variables populate normally |
+| `Clo$main$400241.applyFrame` | **empty** | 16 entries, non-monotonic | *Variables debug info not available* |
+
+A direct, effect-free call compiles to an ordinary method and debugs like ordinary Java. A CPS
+continuation keeps its state in **fields** — `l0`…`l8` plus `pc` — because the frame must survive
+being suspended and resumed, and fields are not locals, so nothing appears in the variables view.
+
+That makes Flix value presentation a *feature to build*, not a defect to fix: the values are present
+and reachable, under names the debugger cannot interpret unaided. The plan already places custom
+Flix value renderers after this milestone, and this is the evidence for what they must do.
+
+One further observation from the same class, worth keeping: `Clo$main$400241.applyFrame` reports
+lines `69, 48, 70, 71, …` — line 48 is `helloFromJava`'s body, inlined between two lines of `main`.
+Inlined code keeps its own line and is interleaved rather than reattributed, which is exactly the
+behaviour the position manager and `FlixDefinitionScope` rely on.
 
 ### Criteria
 

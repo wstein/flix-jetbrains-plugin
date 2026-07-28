@@ -53,3 +53,25 @@ intellijPlatform {
     pluginInstallationTarget = SplitModeAware.PluginInstallationTarget.BOTH
 }
 
+// Turns on this plugin's own debug logging in every sandbox IDE.
+//
+// The alternative is Help > Diagnostic Tools > Debug Log Settings, which is easy to get wrong here:
+// under split mode the debugger extensions run backend-side, so the category has to be set in the
+// backend process, and the setting lives in sandbox state that a clean wipes. A system property is
+// deterministic and survives both.
+//
+// Scoped to `dev.wstein.flixplugin` -- only this plugin's own categories, and only in a development
+// sandbox. `LOG.isDebugEnabled` still guards the expensive call sites, so an unused category costs
+// a branch.
+//
+// Read the output with:
+//   tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep dev.wstein
+listOf("runIde", "runIdeSplitMode", "runIdeBackend", "runIdeFrontend").forEach { name ->
+    tasks.matching { it.name == name }.configureEach {
+        (this as? JavaForkOptions)?.systemProperty(
+            "idea.log.debug.categories",
+            "#dev.wstein.flixplugin.debugger,#dev.wstein.flixplugin.run",
+        )
+    }
+}
+

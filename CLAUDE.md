@@ -113,8 +113,14 @@ Debugger classes live in `$IDE/plugins/java/lib/modules/intellij.java.debugger.i
 
 For questions about what a debugger can actually do with a class, **ask a live VM**. `javap` showing
 a line in the `LineNumberTable` does *not* mean a breakpoint can bind to it — only
-`ReferenceType.locationsOfLine` answers that. A short JDI probe attached over JDWP settles in one
-run what class-file inspection cannot.
+`ReferenceType.locationsOfLine` answers that, and the two have disagreed here in a way that cost
+four rounds of class-file inspection. `scripts/FlixLineProbe.java` settles it in one run:
+
+```console
+java scripts/FlixLineProbe.java <jdwp-port> Main.flix <first-line> <last-line>
+```
+
+Reach for it before reading bytecode, not after.
 
 ## The Flix compiler
 

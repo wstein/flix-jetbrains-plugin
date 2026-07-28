@@ -351,8 +351,21 @@ Proven with a JDI probe asking the live VM directly:
 | 106, 107 | 1 | 1 |
 
 **The lesson for future rows:** `javap` showing a line in the table does not mean a debugger can
-bind to it. Ask the VM — `locationsOfLine` is the only authority, and a short JDI probe answers in
-one run what class-file inspection could not answer in four attempts.
+bind to it. Ask the VM — `locationsOfLine` is the only authority.
+
+That probe is now committed as [`scripts/FlixLineProbe.java`](../scripts/FlixLineProbe.java), so
+the question is one command rather than an afternoon:
+
+```console
+JAVA_TOOL_OPTIONS='-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5099' \
+  ./scripts/flix-fork run --Xdebug --yes &
+java scripts/FlixLineProbe.java 5099 Main.flix 101 107
+```
+
+It reports, per line, whether the line is in the table and whether it is addressable — the two
+facts that disagreed here. `UNADDRESSABLE` means present but invisible to the debugger, which is a
+compiler problem; `absent` usually means `--Xdebug` did not reach the compiler. It exits non-zero
+on the former, so it can gate a script. Single-file source execution: nothing to build.
 
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in

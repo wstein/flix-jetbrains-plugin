@@ -341,6 +341,13 @@ Cross-file inlining escapes this because `Smap` gives the foreign line a synthet
 inlining passes the line through unchanged and the two collide. Line 101 escaped by accident — its
 entry sits at offset 0, the prologue, while the inlined body landed at 128.
 
+Worth refuting a plausible reading of this, since it argues for the architecture we retired: that a
+debug adapter could have remapped the offset back to the right line using compiler context the IDE
+lacks. It could not. The line is gone from the `LineNumberTable` itself, which is the only record
+either a DAP adapter or a position manager reads — an adapter would have had to carry a second,
+compiler-produced source map that Flix does not emit. The defect was in what the compiler wrote, and
+it had to be fixed there whichever debugger consumed it.
+
 Fixed in `flix-fork` (`LineNumbers.emit` now keeps one entry per offset, the call site winning).
 Proven with a JDI probe asking the live VM directly:
 

@@ -146,10 +146,14 @@ Ordered by what blocks the milestone rather than by matrix position.
    it in the test is not available either: `FileTypeManagerEx.registerFileType` does not exist in
    IU-2026.1.3.
 
-   A workable route is to move the test to the `language` module, which owns that registration, or
-   to give the debugger module a fixture that loads the language descriptor. Neither is a
-   two-line change, and the rules being composed are individually covered, so this is recorded as a
-   known gap rather than closed badly.
+   Three routes, in increasing order of usefulness: move the test to the `language` module, which
+   owns that registration; give the debugger module a fixture that loads the language descriptor;
+   or add a top-level integration-test module depending on every content module at once, which
+   would also cover the cross-boundary flows nothing exercises today — a `flix.runMain` CodeLens in
+   `backend` actually starting the run configuration in `debugger`, for instance. The third is the
+   route [ADR 0003](adr/0003-cross-module-contracts.md) records as adopted in principle. None is a
+   two-line change, and the rules being composed are individually covered, so this stays a known
+   gap rather than a badly closed one.
 
 Nothing here is blocked on a decision. Every item is a measurement someone has to take, or a test
 someone has to find a safe fixture for.

@@ -7,6 +7,7 @@ survives the change that motivated it.
 | --- | --- | --- |
 | [0001](0001-single-language-owner.md) | One language owner and one LSP client | Accepted |
 | [0002](0002-native-jvm-debugger.md) | IntelliJ's Java debugger is the sole JDWP owner | Accepted |
+| [0003](0003-cross-module-contracts.md) | Cross-module contracts stay pure functions | Accepted |
 
 ## Format
 

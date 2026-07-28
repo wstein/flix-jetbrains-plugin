@@ -6,7 +6,7 @@ Written to be read before claiming the milestone complete. A row marked **not ru
 that will probably pass; it is a row nobody has measured. Where a row is unreachable, the evidence
 for that is recorded rather than the conclusion alone.
 
-Status as of 2026-07-28, at `757b811`. 229 automated tests, 0 failures.
+Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 
 | | Meaning |
 | --- | --- |
@@ -24,7 +24,7 @@ Status as of 2026-07-28, at `757b811`. 229 automated tests, 0 failures.
 | 1 | Adopted parser, recovery, fuzz, incremental-edit, editor, folding and gutter tests pass | ✅ 92 tests in `:language` — `FlixParsingTest`, `FlixErrorRecoveryTest`, `FlixRareSyntaxTest`, `FlixRareSyntaxRecoveryTest`, `FlixRareSyntaxFuzzTest`, `FlixIncrementalEditTest`, `FlixEditorBasicsTest`, `FlixFoldingTest`, `FlixRunLineMarkerContributorTest` |
 | 2 | The 428-file corpus is lossless, error-free, and matches the declaration/`def main` oracle | ✅ **427 of 427 (100%)**, up from 211 (49.3%) at adoption; one documented exclusion. `FlixCorpusTest`, see [parser evaluation](intellij-flix-parser-evaluation.md) |
 | 3 | Exactly one language, file type, parser, highlighter, gutter marker, LSP session and run configuration | ✅ `FlixPluginDescriptorTest` (8 checks) and `checkIntegrationGlue` statically; `FlixAssembledPluginTest` at runtime |
-| 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ⚠️ `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases). Diagnostics verified live during the fork LSP fix — 5 resolution errors before, 0 after, through a scripted LSP handshake — and confirmed in the IDE. **Completion and hover have never been exercised in a test or a recorded session.** |
+| 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ✅ all four. `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases); the rest are exercised by [`scripts/flix-lsp-probe.py`](../scripts/flix-lsp-probe.py) against the real server — hover returns `def println(x: a): Unit \ IO` with docs, completion returns 6 items while typing, diagnostics report 0 errors on a clean file and reported 5 before the fork LSP fix |
 | 5 | `checkIntegrationGlue`, build and plugin verification pass | ⚠️ `checkIntegrationGlue` and `build` pass and run in `check`. `verifyPlugin` has a dedicated CI job on every push and pull request, which `releaseDraft` depends on — but until now **no IDE targets were configured**, so it had nothing to compare against and reported success without checking anything. Targets are now declared; the first run against them has not happened. |
 | 6 | Root-plugin integration tests: every content-module descriptor loads in the assembled plugin, exactly one Flix language stack, backend-only extensions absent from the frontend | ✅ `FlixAssembledPluginTest` — asserted through platform lookups, so it fails if a module drops out of `<content>` or a registration lands in the wrong module. Fault-injected: a second `runLineMarkerContributor` registration fails it |
 
@@ -77,7 +77,7 @@ The plan asks for these specifically. 49 tests in `:debugger` cover most:
 | Duplicate base names | ✅ `FlixForwardResolutionTest` — resolves to **neither**, which is also why gate row 10 is unreachable live |
 | Absent information | ✅ `FlixSourceLocationsTest` — `AbsentInformationException`, absent line tables, unknown lines |
 | Multiple locations per line | ✅ `FlixSourceLocationsTest`, and the row-9 work above |
-| Class prepare | ⚠️ the rule the filter applies is covered by `FlixClassSelectionTest` through `getAllClasses`; no test drives an actual prepare event, which needs a `RequestManager` that cannot be stubbed |
+| Class prepare | ✅ `FlixClassSelectionTest` drives `FlixLineOnly.processClassPrepare` directly — only a class holding the line reaches the breakpoint |
 | Stepping-filter wiring | ✅ `FlixSteppingFilterTest` — added after review; mutation-checked (inverting the arrived-check, dropping the budget, or stepping out instead of in all fail it) |
 | **Class redefinition** | ✅ `FlixSourceCacheTest` — a hot swap keeps the same `ReferenceType`, so only invalidation can yield the new sources |
 | **Stale cache invalidation** | ✅ `FlixSourceCacheTest` — cleared on resume, which is when a redefinition can have happened |
@@ -137,10 +137,12 @@ Ordered by what blocks the milestone rather than by matrix position.
 3. **`verifyPlugin`** — the CI job existed but verified against no IDEs. Targets are now configured, so the next CI run is the first that checks anything; expect it to have something to say.
 4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
    with the respective plugin installed.
-5. **The class-prepare filter** has no direct test. `getAllClasses` now does — see
-   `FlixClassSelectionTest` — but driving `createPrepareRequests` needs a `RequestManager`, which is
-   a class rather than an interface and cannot be stubbed. Both apply the same rule, so what is
-   untested is the plumbing rather than the decision.
+5. **Flix values in CPS frames.** A `Clo$` frame's state lives in fields `l0`…`l8` plus `pc`, not
+   in locals, so the variables view is empty for those frames. Record and tagged-union *values* now
+   render (`FlixRecordRenderer`, `FlixTaggedRenderer`), which is the half worth having. Surfacing the
+   fields at the top level was considered and declined: `ExtraDebugNodesProvider` would do it, but
+   building the nodes needs `NodeManagerImpl` from an `impl` package, and the payoff is one fewer
+   expand while the names stay `l0`…`l8`. Recovering real names would need the compiler to emit them.
 
 Nothing here is blocked on a decision. Every item is a measurement someone has to take, or a test
 someone has to find a safe fixture for.

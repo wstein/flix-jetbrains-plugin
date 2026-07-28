@@ -269,8 +269,15 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
      *
      * Asking [locationsOfLine] about the one class that just prepared is much cheaper than the
      * platform's `getAllClasses`, which walks every loaded class on every prepare.
+     *
+     * Visible rather than private so the forwarding can be driven directly. Going through the
+     * platform would need a `RequestManager`, which is a class rather than an interface and cannot
+     * be substituted, and the test that needs it lives in the root module -- the only place a
+     * `SourcePosition` over a real `.flix` file exists, because only there is the assembled plugin
+     * loaded. `internal` does not reach across a Gradle module, so this is the narrowest visibility
+     * that works. It is a nested class of an already-public one, not an API anyone else consumes.
      */
-    private inner class FlixLineOnly(
+    inner class FlixLineOnly(
         private val delegate: ClassPrepareRequestor,
         private val position: SourcePosition,
     ) : ClassPrepareRequestor {

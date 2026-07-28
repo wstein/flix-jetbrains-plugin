@@ -4,6 +4,7 @@ import com.intellij.debugger.NoDataException
 import com.intellij.debugger.SourcePosition
 import com.intellij.debugger.engine.DebugProcess
 import com.intellij.debugger.engine.jdi.VirtualMachineProxy
+import com.intellij.debugger.requests.ClassPrepareRequestor
 import com.intellij.psi.PsiFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.sun.jdi.Location
@@ -76,6 +77,29 @@ class FlixClassSelectionTest : BasePlatformTestCase() {
         assertTrue("a Java class must never be offered for a Flix position", offered.isEmpty())
     }
 
+    // --- the class-prepare filter ---------------------------------------------------------------
+
+    fun testForwardsOnlyAPreparedClassThatHoldsTheLine() {
+        // The same rule as getAllClasses, applied to one class as it loads. Handing a breakpoint a
+        // class that merely shares the file is what let LineBreakpoint mark it "no executable code"
+        // -- and RequestManagerImpl.setInvalid makes that stick if it lands before the class that
+        // does hold the line.
+        val manager = manager()
+        val forwarded = mutableListOf<String>()
+        val recorder = ClassPrepareRequestor { _, type -> forwarded += type.name() }
+
+        val filter = manager.FlixLineOnly(recorder, positionAtLine(1))
+        filter.processClassPrepare(noProcess(), flixClass("Clo\$main\$holds", lines = setOf(2)))
+        filter.processClassPrepare(noProcess(), flixClass("Clo\$main\$other", lines = setOf(3)))
+        filter.processClassPrepare(noProcess(), foreignClass("Greeter"))
+
+        assertEquals(
+            "only the class holding the line may reach the breakpoint",
+            listOf("Clo\$main\$holds"),
+            forwarded,
+        )
+    }
+
     fun testDeclinesAPositionInAnotherLanguage() {
         // The guarantee owed to every other JVM language: a foreign position is not ours to answer,
         // and declining by exception is what hands it to the manager that owns it.
@@ -90,6 +114,9 @@ class FlixClassSelectionTest : BasePlatformTestCase() {
     }
 
     // --- fixture --------------------------------------------------------------------------------
+
+    /** A stand-in for the argument the filter passes straight through without inspecting. */
+    private fun noProcess(): DebugProcess = proxy(DebugProcess::class.java) { _, _ -> null }
 
     private fun positionAtLine(zeroBased: Int): SourcePosition =
         SourcePosition.createFromLine(file, zeroBased)

@@ -186,31 +186,42 @@ A scripted run for rows 3–7:
 one-liner, Step Into and Step Out land on the same line, Step Over has nothing to step over, and
 there is no local to inspect — rows 3–7 would all pass without testing anything.
 
-### Row 9 — a no-SMAP fixture, recipe verified
+### Row 9 — the no-SMAP fixture, now in the project
 
-A **self-contained** file, one that calls nothing from another file, produces no SMAP. Verified by
-compiling this and inspecting the result:
+`flix-lab`'s `src/flix/Main.flix` carries `noSmapFixture`, written for this row:
 
 ```flix
-def twice(x: Int32): Int32 = x + x
-
-def compute(): Int32 =
-    let a = twice(21);
-    let b = a + 1;
-    b
-
-def main(): Unit \ IO =
-    let r = compute();
-    println(r)
+def noSmapFixture(n: Int32): Int32 =
+    let doubled = n * 2;
+    let shifted = doubled + 1;
+    shifted
 ```
 
-```text
-Def$compute   smap=no   SourceFile="/private/tmp/smaptest/Selfcontained.flix"   lines 3 4 5 6
-Def$main      smap=no   SourceFile="/private/tmp/smaptest/Selfcontained.flix"   lines 8 9 10
+Compiled result, contrasted with a declaration from the same file that does reach the library:
+
+| Class | `SourceDebugExtension` | `SourceFile` | Line entries |
+| --- | --- | --- | --- |
+| `Def$noSmapFixture` | **absent** | `…/flix-lab/src/flix/Main.flix` | 4 |
+| `Def$main` | present | `…/flix-lab/src/flix/Main.flix` | — |
+
+So a breakpoint inside it resolves through the **default stratum** while one in `main` resolves
+through `"Flix"` — the two paths of the dual-mode position manager, in one file, one session.
+
+It had to be written rather than found. Every other declaration in the project reaches the standard
+library, so inlining pulls in a second source and SMAP always appears; the no-SMAP classes that do
+exist all come from library files inside the compiler jar, which are not navigable project sources.
+**Keep it free of library calls** — adding one silently converts it into another row-8 fixture and
+this row stops testing anything.
+
+Verify it is still the right shape before relying on it:
+
+```console
+javap -v -p 'build/class/Def$noSmapFixture.class' | grep -c SourceDebugExtension   # 0
+javap -v -p 'build/class/Def$main.class'          | grep -c SourceDebugExtension   # 1
 ```
 
-Add such a file to the project and breakpoint inside it. Note lines 4 and 5 — both `let` bindings —
-carry line numbers, which is worth knowing for the `let args` question below.
+Note that both `let` bindings carry line numbers, which is worth knowing for the `let args` question
+below.
 
 ### Row 10 — determine reachability before trying to test it
 
@@ -312,7 +323,7 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 11 | Pause, continue, terminate and detach behave | ✅ |
 | 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | ✅ `0`, and the console shows `Connected to the target VM` |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
-| 14 | **Step Over inside Flix advances to the next Flix line** | fix implemented; awaiting a live re-run |
+| 14 | **Step Over inside Flix advances to the next Flix line** | ✅ confirmed live, 2026-07-28 |
 
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
@@ -554,13 +565,15 @@ out to be unusable, and no position proved unmappable.
 Two bounded items remain, both in the *forward* direction (source → bytecode) or in stepping policy,
 neither in the reverse mapping that rows 5 and 6 confirm:
 
+Every capability the gate exists to prove is now confirmed live: breakpoints in both languages,
+mixed stepping in both directions, stack navigation, Java evaluation, lifecycle, split mode, and
+Flix-aware Step Over. One JDWP owner throughout, and no DAP process.
+
 | Item | Row | State |
 | --- | --- | --- |
-| `.flix` breakpoint binding, end to end | 1 | ✅ green once the over-binding cause was fixed; see *If it binds too much* above |
-| Step Over inside Flix stops on a Flix line | 14 | fix implemented as `FlixSteppingFilter`; awaiting a live re-run |
-| A no-SMAP fixture | 9 | still to run — row 8 is green, row 10 is not reachable |
-
-Row 1 was the gate's central claim and is now met. What remains is coverage, not capability.
+| A no-SMAP fixture | 9 | the only measurable row not yet run; the fixture now exists — see *Row 9* above |
+| Duplicate bare base names | 10 | not reachable, with evidence |
+| Variables in a **Flix** frame | 7 | Java frames work; a Flix frame reports *Variables debug info not available*. Not a mapping problem — the generated frames carry no `LocalVariableTable`. Belongs with Flix value presentation, which the plan already places after this milestone. |
 
 ### Criteria
 

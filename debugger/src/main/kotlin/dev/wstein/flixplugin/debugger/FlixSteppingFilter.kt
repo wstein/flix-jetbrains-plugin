@@ -48,10 +48,7 @@ import com.sun.jdi.request.StepRequest
  * for a Java class compiled without `-g`, which has no line numbers either: missing line
  * information alone is not enough to trigger this.
  *
- * ## Known limitation: Step Over behaves as Step Into
- *
- * This filter makes stepping land on Flix lines instead of in bytecode. It does **not** restore the
- * distinction between Step Over and Step Into, and no filter can.
+ * ## Keeping Step Over distinct from Step Into
  *
  * `Thunk$.run()` is a trampoline **loop inside a single frame**:
  *
@@ -65,17 +62,22 @@ import com.sun.jdi.request.StepRequest
  * Each continuation is invoked from that loop, so two successive Flix lines are *siblings* at the
  * same JVM depth -- whether they are consecutive statements in one function or a call into another.
  * JDI's Step Over and Step Into are defined on frame nesting, and CPS has erased the nesting that
- * carried the difference. Asking for a shallower step does not mean "stay in this Flix function"; it
- * means "leave the trampoline", which abandons every continuation still to run.
+ * carried the difference. Asking the VM for a shallower step does not mean "stay in this Flix
+ * function"; it means "leave the trampoline", abandoning every continuation still to run.
  *
- * The obvious repair -- recover the Flix function from the generated class name -- does not work
- * either. The name encodes the *entry point*, not the definition: in `flix-lab`,
- * `Clo$main$399824` is compiled from `Nec.flix` and `Clo$main$399833` from `Sys/Env.flix`. Library
- * code called from `main` is named `Clo$main$…` just like `main`'s own code.
+ * Recovering the function from the generated class name does not work either: the name encodes the
+ * *entry point*, not the definition. In `flix-lab`, `Clo$main$399824` is compiled from `Nec.flix`
+ * and `Clo$main$399833` from `Sys/Env.flix` -- library code called from `main` is named
+ * `Clo$main$…` just like `main`'s own code.
  *
- * A real Flix Step Over therefore needs a Flix-level notion of "same function" carried into the
- * step, not a JVM-level one. Deciding what it should mean is a language question -- see the gate
- * runbook -- and is deliberately not answered here.
+ * So the distinction is carried rather than recovered. [FlixSteppingListener] records which Flix
+ * definition a Step Over began in, [FlixDefinitionScope] answers which one any position sits in --
+ * from the PSI, which needs no compiler support -- and this resumes the step whenever it surfaces
+ * in a different definition. Step Into records no scope and therefore stops at the first Flix line
+ * it reaches, unchanged.
+ *
+ * A recursive call re-enters the same definition and so is stepped *into*; separating those needs a
+ * per-activation identity, which the source cannot supply.
  *
  * ## Known cost
  *
@@ -91,11 +93,36 @@ class FlixSteppingFilter : ExtraSteppingFilter {
 
     override fun isApplicable(context: SuspendContext?): Boolean {
         val location = locationOf(context) ?: return false
-        val applicable = FlixSourceLocations.isMachineryWithoutFlixLine(location)
-        if (applicable && LOG.isDebugEnabled) {
-            LOG.debug("stepping through ${location.method()?.name()} in ${location.declaringType()?.name()}: no Flix line")
+
+        // No Flix line here at all -- a generated bridge or the trampoline. Nothing to show, so
+        // carry on regardless of which stepping action is in progress.
+        if (FlixSourceLocations.isMachineryWithoutFlixLine(location)) {
+            if (LOG.isDebugEnabled) {
+                LOG.debug("stepping through ${location.method()?.name()} in ${location.declaringType()?.name()}: no Flix line")
+            }
+            return true
         }
-        return applicable
+
+        return isOutsideStepOverScope(context, location)
+    }
+
+    /**
+     * Whether this Flix line belongs to a different definition than the Step Over started in.
+     *
+     * Only consulted while a Step Over is in progress -- [FlixSteppingListener] records the scope
+     * and clears it for every other action -- so Step Into keeps stopping at the first Flix line it
+     * reaches, which is what it should do.
+     */
+    private fun isOutsideStepOverScope(context: SuspendContext?, location: Location): Boolean {
+        val process = context?.debugProcess ?: return false
+        val scope = FlixSteppingListener.scopeOf(process) ?: return false
+
+        val position = runCatching { process.positionManager.getSourcePosition(location) }.getOrNull()
+        val here = FlixDefinitionScope.keyOf(position) ?: return false
+        if (here == scope) return false
+
+        if (LOG.isDebugEnabled) LOG.debug("stepping over $here, not the stepped definition $scope")
+        return true
     }
 
     override fun getStepRequestDepth(context: SuspendContext?): Int = StepRequest.STEP_INTO

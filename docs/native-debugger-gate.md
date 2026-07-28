@@ -303,7 +303,7 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 5 | Step Out returns to the correct Flix line | ✅ returns to `Main.flix:53`, the line after the call |
 | 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | ✅ `applyFrame:53, Clo$main$400067` navigates to `Main.flix:53` |
 | 7 | Java locals, watches and expression evaluation work in a Java frame | ✅ in Java frames. ⚠️ the Flix frame shows *Variables are not available* |
-| 8 | A breakpoint in a **SMAP** class verifies and hits | **not reachable** — `flix-lab` compiles 16 800 classes and **0** carry a `SourceDebugExtension` |
+| 8 | A breakpoint in a **SMAP** class verifies and hits | **not reachable** — `flix-lab` compiles 16 800 classes and **0** carry a `SourceDebugExtension`; see below |
 | 9 | A breakpoint in a **no-SMAP** class verifies and hits | ✅ — this is what row 1 exercised; every class in the fixture is this shape |
 | 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | not reachable |
 | 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | not reachable |
@@ -312,11 +312,35 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 11 | Pause, continue, terminate and detach behave | ✅ |
 | 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | ✅ `0`, and the console shows `Connected to the target VM` |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
-| 14 | **Step Over inside Flix advances to the next Flix line** | ⚠️ partial — it lands on Flix lines now, but behaves as Step Into; see below |
+| 14 | **Step Over inside Flix advances to the next Flix line** | fix implemented; awaiting a live re-run |
 
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
 common is the *forward* direction and stepping policy, neither of which row 5/6 touches.
+
+### Row 8 — no SMAP anywhere, and why that is not a compiler defect
+
+`flix-lab` compiles **16 800 classes and none carries a `SourceDebugExtension`**. That is not a fork
+regression, and it does not need fixing:
+
+- the vendored compiler **is** the fork — `ca/uwaterloo/flix/language/phase/jvm/Smap.class` is in
+  `flix-vendor-2026.07.24.1.jar`;
+- `Smap.build()` returns `None` when `foreign.isEmpty`, and `foreign` gains an entry only when a
+  class contains a `SourceLocation` from a *different* `.flix` file than its own. Every class in
+  this build draws on one source, so the answer is correct rather than missing;
+- the `"Flix"` stratum exists for cross-file inlining. Without such inlining there is nothing to
+  translate, and the default stratum already carries real `.flix` line numbers — which is exactly
+  what rows 1 and 9 confirm works.
+
+So the dual-mode position manager is not redundant, it is simply always taking its second path here.
+**Keep both paths.** Zero SMAP is a property of this build, not a proof that inlining never produces
+a multi-source class.
+
+One question is open and cheap to answer if it ever matters: whether `--Xdebug` suppresses the
+cross-file inlining that would create SMAP. If it does, SMAP and debugging are mutually exclusive by
+construction and the `"Flix"` stratum can never appear in a debuggable build. Compile the same
+project without `--Xdebug` and re-scan for `SourceDebugExtension`. Not run; nothing currently
+depends on the answer.
 
 ### Row 14 — Step Over inside Flix does not stop on a Flix boundary
 
@@ -412,17 +436,30 @@ encodes the **entry point**, not the definition:
 Library code reached from `main` is named `Clo$main$…` just like `main`'s own code, so the name
 cannot separate "this function" from "something it called".
 
-**This is a language-semantics decision, not an implementation detail**, which is why it is recorded
-here rather than guessed at in code. What should Step Over mean for Flix? Plausible definitions:
+#### Resolved: Step Over is confined to the Flix definition it started in
 
-| Definition | Implementable with | Limit |
-| --- | --- | --- |
-| next line in the same **source file** | the resolved `.flix` file per location | will not separate two functions in one file |
-| next line in the same **Flix definition** | a definition identity carried into the step; not currently in the bytecode | needs compiler support or a side table |
-| treat Flix stepping as line-by-line only | today's behaviour | Step Over and Step Into stay identical |
+**No compiler change was needed.** The earlier note here claimed a definition identity would have to
+come from the bytecode or a side table. That was wrong, and worth correcting explicitly: the
+identity does not need to survive compilation, because the IDE re-derives it. A resolved source
+position is a file and a line, and the Flix PSI already says which `def` encloses that line.
 
-The middle option is the correct one and the most expensive; the first is a cheap approximation that
-would fix the visible symptom of descending into `Nec.flix` and `Sys/Env.flix`. Neither is built.
+Three pieces, all on public extension points:
+
+| Piece | Role |
+| --- | --- |
+| `FlixSteppingListener` (`debugger.steppingListener`) | `beforeSteppingStarted` is the one point that knows both the chosen action and the position it was chosen from. On Step Over it records the enclosing definition; every other action clears it. |
+| `FlixDefinitionScope` | Answers which `def` a position sits in, from the PSI. Identity is file + declaration start offset, not name — two `def`s in different `mod`s can share a name. |
+| `FlixSteppingFilter` | Resumes the step whenever it surfaces in a *different* definition. Step Into records no scope, so it still stops at the first Flix line, unchanged. |
+
+Two limits, both inherent to a source-level notion rather than defects:
+
+- **Recursion is not distinguished.** A recursive call re-enters the same definition, so a step over
+  one stops inside it. Separating those needs a per-activation identity, which is a runtime notion.
+- **Inlined code is attributed to where it was written.** The fork's inliner keeps the callee's own
+  `SourceLocation` when substituting a body (`Inliner.scala:204` passes the call-site `loc` only for
+  the binding it introduces), so inlined library code still reports its own file and is correctly
+  seen as a different definition. This is the behaviour we want; it is recorded because the opposite
+  would be a silent correctness bug.
 
 **Known cost, not yet measured.** A stretch of runtime work with no intervening Flix line is
 single-stepped rather than run. Between adjacent source lines that is a few frames. A long

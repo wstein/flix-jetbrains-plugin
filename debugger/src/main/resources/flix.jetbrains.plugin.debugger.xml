@@ -35,5 +35,13 @@
              Flix's own frames, so Java, Kotlin and Scala stepping is untouched. -->
         <debugger.extraSteppingFilter
                 implementation="dev.wstein.flixplugin.debugger.FlixSteppingFilter"/>
+
+        <!-- Carries the Step Over / Step Into distinction into the step. CPS invokes every
+             continuation from one trampoline loop, so successive Flix lines sit at the same JVM
+             depth and the difference is no longer readable from the stack once stepping starts.
+             beforeSteppingStarted is the one point that knows both the chosen action and the
+             position it was chosen from. -->
+        <debugger.steppingListener
+                implementation="dev.wstein.flixplugin.debugger.FlixSteppingListener"/>
     </extensions>
 </idea-plugin>

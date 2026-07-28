@@ -25,7 +25,7 @@ Status as of 2026-07-28, at `4160531`. 203 automated tests, 0 failures.
 | 2 | The 428-file corpus is lossless, error-free, and matches the declaration/`def main` oracle | ✅ **427 of 427 (100%)**, up from 211 (49.3%) at adoption; one documented exclusion. `FlixCorpusTest`, see [parser evaluation](intellij-flix-parser-evaluation.md) |
 | 3 | Exactly one language, file type, parser, highlighter, gutter marker, LSP session and run configuration | ✅ `FlixPluginDescriptorTest` (8 checks) plus `checkIntegrationGlue`, which now fails the build on a class registered in two modules |
 | 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ⚠️ `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases). Diagnostics verified live during the fork LSP fix — 5 resolution errors before, 0 after, through a scripted LSP handshake — and confirmed in the IDE. **Completion and hover have never been exercised in a test or a recorded session.** |
-| 5 | `checkIntegrationGlue`, build and plugin verification pass | ⚠️ `checkIntegrationGlue` and `build` pass and run in `check`. **`verifyPlugin` (the JetBrains Plugin Verifier) has never been run** — the task exists but is not wired into any pipeline, and there is no CI. |
+| 5 | `checkIntegrationGlue`, build and plugin verification pass | ⚠️ `checkIntegrationGlue` and `build` pass and run in `check`. `verifyPlugin` has a dedicated CI job on every push and pull request, which `releaseDraft` depends on — but until now **no IDE targets were configured**, so it had nothing to compare against and reported success without checking anything. Targets are now declared; the first run against them has not happened. |
 
 ---
 
@@ -133,7 +133,7 @@ Ordered by what blocks the milestone rather than by matrix position.
    risk item and the one that unblocks the most.
 2. **Required interop rows 2 and 3** — Kotlin. The fixture exists; row 3 additionally needs an
    inline function, which the current Kotlin `Greeter` does not have.
-3. **`verifyPlugin`** — never run, and the cheapest of these.
+3. **`verifyPlugin`** — the CI job existed but verified against no IDEs. Targets are now configured, so the next CI run is the first that checks anything; expect it to have something to say.
 4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
    with the respective plugin installed.
 5. **Class redefinition and stale-cache SMAP tests** — no coverage, and no known failure either.

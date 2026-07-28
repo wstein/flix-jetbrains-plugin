@@ -51,6 +51,22 @@ tasks.test {
 intellijPlatform {
     splitMode = true
     pluginInstallationTarget = SplitModeAware.PluginInstallationTarget.BOTH
+
+    // Which IDEs the Plugin Verifier checks the compiled bytecode against.
+    //
+    // Not optional. `verifyPlugin` runs in CI on every push and pull request, but with no IDE
+    // targets it has nothing to compare against and reports success without checking anything --
+    // the same shape of vacuous gate this project has been caught by before, and the reason the
+    // corpus test now fails rather than skips under CI.
+    //
+    // `recommended()` covers the release and EAP builds JetBrains suggests for the declared
+    // compatibility range, which is what catches an accidental internal-API call before it ships
+    // rather than after a user installs it.
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
 }
 
 // Turns on this plugin's own debug logging in every sandbox IDE.

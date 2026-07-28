@@ -32,7 +32,14 @@ parsing commands — `run` is then demoted to a positional argument and rejected
 `ApplyClo`, `IfThenElse` and `Stm` emit line numbers only under it, and it stops the inliner
 discarding programmer-written bindings. Without it, most statements have no breakpointable line.
 
-**3. A fresh plugin build.** The sandbox keeps whatever was installed last; a stale one will not
+**3. A compiler build with the line-table fix.** Before it, a call site with a same-file function
+inlined into it shared a bytecode offset with the inlined body, and the second `LineNumberTable`
+entry replaced the first -- so the call site's line could not take a breakpoint while its neighbours
+could. `javap` shows the line either way; only `locationsOfLine` distinguishes them. Any row below
+that sets a breakpoint on such a line will fail against an older jar for reasons that have nothing
+to do with the plugin.
+
+**4. A fresh plugin build.** The sandbox keeps whatever was installed last; a stale one will not
 have the current registrations.
 
 ## Running it

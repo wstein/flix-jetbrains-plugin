@@ -72,6 +72,18 @@ breakpoint on one can never verify no matter what the IDE does.
 root. Every process the plugin starts -- the language server and the debuggee -- resolves it the
 same way, so a debug session cannot run a different compiler than the editor was analysed with.
 
+**The build matters, not just the flag.** Two fixes in
+[wstein/flix-fork](https://github.com/wstein/flix-fork) are load-bearing for debugging, and a jar
+predating either behaves as though the plugin is at fault:
+
+| Fix | Without it |
+| --- | --- |
+| One `LineNumberTable` entry per bytecode offset | A line whose call site had a same-file function inlined into it cannot take a breakpoint. Its neighbours can, and `javap` still shows the line, so nothing looks wrong. |
+| Workspace jars loaded from the folder URI | The language server resolves no `[jar-dependencies]`, so every Java import reports *"Undefined Java class"* while the compiler builds the same project without complaint. |
+
+If breakpoints on some lines refuse to bind while adjacent ones work, rebuild the fork before
+looking anywhere else.
+
 ### When a breakpoint does not bind
 
 Check the class before suspecting the plugin:

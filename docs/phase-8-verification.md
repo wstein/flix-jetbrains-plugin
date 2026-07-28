@@ -109,15 +109,21 @@ The plan asks for these specifically. 49 tests in `:debugger` cover most:
 each in its own jar, all called from `main`. That is the fixture this matrix needs, and it makes
 most of these rows runnable for the first time. JRuby is beyond what the plan asks for.
 
+Four of them have now been stopped in from a single Flix-launched session, each frame over its own
+Flix caller. That part needs no language plugin at all: binding a breakpoint and reading a frame's
+source uses the JVM's own metadata, which is exactly why non-interference is a property this plugin
+can guarantee rather than merely hope for. What the plugins add — source navigation, per-frame
+evaluators, language-aware stepping — sits above JDI and is where an IDE becomes necessary.
+
 | # | Requirement | Status |
 | --- | --- | --- |
 | 1 | **Required:** Flix → Java → Flix-return, with breakpoints, stepping, stack, locals, evaluation, exceptions, source lookup | ✅ breakpoints, stepping, stack, locals, evaluation (gate rows 3–7, `Greeter.java`) and exceptions (matrix row 2.7). ⬜ library/JDK source *attachment* only — see row 2.8 for why that one is not probeable |
 | 2 | **Required:** Flix → Kotlin/JVM → Java → Flix-return, `.kt` and `.java` breakpoints, frame-specific evaluators | ⚠️ **breakpoints and mixed stack proven; the evaluator is not.** [`scripts/FlixDebugProbe.java`](../scripts/FlixDebugProbe.java) armed `Greeter.kt:18` in one session launched from Flix: bound in 1 class, hit, and the stack read `Greeter.kt:18` over `Clo$main$400234 Main.flix:102` over `Def$main Exit.flix:45`. Each frame resolved through its own stratum. Which *evaluator* the IDE offers per frame is an IDE-side choice a JDI probe cannot observe |
 | 3 | **Required:** Kotlin inline-function and lambda frames do not steal or mis-map Flix positions | ✅ `Greeter.kt` now has `private inline fun decorate(...)` taking a lambda, which emits both `*S Kotlin` and `*S KotlinDebug` strata. Line 18 (the call site) and 17, 22 are addressable; line 42 (the inline body) is not, because inlined bodies map to synthetic lines under `KotlinDebug` — the Kotlin plugin's stratum to resolve, not ours. The mis-mapping this row guards against cannot occur: the position manager declines every non-`.flix` file type (row 9), and the stack above shows the Flix frames under an inlining Kotlin frame keeping their correct lines |
 | 4 | **Conditional:** coroutine parity, if claimed | ✖ **not claimed.** The plan forbids claiming it without proving the Kotlin debugger's coroutine agent is injected into an externally launched JVM. It is not, and no such claim is made |
-| 5 | **Optional Scala profile:** Flix → Scala 3 → Java → Flix-return | ⬜ **now testable** — `vendor/scalalib`, called from `Main.flix:103`. Requires the Scala plugin installed |
+| 5 | **Optional Scala profile:** Flix → Scala 3 → Java → Flix-return | ⚠️ **breakpoints and stack proven; navigation and the Scala evaluator are not.** `FlixDebugProbe` armed `Greeter.scala:19`, bound in `dev.wstein.flixlab.scala.Greeter$`, hit, and the stack read `Greeter.scala:19` over `Clo$main$400242 Main.flix:103`. That much needs no Scala plugin — it is the JVM's own metadata. Source *navigation* and the Scala evaluator do need the plugin and an IDE |
 | 6 | **Optional Scala profile:** inline, extension and given-generated frames | ⬜ needs a fixture using those constructs |
-| 7 | **Optional Groovy smoke:** a Groovy breakpoint and frame work; Flix declines its source | ⬜ **now testable** — `vendor/groovylib`, called from `Main.flix:104` |
+| 7 | **Optional Groovy smoke:** a Groovy breakpoint and frame work; Flix declines its source | ✅ `FlixDebugProbe` armed `Greeter.groovy:15`, bound in `dev.wstein.flixlab.groovy.Greeter`, hit, and the stack read `Greeter.groovy:15` directly over `Clo$main$400113 Main.flix:104`. Flix declining `.groovy` is asserted in `FlixSteppingPolicyTest` and `FlixSourceLocationsTest` — which is the whole of what this row asks for |
 | 8 | **Plugin-absent:** Flix/Java debugging and plugin loading work without Scala or other optional plugins | ⬜ not run. The structure supports it — the debugger module is not `loading="required"` and scopes its Java dependency (`FlixPluginDescriptorTest`) — but no IDE without those plugins has been tried |
 | 9 | **Ownership:** the position manager and breakpoint type decline Java/Kotlin/Scala/Groovy locations | ✅ **automated, in three places**: `FlixSourceLocationsTest` declines those classes; `FlixSteppingPolicyTest` leaves `.kt`, `.scala` and `.groovy` frames alone — including a Java class compiled without `-g`, so "no line info" alone never triggers Flix behaviour; `FlixPositionManagerDelegationTest` pins why `.flix` positions must not be delegated |
 
@@ -136,7 +142,7 @@ plugin owes every other JVM language, and it is the one row that cannot regress 
 | Debug opens the native JVM debugger | ⬜ **not run**, and three defects were fixed on the way to it, none confirmed live: a stale `DAPConfiguration` hijacking the gutter arrow (cleared), a producer building an unregistered configuration type (`fa7f2df`), and — the substantive one — both `GenericDebuggerRunner` conditions unsatisfied, so no debug session could ever have started (`e18ec1b`). What *is* now proven is everything downstream of the button: `FlixDebugProbe` attaches to the exact command line `FlixLaunchCommand` builds, binds, hits and walks mixed stacks. That narrows a failure here to the gesture and its wiring |
 | Flix, Java and Kotlin breakpoints coexist | ⚠️ Flix + Java ✅. Kotlin binds and hits at JDI level in a Flix-launched session (interop row 2); coexistence *as IDE breakpoints* is unrun |
 | Stepping crosses Flix↔Java and Flix↔Kotlin | ⚠️ Flix↔Java ✅ (gate rows 3–5). Flix↔Kotlin: the call crossing is proven by the mixed stack; stepping across it in an IDE is unrun |
-| With the Scala plugin, a run crosses Flix↔Scala 3 | ⬜ |
+| With the Scala plugin, a run crosses Flix↔Scala 3 | ⚠️ the crossing itself is proven by the mixed stack (interop row 5); doing it in an IDE with the plugin installed is unrun |
 | Mixed stack frames navigate correctly | ✅ gate row 6 |
 | LSP behaviour unchanged | ✅ and improved — the fork's Plain-LSP never loaded workspace jars; fixed and verified, 5 errors → 0 |
 | Incomplete Flix code does not hang or hide later declarations | ✅ `FlixErrorRecoveryTest`, `FlixRareSyntaxFuzzTest`, and the corpus gate |
@@ -160,8 +166,9 @@ Ordered by what blocks the milestone rather than by matrix position.
 3. **JDK and library source attachment** (row 2.8). Matching a `-sources.jar` to a frame happens
    above JDI, so no probe can reach it; it is also stock platform behaviour this plugin neither
    extends nor intercepts. Everything else in rows 2.7 and 2.8 is now evidenced.
-4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
-   with the respective plugin installed.
+4. **Optional profiles.** Groovy (row 7) is closed. Scala row 5's breakpoint and stack halves are
+   proven; its navigation and evaluator halves need an IDE with the Scala plugin. Row 6 needs a
+   fixture using `inline`, extension methods and `given`, which the current `Greeter.scala` does not.
 5. **Flix values in CPS frames.** A `Clo$` frame's state lives in fields `l0`…`l8` plus `pc`, not
    in locals, so the variables view is empty for those frames. Record and tagged-union *values* now
    render (`FlixRecordRenderer`, `FlixTaggedRenderer`), which is the half worth having. Surfacing the

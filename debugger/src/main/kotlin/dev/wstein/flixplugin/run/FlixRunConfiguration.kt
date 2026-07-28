@@ -111,9 +111,7 @@ class FlixRunConfiguration(
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState =
         FlixCommandLineState(
             environment,
-            resolveJar(),
-            entryPoint,
-            debug = executor.id == DefaultDebugExecutor.EXECUTOR_ID,
+            FlixLaunch.of(resolveJar(), entryPoint, debug = executor.id == DefaultDebugExecutor.EXECUTOR_ID),
         )
 
     private fun resolveJar(): Path =
@@ -123,38 +121,22 @@ class FlixRunConfiguration(
      * Starts the compiler, and -- for a debug run -- tells the platform where to attach.
      *
      * [RemoteConnectionCreator] lives here rather than on the configuration because
-     * `GenericDebuggerRunner.createContentDescriptor` inspects the state and nothing else. The port
-     * is a field rather than per-execution user data: this object *is* one execution, so the field
-     * already has exactly the right lifetime, and two concurrent debug sessions get two states.
+     * `GenericDebuggerRunner.createContentDescriptor` inspects the state and nothing else.
+     *
+     * The [FlixLaunch] is per-state, and a state is per-execution, so two concurrent debug sessions
+     * cannot share a port. It also holds the agreement between the port on the command line and the
+     * port in the connection, which is the part that fails quietly when it breaks.
      *
      * [KillableColoredProcessHandler] so Stop actually terminates a compiler mid-build, and so the
      * compiler's own coloured diagnostics survive.
      */
-    private class FlixCommandLineState(
+    internal class FlixCommandLineState(
         environment: ExecutionEnvironment,
-        private val jar: Path,
-        private val entryPoint: String?,
-        private val debug: Boolean,
+        private val launch: FlixLaunch,
     ) : CommandLineState(environment), RemoteConnectionCreator {
 
-        private val debugPort: Int? = if (!debug) {
-            null
-        } else {
-            try {
-                FlixLaunchCommand.findFreePort()
-            } catch (e: IOException) {
-                throw ExecutionException("Could not allocate a port for the debugger", e)
-            }
-        }
-
-        /**
-         * Where the IDE should attach, or `null` for a plain Run.
-         *
-         * `server = false` describes the **IDE's** role: the debuggee listens and the IDE connects.
-         * Reversing it makes the IDE listen and nothing ever arrives.
-         */
         override fun createRemoteConnection(environment: ExecutionEnvironment): RemoteConnection? =
-            debugPort?.let { RemoteConnection(true, LOCALHOST, it.toString(), false) }
+            launch.remoteConnection
 
         /**
          * The debuggee is still starting when the IDE first tries to connect: the JVM has to load,
@@ -165,13 +147,7 @@ class FlixRunConfiguration(
         override fun isPollConnection(): Boolean = true
 
         override fun startProcess(): ProcessHandler {
-            val command = when (debugPort) {
-                // suspend=y: the program must not run past its own entry point before the debugger
-                // has attached, or a breakpoint on the first line never gets the chance to bind.
-                null -> FlixLaunchCommand.run(jar, entryPoint)
-                else -> FlixLaunchCommand.debug(jar, entryPoint, debugPort, true)
-            }
-            val commandLine = GeneralCommandLine(command)
+            val commandLine = GeneralCommandLine(launch.command)
                 .withWorkDirectory(environment.project.basePath)
                 .withCharset(Charsets.UTF_8)
             val handler = KillableColoredProcessHandler(commandLine)
@@ -182,7 +158,4 @@ class FlixRunConfiguration(
         }
     }
 
-    private companion object {
-        private const val LOCALHOST = "localhost"
-    }
 }

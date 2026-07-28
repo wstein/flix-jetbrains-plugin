@@ -31,9 +31,15 @@ import java.io.File
  * the failures by first-error token so that a regression names the syntax family it broke rather
  * than just a count.
  *
- * The corpus lives in a sibling Flix checkout that CI does not have, so the test **skips** rather
- * than fails when it is absent or parked on the wrong revision. Point it somewhere else with
- * `-DflixCorpusDir=...` or `FLIX_DIR`, and see `flixCorpusCommit` for the pinned revision.
+ * The corpus lives in a sibling Flix checkout, so the test skips rather than fails when it is
+ * absent locally. Point it somewhere else with `-DflixCorpusDir=...` or `FLIX_DIR`, and see
+ * `flixCorpusCommit` for the pinned revision.
+ *
+ * **In CI it fails instead of skipping.** The workflow clones the pinned revision before running
+ * `check`, so an absent corpus there means that step broke -- and a skip would report the strongest
+ * gate in this suite as an ordinary pass. JUnit 3 has no skip state, so a skipped run is
+ * indistinguishable from a real one in the pass/fail count; the loud console line is the only
+ * signal, and nobody reads console output of a green build.
  */
 class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
 
@@ -44,6 +50,7 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
     fun testCorpusParsesCleanly() {
         val corpus = locateCorpus()
         if (corpus == null) {
+            failIfRequired()
             println("[flix-corpus] SKIPPED: no Flix checkout found. $HOW_TO_POINT_AT_A_CHECKOUT")
             return
         }
@@ -106,6 +113,7 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
      */
     fun testEntryPointsAreAddressable() {
         val corpus = locateCorpus() ?: run {
+            failIfRequired()
             println("[flix-corpus] SKIPPED: no Flix checkout found. $HOW_TO_POINT_AT_A_CHECKOUT")
             return
         }
@@ -282,6 +290,27 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
     )
 
     private data class ParseError(val offset: Int, val message: String, val token: String)
+
+    /**
+     * Turns an absent corpus into a failure wherever it is supposed to be present.
+     *
+     * Locally, skipping is right -- most work on this plugin needs no Flix checkout. In CI it is
+     * not: the workflow clones the pinned revision precisely so this gate runs, so an absent corpus
+     * means that step silently failed. JUnit 3 has no skip state, so skipping would report the
+     * strongest check in this suite as an ordinary pass, and the console line saying otherwise sits
+     * in the output of a green build that nobody reads.
+     */
+    private fun failIfRequired() {
+        val ci = System.getenv("CI").orEmpty().ifBlank { System.getenv("GITHUB_ACTIONS").orEmpty() }
+        if (ci.isNotBlank()) {
+            fail(
+                "No Flix corpus checkout found, but CI is expected to provide one. The workflow " +
+                    "clones the pinned revision before `check`; if that step changed or failed, " +
+                    "this gate would otherwise be skipped and reported as a pass. " +
+                    HOW_TO_POINT_AT_A_CHECKOUT,
+            )
+        }
+    }
 
     companion object {
         /**

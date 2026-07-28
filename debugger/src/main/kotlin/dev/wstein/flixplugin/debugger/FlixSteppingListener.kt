@@ -86,7 +86,8 @@ class FlixSteppingListener : SteppingListener {
          */
         private const val MAX_INTERMEDIATE_STOPS = 5_000
 
-        private val STEP_OVER_SCOPE = Key.create<StepOverScope?>("flix.stepOverScope")
+        /** Internal rather than private so a test can set up the state the platform would. */
+        internal val STEP_OVER_SCOPE = Key.create<StepOverScope?>("flix.stepOverScope")
 
         /** The definition a Step Over is currently confined to, or `null` if none is in progress. */
         fun scopeOf(process: DebugProcess?): StepOverScope? = process?.getUserData(STEP_OVER_SCOPE)

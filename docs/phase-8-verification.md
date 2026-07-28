@@ -6,7 +6,7 @@ Written to be read before claiming the milestone complete. A row marked **not ru
 that will probably pass; it is a row nobody has measured. Where a row is unreachable, the evidence
 for that is recorded rather than the conclusion alone.
 
-Status as of 2026-07-28, at `b9d1140`. 187 automated tests, 0 failures.
+Status as of 2026-07-28, at `e18ec1b`. 202 automated tests, 0 failures.
 
 | | Meaning |
 | --- | --- |
@@ -46,6 +46,8 @@ Rows map to the [native-debugger gate](native-debugger-gate.md), which is **Gree
 | 9 | **Multiple generated classes for one Flix source do not duplicate or miss breakpoints** | ❌ **currently failing** — see below |
 | 10 | Pause, continue, terminate and detach have correct lifecycle semantics | ✅ gate row 11 |
 | 11 | A launch failure or missing Flix jar produces an actionable error and no orphan process | ⚠️ `FlixRunConfiguration.checkConfiguration` resolves the jar in the dialog so the failure is reported where it can be acted on, and `FlixJar` names the remedy (`FlixJarTest`, 7 cases). **The orphan-process half is untested.** |
+| — | *(added by review)* The two `GenericDebuggerRunner` gates are satisfied | ✅ `FlixDebuggerRunnerGatesTest` — both were failing, which is why Debug could never have attached |
+| — | *(added by review)* The attach port matches the port on the debuggee's command line | ✅ `FlixLaunchTest` |
 | 12 | No DAP process or second JDI/JDWP client starts | ✅ gate row 12, and now structurally enforced: `checkIntegrationGlue` fails the build if a `debugAdapterServer` is registered while the backend is `intellijJvm` |
 
 ### Row 9 is the open defect
@@ -77,6 +79,7 @@ The plan asks for these specifically. 49 tests in `:debugger` cover most:
 | Absent information | ✅ `FlixSourceLocationsTest` — `AbsentInformationException`, absent line tables, unknown lines |
 | Multiple locations per line | ✅ `FlixSourceLocationsTest`, and the row-9 work above |
 | Class prepare | ⚠️ the requestor's filter rule is exercised indirectly; there is no test that drives a prepare event |
+| Stepping-filter wiring | ✅ `FlixSteppingFilterTest` — added after review; mutation-checked (inverting the arrived-check, dropping the budget, or stepping out instead of in all fail it) |
 | **Class redefinition** | ⬜ not covered |
 | **Stale cache invalidation** | ⬜ not covered |
 

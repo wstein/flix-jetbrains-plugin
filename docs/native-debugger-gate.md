@@ -303,8 +303,8 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 5 | Step Out returns to the correct Flix line | ✅ returns to `Main.flix:53`, the line after the call |
 | 6 | The stack shows both Flix and Java frames, each navigating to the right file and line | ✅ `applyFrame:53, Clo$main$400067` navigates to `Main.flix:53` |
 | 7 | Java locals, watches and expression evaluation work in a Java frame | ✅ in Java frames. ⚠️ the Flix frame shows *Variables are not available* |
-| 8 | A breakpoint in a **SMAP** class verifies and hits | see 1 |
-| 9 | A breakpoint in a **no-SMAP** class verifies and hits — needs the self-contained fixture below | not run |
+| 8 | A breakpoint in a **SMAP** class verifies and hits | **not reachable** — `flix-lab` compiles 16 800 classes and **0** carry a `SourceDebugExtension` |
+| 9 | A breakpoint in a **no-SMAP** class verifies and hits | ✅ — this is what row 1 exercised; every class in the fixture is this shape |
 | 10a | *Fixture:* two `Main.flix` files exist in different project modules — record both paths | not reachable |
 | 10b | *Fixture:* neither one's class has a `SourceDebugExtension` — record the `javap -v` line | not reachable |
 | 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | not reachable |
@@ -312,7 +312,7 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 11 | Pause, continue, terminate and detach behave | ✅ |
 | 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | ✅ `0`, and the console shows `Connected to the target VM` |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
-| 14 | **Step Over inside Flix advances to the next Flix line** | fix implemented, awaiting a live re-run; see below |
+| 14 | **Step Over inside Flix advances to the next Flix line** | ⚠️ partial — it lands on Flix lines now, but behaves as Step Into; see below |
 
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
@@ -378,6 +378,51 @@ that includes a Java class compiled without `-g`, which has no line numbers eith
 information" alone is deliberately *not* the trigger, and `FlixSteppingPolicyTest` pins that case.
 The DAP adapter's old broad `com.*`/`org.*`/`net.*` exclusions were not used and must not be — they
 would take user Java, Kotlin and Scala out of stepping, the very frames this path exists to reach.
+
+#### What it does not fix: Step Over still behaves as Step Into
+
+Confirmed live. Stepping lands on Flix lines rather than in bytecode, but F8 descends into called
+functions exactly as F7 does. This is not a shortcoming of the filter — **no filter can restore that
+distinction**, and the reason is worth recording because it constrains every future attempt.
+
+`Thunk$.run()` is a trampoline **loop inside a single frame**:
+
+```text
+ 1: dup                    <- loop head
+ 2: instanceof Thunk$
+11: invokeinterface invoke()
+16: goto 1
+```
+
+Every continuation is invoked from that one loop, so two successive Flix lines are *siblings at the
+same JVM depth* — whether they are consecutive statements in one function or a call into another.
+JDI defines Step Over and Step Into purely on frame nesting, and CPS has erased the nesting that
+carried the difference. Asking for a shallower step does not mean "stay in this Flix function"; it
+means "leave the trampoline", abandoning every continuation still to run.
+
+The obvious repair — recover the Flix function from the generated class name — also fails. The name
+encodes the **entry point**, not the definition:
+
+| Class | Compiled from |
+| --- | --- |
+| `Clo$main$399829` | `…/src/flix/Main.flix` |
+| `Clo$main$399824` | `Nec.flix` |
+| `Clo$main$399833` | `Sys/Env.flix` |
+
+Library code reached from `main` is named `Clo$main$…` just like `main`'s own code, so the name
+cannot separate "this function" from "something it called".
+
+**This is a language-semantics decision, not an implementation detail**, which is why it is recorded
+here rather than guessed at in code. What should Step Over mean for Flix? Plausible definitions:
+
+| Definition | Implementable with | Limit |
+| --- | --- | --- |
+| next line in the same **source file** | the resolved `.flix` file per location | will not separate two functions in one file |
+| next line in the same **Flix definition** | a definition identity carried into the step; not currently in the bytecode | needs compiler support or a side table |
+| treat Flix stepping as line-by-line only | today's behaviour | Step Over and Step Into stay identical |
+
+The middle option is the correct one and the most expensive; the first is a cheap approximation that
+would fix the visible symptom of descending into `Nec.flix` and `Sys/Env.flix`. Neither is built.
 
 **Known cost, not yet measured.** A stretch of runtime work with no intervening Flix line is
 single-stepped rather than run. Between adjacent source lines that is a few frames. A long

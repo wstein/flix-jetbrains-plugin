@@ -48,6 +48,35 @@ import com.sun.jdi.request.StepRequest
  * for a Java class compiled without `-g`, which has no line numbers either: missing line
  * information alone is not enough to trigger this.
  *
+ * ## Known limitation: Step Over behaves as Step Into
+ *
+ * This filter makes stepping land on Flix lines instead of in bytecode. It does **not** restore the
+ * distinction between Step Over and Step Into, and no filter can.
+ *
+ * `Thunk$.run()` is a trampoline **loop inside a single frame**:
+ *
+ * ```text
+ *  1: dup                    <- loop head
+ *  2: instanceof Thunk$
+ * 11: invokeinterface invoke()
+ * 16: goto 1
+ * ```
+ *
+ * Each continuation is invoked from that loop, so two successive Flix lines are *siblings* at the
+ * same JVM depth -- whether they are consecutive statements in one function or a call into another.
+ * JDI's Step Over and Step Into are defined on frame nesting, and CPS has erased the nesting that
+ * carried the difference. Asking for a shallower step does not mean "stay in this Flix function"; it
+ * means "leave the trampoline", which abandons every continuation still to run.
+ *
+ * The obvious repair -- recover the Flix function from the generated class name -- does not work
+ * either. The name encodes the *entry point*, not the definition: in `flix-lab`,
+ * `Clo$main$399824` is compiled from `Nec.flix` and `Clo$main$399833` from `Sys/Env.flix`. Library
+ * code called from `main` is named `Clo$main$…` just like `main`'s own code.
+ *
+ * A real Flix Step Over therefore needs a Flix-level notion of "same function" carried into the
+ * step, not a JVM-level one. Deciding what it should mean is a language question -- see the gate
+ * runbook -- and is deliberately not answered here.
+ *
  * ## Known cost
  *
  * A stretch of Flix runtime work with no intervening Flix line is single-stepped rather than run.

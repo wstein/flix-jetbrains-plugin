@@ -1,0 +1,87 @@
+# The cross-module wiring contract.
+#
+# One place that says which class plays which role and which module registers it. Checked against
+# the committed descriptors by `./gradlew checkIntegrationGlue`, which runs as part of `check`.
+#
+# Deliberately bounded. It does NOT describe Grammar-Kit tokens or productions, PSI types, source
+# mapping, or debugger behaviour -- those live in the grammar and in code, and a second description
+# of them here would be a second thing to keep true. What it describes is *identity and ownership*:
+# facts that span modules, where drift is silent and expensive.
+#
+# Each rule below exists because breaking it produced a real defect, or would break an invariant an
+# ADR rests on. See docs/flix-integration-matrix.md, which is generated from this file.
+
+schema: 1
+
+language:
+  id: Flix
+  languageId: flix
+  extension: flix
+  # ADR 0001: exactly one Language("Flix"). Two owners means two parsers, two file types, and
+  # highlighting that depends on load order.
+  implementation: org.flixlang.intellij.lang.FlixLanguage
+
+# Which module descriptor must register each class. Registering the same class in two modules is
+# how the gutter arrow once appeared twice -- both descriptors loaded, both contributed.
+registrations:
+  language:
+    com.intellij.fileType: org.flixlang.intellij.lang.FlixFileType
+    com.intellij.lang.parserDefinition: org.flixlang.intellij.lang.FlixParserDefinition
+    com.intellij.lang.syntaxHighlighterFactory: org.flixlang.intellij.lang.highlighting.FlixSyntaxHighlighterFactory
+    com.intellij.lang.braceMatcher: org.flixlang.intellij.lang.editor.FlixBraceMatcher
+    com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
+    com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler
+    com.intellij.lang.foldingBuilder: org.flixlang.intellij.lang.editor.FlixFoldingBuilder
+
+  backend:
+    com.redhat.devtools.lsp4ij.server: dev.wstein.flixplugin.FlixLanguageServerFactory
+    # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
+    # run configurations. Registering it in the language module too produced two arrows.
+    com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor
+
+  debugger:
+    com.intellij.debugger.javaDebugAware: dev.wstein.flixplugin.debugger.FlixJavaDebugAware
+    com.intellij.debugger.positionManagerFactory: dev.wstein.flixplugin.debugger.FlixPositionManagerFactory
+    com.intellij.debugger.extraSteppingFilter: dev.wstein.flixplugin.debugger.FlixSteppingFilter
+    com.intellij.debugger.steppingListener: dev.wstein.flixplugin.debugger.FlixSteppingListener
+    com.intellij.configurationType: dev.wstein.flixplugin.run.FlixRunConfigurationType
+    com.intellij.runConfigurationProducer: dev.wstein.flixplugin.run.FlixRunConfigurationProducer
+
+lsp4ij:
+  languageServerId: flixLanguageServer
+  # languageMapping, not fileNamePatternMapping: a real Language("Flix") exists now.
+  mapping: language
+  # Third-party classes this plugin registers against the Flix language. LSP4IJ registers these
+  # only for language="TEXT"/"textmate"; owning a real language silently takes them away, so the
+  # ones still wanted are re-registered by hand. Listed so the drift check does not flag them as
+  # undeclared, and so the per-feature judgement stays visible.
+  reusedFeatures:
+    com.intellij.lang.psiStructureViewFactory: com.redhat.devtools.lsp4ij.features.documentSymbol.LSPDocumentSymbolStructureViewFactory
+    com.intellij.codeBlockProvider: com.redhat.devtools.lsp4ij.features.codeBlockProvider.LSPCodeBlockProvider
+    com.intellij.codeInsight.parameterInfo: com.redhat.devtools.lsp4ij.features.signatureHelp.LSPParameterInfoHandler
+
+debugger:
+  # ADR 0002. `dap` is not a supported value: two debuggers cannot share one debuggee.
+  backend: intellijJvm
+  stratum: Flix
+  # VirtualMachine.setDefaultStratum is process-global and would corrupt every other language's
+  # position manager in the session. The check greps for it, not just for this flag.
+  setDefaultStratum: false
+  # Flix claims .flix and nothing else. Claiming a foreign extension is how a position manager
+  # starts answering for a language whose own plugin should have.
+  claimedFileExtensions:
+    - flix
+
+actions:
+  runMain: flix.runMain
+
+# Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
+# comes back, because each would reintroduce a defect rather than merely add a feature.
+excluded:
+  # LSP4IJ's DAP client. Retired in favour of IntelliJ's JVM debugger (ADR 0002).
+  - lsp4ij.debugAdapterServer
+  - lsp4ij.dapFileNamePatternMapping
+  # A real Language("Flix") deactivates TextMate; keeping it left an inactive grammar to maintain.
+  - textMate
+  # Running IntelliJ's native LSP alongside LSP4IJ means two clients for one server.
+  - nativeLsp

@@ -75,3 +75,5 @@ listOf("runIde", "runIdeSplitMode", "runIdeBackend", "runIdeFrontend").forEach {
     }
 }
 
+// Phase 5: the cross-module wiring contract and its checker.
+apply(from = "gradle/integration-glue.gradle.kts")

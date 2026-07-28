@@ -6,6 +6,20 @@
 
 ### Added
 
+- **`flix-integration.yaml`** — one bounded contract for cross-module wiring, with
+  `./gradlew checkIntegrationGlue` wired into `check`. It declares which class plays which role and
+  which module registers it, and fails the build on drift in **both** directions: declared but not
+  registered, and registered but not declared. Each rule maps to a defect that happened or an
+  invariant an ADR rests on — a class registered in two modules (how the gutter arrow once
+  duplicated), a `debugAdapterServer` returning alongside the JVM debugger, a `setDefaultStratum`
+  call, Flix claiming a foreign file extension. `docs/flix-integration-matrix.md` is generated from
+  it and committed, so a stale one is a review-visible diff.
+
+  The module descriptors are **verified, not generated**, which differs from the plan. They are
+  mostly comments, and the comments carry more than the XML: why `runLineMarkerContributor` is
+  backend-only, why `lang.fileViewProviderFactory` is deliberately not re-registered. A template
+  reproducing them would hide the reasoning; one dropping them would delete it. The phase's stated
+  goal — ownership consistency, not LOC — is met by checking.
 - **A native Flix run/debug configuration.** Run executes the resolved Flix compiler; Debug launches
   it with `--Xdebug` and a JDWP agent on a free port, and IntelliJ's own Java debugger attaches. One
   configuration type covers both, since they differ only in the invocation. A context producer turns

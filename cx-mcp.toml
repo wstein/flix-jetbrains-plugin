@@ -1,0 +1,8 @@
+#:schema https://wstein.github.io/cx-cli/schemas/cx-config-overlay-v1.schema.json
+extends = "./cx.toml"
+
+# MCP access control — uncomment and adjust as needed.
+# [mcp]
+# policy = "unrestricted"      # default | strict | unrestricted
+# enable_mutation = true        # Required to expose write tools even with policy = "unrestricted"
+# audit_logging = true          # Log all MCP tool calls to .cx/audit.log

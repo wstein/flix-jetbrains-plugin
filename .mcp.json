@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cx-mcp": {
+      "command": "cx",
+      "args": ["mcp"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "CX_STRICT": "true"
+      }
+    }
+  }
+}

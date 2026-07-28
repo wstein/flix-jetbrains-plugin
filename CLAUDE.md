@@ -122,12 +122,23 @@ java scripts/FlixLineProbe.java <jdwp-port> Main.flix <first-line> <last-line>
 
 Reach for it before reading bytecode, not after.
 
-`scripts/FlixDebugProbe.java` is the next step up: it arms one line, waits for the hit and prints the
-stack, which is how mixed-language frames become visible without an IDE.
+`scripts/FlixDebugProbe.java` is the next step up: it arms one line — or one exception class — waits
+for the hit and prints the stack, which is how mixed-language frames become visible without an IDE.
 
 ```console
 java scripts/FlixDebugProbe.java <jdwp-port> Greeter.kt 18
+java scripts/FlixDebugProbe.java <jdwp-port> --exception java.lang.IllegalStateException
 ```
+
+Two things produce a convincing false negative here, both of which have already cost a round:
+
+- **`flix-lab/lib/external/` is a cache the compiler does not invalidate.** It logs
+  ``Cached `flixlab-javalib.jar` from `file:…` `` even when it kept the copy it already had, so a
+  rebuilt fixture jar in `vendor/` can sit unused indefinitely. Delete the stale entry after
+  rebuilding, and confirm with `javap -p` on the extracted class rather than on the jar you built.
+- **The probe's deadline starts at attach**, while the debuggee is still suspended. A cold run
+  resolves dependencies and compiles before `main` executes; the timeout is now 15 minutes for that
+  reason. An expired deadline prints `NEVER HIT`, which is indistinguishable from a real one.
 
 Between them these cover everything a debug session does *after* launch, against the same command
 line `FlixLaunchCommand` builds. What they cannot cover is the gesture — pressing the gutter arrow,

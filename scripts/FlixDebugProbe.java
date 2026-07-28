@@ -3,6 +3,7 @@ import com.sun.jdi.Bootstrap;
 import com.sun.jdi.Location;
 import com.sun.jdi.ReferenceType;
 import com.sun.jdi.StackFrame;
+import com.sun.jdi.ThreadReference;
 import com.sun.jdi.VirtualMachine;
 import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.connect.Connector;
@@ -11,17 +12,20 @@ import com.sun.jdi.event.ClassPrepareEvent;
 import com.sun.jdi.event.Event;
 import com.sun.jdi.event.EventQueue;
 import com.sun.jdi.event.EventSet;
+import com.sun.jdi.event.ExceptionEvent;
 import com.sun.jdi.event.VMDeathEvent;
 import com.sun.jdi.event.VMDisconnectEvent;
 import com.sun.jdi.request.BreakpointRequest;
 import com.sun.jdi.request.ClassPrepareRequest;
 import com.sun.jdi.request.EventRequest;
+import com.sun.jdi.request.ExceptionRequest;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * Sets a breakpoint on a Flix line, waits for it, and prints the stack it stopped in.
+ * Stops in a running Flix process -- on a source line, or on a thrown exception -- and prints the
+ * stack it stopped in.
  *
  * <h2>What this evidences, and what it does not</h2>
  *
@@ -40,23 +44,40 @@ import java.util.Map;
  * <pre>{@code
  * JAVA_TOOL_OPTIONS='-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5099' \
  *   ./scripts/flix-fork run --Xdebug --yes &
- * java scripts/FlixDebugProbe.java 5099 Main.flix 101
+ *
+ * java scripts/FlixDebugProbe.java 5099 Main.flix 101                       # a line
+ * java scripts/FlixDebugProbe.java 5099 --exception java.lang.IllegalStateException
  * }</pre>
  *
- * <p>Exits non-zero if the breakpoint never binds or never hits.
+ * <p>The exception form covers what a Java exception breakpoint does: it requests both caught and
+ * uncaught throws, since an exception breakpoint that only saw the uncaught ones would miss every
+ * recovered failure -- the interesting case, and the one the fixture provides.
+ *
+ * <p>Exits non-zero if nothing binds or nothing hits.
  */
 public final class FlixDebugProbe {
 
-    private static final long TIMEOUT_MS = 180_000;
+    /**
+     * Generous, because the clock starts at attach and the debuggee suspends before it has done
+     * anything. A cold run resolves dependencies and compiles the whole project first, which took
+     * longer than three minutes here -- and the probe reported NEVER HIT for a breakpoint that was
+     * armed correctly and would have been reached. A timeout that expires before {@code main} runs
+     * reads exactly like a real negative, so it is worth being well clear of it.
+     */
+    private static final long TIMEOUT_MS = 900_000;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
             System.err.println("usage: FlixDebugProbe <jdwp-port> <source-file-name> <line>");
+            System.err.println("       FlixDebugProbe <jdwp-port> --exception <exception-class>");
             System.exit(2);
         }
         String port = args[0];
-        String sourceName = args[1];
-        int line = Integer.parseInt(args[2]);
+        boolean onException = args[1].equals("--exception");
+        String sourceName = onException ? null : args[1];
+        String exceptionClass = onException ? args[2] : null;
+        int line = onException ? -1 : Integer.parseInt(args[2]);
+        String what = onException ? exceptionClass : sourceName + ":" + line;
 
         VirtualMachine vm = attach(port);
         System.out.printf("attached to %s%n%n", vm.name());
@@ -66,9 +87,15 @@ public final class FlixDebugProbe {
         ClassPrepareRequest prepare = vm.eventRequestManager().createClassPrepareRequest();
         prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
         prepare.enable();
-        vm.resume();
 
         int bound = 0;
+        if (onException) {
+            // Requested by name against a not-yet-loaded class, exactly as a user's exception
+            // breakpoint is: the request is armed on class prepare below.
+            bound += armException(vm, exceptionClass, null);
+        }
+        vm.resume();
+
         boolean hit = false;
         EventQueue queue = vm.eventQueue();
         long deadline = System.currentTimeMillis() + TIMEOUT_MS;
@@ -88,11 +115,20 @@ public final class FlixDebugProbe {
                 if (event instanceof VMDeathEvent || event instanceof VMDisconnectEvent) {
                     deadline = 0;
                 } else if (event instanceof ClassPrepareEvent prepared) {
-                    bound += arm(vm, prepared.referenceType(), sourceName, line);
+                    bound += onException
+                            ? armException(vm, exceptionClass, prepared.referenceType())
+                            : arm(vm, prepared.referenceType(), sourceName, line);
                 } else if (event instanceof BreakpointEvent stopped) {
                     hit = true;
                     stop = true;
-                    report(stopped, sourceName, line);
+                    report(stopped.thread(), what, null);
+                } else if (event instanceof ExceptionEvent thrown) {
+                    hit = true;
+                    stop = true;
+                    // Where it will be handled is the difference between "recovered" and "fatal",
+                    // and it is what tells a reader the caught case was the one exercised.
+                    report(thrown.thread(), what,
+                            thrown.catchLocation() == null ? "uncaught" : "caught at " + thrown.catchLocation());
                 }
             }
             if (!stop) {
@@ -104,8 +140,8 @@ public final class FlixDebugProbe {
             }
         }
 
-        System.out.printf("%nbreakpoint %s:%d  ->  bound in %d class(es), %s%n",
-                sourceName, line, bound, hit ? "HIT" : "NEVER HIT");
+        System.out.printf("%n%s  ->  armed %d time(s), %s%n",
+                what, bound, hit ? "HIT" : "NEVER HIT");
         try {
             vm.dispose();
         } catch (Exception ignored) {
@@ -157,11 +193,37 @@ public final class FlixDebugProbe {
         }
     }
 
+    /**
+     * Requests a stop on every throw of {@code name}, caught or not.
+     *
+     * <p>{@code prepared} is the class that just loaded, or null on the first attempt. Passing the
+     * class rather than requesting every exception keeps the stop specific -- a bare request with
+     * no type would fire on the first internal failure of the compiler's own startup, long before
+     * user code runs, and report that instead.
+     */
+    private static int armException(VirtualMachine vm, String name, ReferenceType prepared) {
+        ReferenceType type = prepared;
+        if (type == null) {
+            type = vm.classesByName(name).stream().findFirst().orElse(null);
+        } else if (!type.name().equals(name)) {
+            return 0;
+        }
+        if (type == null) {
+            return 0; // Not loaded yet; the class-prepare watch arms it when it is.
+        }
+        ExceptionRequest request = vm.eventRequestManager().createExceptionRequest(type, true, true);
+        request.setSuspendPolicy(EventRequest.SUSPEND_ALL);
+        request.enable();
+        System.out.printf("  armed %-34s caught and uncaught%n", type.name());
+        return 1;
+    }
+
     /** Prints the stack, which is where mixed-language frames become visible. */
-    private static void report(BreakpointEvent stopped, String sourceName, int line) {
-        System.out.printf("%nSTOPPED at %s:%d%n%n%-6s %-34s %s%n", sourceName, line, "FRAME", "CLASS", "SOURCE");
+    private static void report(ThreadReference thread, String what, String note) {
+        System.out.printf("%nSTOPPED at %s%s%n%n%-6s %-34s %s%n",
+                what, note == null ? "" : " (" + note + ")", "FRAME", "CLASS", "SOURCE");
         try {
-            List<StackFrame> frames = stopped.thread().frames();
+            List<StackFrame> frames = thread.frames();
             for (int i = 0; i < Math.min(frames.size(), 12); i++) {
                 Location at = frames.get(i).location();
                 String stratum = at.declaringType().availableStrata().contains("Flix")

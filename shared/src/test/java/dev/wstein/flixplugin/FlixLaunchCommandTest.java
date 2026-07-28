@@ -52,6 +52,53 @@ public class FlixLaunchCommandTest {
     }
 
     @Test
+    public void theJdwpAgentGoesBeforeTheJarNotAfterIt() {
+        // Everything after -jar is the Flix compiler's own argument list, where a JVM option is
+        // ignored or rejected. Only the JVM sees arguments placed before it.
+        List<String> command = FlixLaunchCommand.debug(JAR, "Main.main", 5005, true);
+        int agent = indexOfPrefix(command, "-agentlib:jdwp");
+        assertTrue("the agent must be present", agent > 0);
+        assertTrue("the agent must precede -jar", agent < command.indexOf("-jar"));
+        assertEquals("java", command.get(0));
+    }
+
+    @Test
+    public void theJdwpArgumentCarriesThePortAndSuspendPolicy() {
+        assertTrue(FlixLaunchCommand.debug(JAR, null, 5005, true).contains(
+                "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"));
+        assertTrue(FlixLaunchCommand.debug(JAR, null, 6006, false).contains(
+                "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:6006"));
+    }
+
+    @Test
+    public void theAgentOverloadKeepsEveryRuleOfThePlainDebugCommand() {
+        // It delegates rather than rebuilding, so subcommand ordering, a single --Xdebug, --yes and
+        // the entry point must all survive -- the rules a second construction path would drift from.
+        List<String> command = FlixLaunchCommand.debug(JAR, "Foo.Bar.demo", 5005, true);
+        assertEquals(1, command.stream().filter("--Xdebug"::equals).count());
+        assertTrue(command.indexOf("--Xdebug") > command.indexOf("run"));
+        assertTrue(command.contains("--yes"));
+        assertEquals("Foo.Bar.demo", command.get(command.indexOf("--entrypoint") + 1));
+    }
+
+    @Test
+    public void bothAgentSpellingsAgree() {
+        // The command-line form and the JAVA_TOOL_OPTIONS form must describe the same agent, or a
+        // session started one way behaves differently from one started the other.
+        assertTrue(FlixLaunchCommand.withJdwpAgent(null, 5005, true)
+                .endsWith(FlixLaunchCommand.jdwpAgent(5005, true)));
+    }
+
+    private static int indexOfPrefix(List<String> command, String prefix) {
+        for (int i = 0; i < command.size(); i++) {
+            if (command.get(i).startsWith(prefix)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @Test
     public void debugAnswersTheDependencyPrompt() {
         // Nobody is watching a terminal for a launch started from the IDE.
         assertTrue(FlixLaunchCommand.debug(JAR, null).contains("--yes"));

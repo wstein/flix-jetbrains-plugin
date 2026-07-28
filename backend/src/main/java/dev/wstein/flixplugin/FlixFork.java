@@ -2,16 +2,20 @@ package dev.wstein.flixplugin;
 
 import com.intellij.openapi.project.Project;
 
-import java.io.File;
 import java.nio.file.Path;
-import java.util.Comparator;
-import java.util.stream.Stream;
 
 /**
- * Mirrors scripts/flix-fork's jar resolution: $FLIX_FORK_JAR if set, otherwise the most recently
- * modified flix-vendor-*.jar in the open project's root -- so the LSP and DAP servers this plugin
- * launches pick up the same --Xdebug-capable fork build scripts/flix-fork itself uses, rather than
- * any globally installed upstream `flix`.
+ * Mirrors scripts/flix-fork's jar resolution, so the LSP server this plugin launches picks up the
+ * same --Xdebug-capable fork build the script itself uses rather than any globally installed
+ * upstream `flix`.
+ *
+ * <p>The rule lives in {@link FlixJar}, in the platform-free {@code shared} module, because the
+ * native run/debug configuration must reach the identical answer and sits in {@code debugger} -- a
+ * module that cannot depend on this one. Launching a debug session against a different compiler
+ * than the editor was analysed with is the kind of inconsistency that shows up as unexplained
+ * behaviour rather than as an error, so the choice is made in exactly one place.
+ *
+ * <p>All this adds is the project's base path, the only part that needs the IntelliJ Platform.
  */
 final class FlixFork {
 
@@ -19,23 +23,6 @@ final class FlixFork {
     }
 
     static Path resolveJar(Project project) {
-        String pinned = System.getenv("FLIX_FORK_JAR");
-        if (pinned != null && !pinned.isBlank()) {
-            return Path.of(pinned);
-        }
-        String basePath = project.getBasePath();
-        if (basePath == null) {
-            throw new IllegalStateException("Project has no base path; cannot locate flix-vendor-*.jar");
-        }
-        File[] candidates = new File(basePath)
-                .listFiles((dir, name) -> name.startsWith("flix-vendor-") && name.endsWith(".jar"));
-        if (candidates == null || candidates.length == 0) {
-            throw new IllegalStateException("No flix-vendor-*.jar found in " + basePath
-                    + ". Build github.com/wstein/flix-fork and drop the resulting jar there, or set FLIX_FORK_JAR.");
-        }
-        return Stream.of(candidates)
-                .max(Comparator.comparingLong(File::lastModified))
-                .map(File::toPath)
-                .orElseThrow();
+        return FlixJar.resolve(project.getBasePath(), System.getenv(FlixJar.PINNED_JAR_ENV));
     }
 }

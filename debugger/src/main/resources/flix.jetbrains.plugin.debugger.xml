@@ -15,6 +15,7 @@
     <dependencies>
         <module name="intellij.platform.backend"/>
         <module name="flix.jetbrains.plugin.language"/>
+        <module name="flix.jetbrains.plugin.shared"/>
         <plugin id="com.intellij.java"/>
     </dependencies>
 
@@ -43,5 +44,17 @@
              position it was chosen from. -->
         <debugger.steppingListener
                 implementation="dev.wstein.flixplugin.debugger.FlixSteppingListener"/>
+
+        <!-- The canonical Flix run/debug configuration (ADR 0002, plan Phase 4). Registered here
+             rather than in the backend module because Debug attaches IntelliJ's own Java debugger,
+             which lives in the Java plugin. One type covers Run and Debug: they differ only in the
+             compiler invocation and whether a JDWP agent is attached. -->
+        <configurationType
+                implementation="dev.wstein.flixplugin.run.FlixRunConfigurationType"/>
+
+        <!-- Turns a `def` in the editor into that configuration, which is what the gutter arrow and
+             the context menu act on. Scoped to .flix files. -->
+        <runConfigurationProducer
+                implementation="dev.wstein.flixplugin.run.FlixRunConfigurationProducer"/>
     </extensions>
 </idea-plugin>

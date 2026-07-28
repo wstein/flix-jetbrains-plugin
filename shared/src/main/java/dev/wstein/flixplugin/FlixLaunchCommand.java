@@ -60,6 +60,35 @@ public final class FlixLaunchCommand {
         return build(jar, entryPoint, true);
     }
 
+    /**
+     * {@code java -agentlib:jdwp=… -jar <jar> run --Xdebug --yes [--entrypoint <symbol>]}.
+     *
+     * <p>Puts the agent on the command line rather than in {@code JAVA_TOOL_OPTIONS}. Both work --
+     * the gate was run with the environment variable -- but an argument is visible in the run
+     * console, which matters when the question is "which debugger am I actually on"; the variable
+     * is invisible once the process has started.
+     *
+     * <p>It must sit before {@code -jar}: everything after the jar is the Flix compiler's own
+     * argument list, where a JVM option is either ignored or rejected.
+     *
+     * <p>Does not remove the caller's obligation to check {@code JAVA_TOOL_OPTIONS} with
+     * {@link #findJdwpAgent}: an inherited agent would still start a second JDWP server in the same
+     * JVM, which is the state ADR 0002 forbids.
+     *
+     * @param suspend whether the debuggee waits for the debugger before running any user code
+     */
+    public static @NotNull List<String> debug(
+            @NotNull Path jar, @Nullable String entryPoint, int jdwpPort, boolean suspend) {
+        List<String> command = new ArrayList<>(build(jar, entryPoint, true));
+        command.add(1, jdwpAgent(jdwpPort, suspend));
+        return command;
+    }
+
+    /** The {@code -agentlib:jdwp} argument for [jdwpPort]. */
+    public static @NotNull String jdwpAgent(int port, boolean suspend) {
+        return JDWP_AGENT.formatted(suspend ? "y" : "n", port);
+    }
+
     private static List<String> build(Path jar, String entryPoint, boolean debug) {
         List<String> command = new ArrayList<>(List.of("java", "-jar", jar.toString(), "run"));
         if (debug) {
@@ -104,7 +133,7 @@ public final class FlixLaunchCommand {
         if (alreadyPresent != null) {
             throw new JdwpAlreadyConfiguredException(alreadyPresent);
         }
-        String agent = JDWP_AGENT.formatted(suspend ? "y" : "n", port);
+        String agent = jdwpAgent(port, suspend);
         return inherited.isEmpty() ? agent : inherited + " " + agent;
     }
 

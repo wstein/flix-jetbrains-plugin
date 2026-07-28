@@ -10,6 +10,10 @@ dependencies {
     }
 
     implementation(project(":language"))
+    // FlixJar and FlixLaunchCommand: the compiler-jar rule and the launch invocation, shared with
+    // the LSP wiring in :backend so a debug session cannot run a different compiler than the
+    // editor was analysed with.
+    implementation(project(":shared"))
     testImplementation("junit:junit:4.13.2")
 }
 

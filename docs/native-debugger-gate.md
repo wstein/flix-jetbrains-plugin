@@ -184,6 +184,28 @@ To disprove it, the shape needed is two `.fpkg` dependencies each carrying a `Ma
 unpacked as navigable sources. If you build that, record it — it turns a defensive branch into a
 tested one.
 
+## When a breakpoint does not bind
+
+The gutter looks the same whichever step failed, so turn on the position manager's own log rather
+than guessing. **Help → Diagnostic Tools → Debug Log Settings**, add:
+
+```text
+#dev.wstein.flixplugin.debugger
+```
+
+Then reproduce and read `idea.log`. Each line names one step:
+
+| Line | Meaning |
+| --- | --- |
+| `createPrepareRequests(...): watching all prepares` | the breakpoint asked to be told about future classes |
+| `getAllClasses(Main.flix:44): 0 of N loaded classes matched` | no loaded class claims that source — expected before the class loads, a problem afterwards |
+| `locationsOfLine(Clo$main$…): no source name matches Main.flix` | the class was reached but its recorded source name did not resolve to this file |
+| `locationsOfLine(..., names=[...], line=44): 0 location(s)` | the class and file matched, but the line has no code — check `javap -l` |
+| *(nothing at all)* | the manager was never consulted; the breakpoint is not reaching it |
+
+The last row is the important one: it separates "my mapping is wrong" from "I am not being asked",
+and those have entirely different causes.
+
 ## Results
 
 | # | Check | Result |

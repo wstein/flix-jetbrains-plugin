@@ -8,6 +8,7 @@ import com.intellij.debugger.SourcePosition
 import com.intellij.debugger.engine.DebugProcess
 import com.intellij.debugger.requests.ClassPrepareRequestor
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiFile
@@ -60,16 +61,27 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
 
     override fun getAllClasses(position: SourcePosition): List<ReferenceType> {
         val target = flixTargetOf(position)
-        return debugProcess.virtualMachineProxy.allClasses().filter { type ->
-            matchesSource(type, target)
+        val loaded = debugProcess.virtualMachineProxy.allClasses()
+        val matched = loaded.filter { type -> matchesSource(type, target) }
+        if (LOG.isDebugEnabled) {
+            LOG.debug(
+                "getAllClasses(${target.baseName}:${position.line + 1}): " +
+                    "${matched.size} of ${loaded.size} loaded classes matched",
+            )
         }
+        return matched
     }
 
     override fun locationsOfLine(type: ReferenceType, position: SourcePosition): List<Location> {
         val target = flixTargetOf(position)
         val stratum = FlixSourceLocations.stratumFor(type) ?: throw NoDataException.INSTANCE
         val sourceNames = matchingSourceNames(type, stratum, target)
-        if (sourceNames.isEmpty()) throw NoDataException.INSTANCE
+        if (sourceNames.isEmpty()) {
+            if (LOG.isDebugEnabled) {
+                LOG.debug("locationsOfLine(${type.name()}): no source name matches ${target.baseName}")
+            }
+            throw NoDataException.INSTANCE
+        }
 
         // One Flix line commonly compiles into several generated classes and several locations
         // within them -- closures and lambdas each get their own. Returning all of them is what
@@ -78,11 +90,18 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         // absolute SourceFile name (for example `/project/src/Main.flix`). Passing `Main.flix`
         // then silently yields no locations even though the line table contains the requested
         // line.
-        return sourceNames.flatMap { sourceName ->
+        val locations = sourceNames.flatMap { sourceName ->
             runCatching {
                 type.locationsOfLine(stratum, sourceName, position.line + 1)
             }.getOrElse { emptyList() }
         }.distinct()
+        if (LOG.isDebugEnabled) {
+            LOG.debug(
+                "locationsOfLine(${type.name()}, stratum=$stratum, names=$sourceNames, " +
+                    "line=${position.line + 1}): ${locations.size} location(s)",
+            )
+        }
+        return locations
     }
 
     override fun createPrepareRequest(
@@ -98,12 +117,25 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
         // language never produces a class-prepare request owned by this manager.
         flixTargetOf(position)
 
-        // Flix compiles a source file into many classes whose names it chooses, so there is no
-        // single class-name pattern to filter on. Watching every prepare and re-checking the source
-        // on arrival is the correct trade here: breakpoints set before their class loads still
-        // resolve, at the cost of one source-name comparison per class.
-        val request = debugProcess.requestsManager.createClassPrepareRequest(requestor, "*")
-            ?: return emptyList()
+        // Flix compiles a source file into many classes whose names it chooses -- Def$main,
+        // Clo$main$400074 and so on -- so there is no class-name pattern to filter on. Watching
+        // every prepare and re-checking the source on arrival is the correct trade: breakpoints set
+        // before their class loads still resolve, at the cost of one source-name comparison per
+        // class.
+        //
+        // The empty pattern is what expresses "every prepare". RequestManagerImpl applies the
+        // pattern with `if (!StringUtil.isEmpty(pattern)) addClassFilter(pattern)`, so an empty
+        // string installs no filter at all. A wildcard does the opposite of what it looks like:
+        // JDI restricts class patterns to an exact name or one that begins or ends with `*`
+        // (`java.*`, `*.Foo`), and a bare `*` is not a well-formed pattern -- the filter matches
+        // nothing, no prepare event ever arrives, and every breakpoint stays unresolved while
+        // looking correctly placed in the gutter.
+        val request = debugProcess.requestsManager.createClassPrepareRequest(requestor, "")
+        if (request == null) {
+            LOG.debug("createPrepareRequests(${position.file.name}:${position.line + 1}): refused")
+            return emptyList()
+        }
+        LOG.debug("createPrepareRequests(${position.file.name}:${position.line + 1}): watching all prepares")
         return listOf(request)
     }
 
@@ -156,6 +188,18 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     }
 
     private data class Target(val file: VirtualFile, val baseName: String)
+
+    private companion object {
+        /**
+         * Off by default; enable with `#dev.wstein.flixplugin.debugger` in
+         * Help > Diagnostic Tools > Debug Log Settings.
+         *
+         * A breakpoint that does not bind looks identical whichever step failed -- no class
+         * matched, no source name matched, no location at that line -- and the gutter shows the
+         * same thing for all three. These messages name which one it was.
+         */
+        private val LOG = Logger.getInstance(FlixPositionManager::class.java)
+    }
 
 }
 

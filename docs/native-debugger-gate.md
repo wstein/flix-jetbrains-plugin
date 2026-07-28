@@ -10,6 +10,43 @@ this gate exists to replace.
 Record the outcome in the results table at the end. A gate nobody wrote down is a gate that gets
 re-run.
 
+## First: confirm which debugger you are actually running
+
+The two paths look identical in the editor — same red gutter, same Debug toolwindow — and differ
+only in the console. Getting this wrong invalidates every row, so check it before anything else.
+
+**You are on the DAP path** if the console shows any of:
+
+```text
+java --add-modules jdk.jdi …/FlixDebugAdapterNNNN.java --port 50351
+Launching 'Main.flix' with 'Flix (--Xdebug attach)' at 50351
+Listening for DAP client on port 50351
+[flix-debug-adapter] launching: …
+```
+
+`FlixDebugAdapter` is the bridge process, `Flix (--Xdebug attach)` is LSP4IJ's run configuration,
+and `[flix-debug-adapter]` is its logging. If you see these, `FlixPositionManager` is not involved
+and the gate is measuring the old path.
+
+**You are on the native path** if the console shows only:
+
+```text
+Connected to the target VM, address: 'localhost:5005', transport: 'socket'
+```
+
+and the debuggee's own output appears in the terminal you launched it from, not in the IDE.
+
+### How to end up on the wrong one
+
+Pressing **Debug** on a `.flix` file, or clicking the gutter arrow, hands the request to whichever
+run-configuration producer matches — today that is LSP4IJ's DAP producer, because the `*.flix`
+mapping in the backend module is still registered. It will auto-create a `Flix (--Xdebug attach)`
+configuration and use it.
+
+The native path has no producer yet, so it cannot be reached that way. It is reachable **only** by
+creating a Remote JVM Debug configuration by hand and launching the debuggee yourself, as below.
+That is the whole reason step 2 starts the program in a terminal rather than from the IDE.
+
 ## Preconditions
 
 **1. `scripts/flix-fork` must not inject `--Xdebug`.** Its committed form ends:
@@ -61,7 +98,21 @@ in `.flix` and in a `.java` file the program calls.
 ### 4. Attach
 
 **Run → Edit Configurations → + → Remote JVM Debug**, host `localhost`, port `5005`, mode *Attach
-to remote JVM*. Run it in Debug.
+to remote JVM*. Run **that configuration** in Debug.
+
+Do not press Debug on `Main.flix`, and do not use the gutter arrow: both hand the request to
+LSP4IJ's DAP producer and silently run the path this gate is meant to replace. Re-check the console
+signatures above before continuing.
+
+While suspended at the first breakpoint, confirm row 12 **now**, not afterwards:
+
+```console
+ps aux | grep -c '[F]lixDebugAdapter'
+```
+
+It must print `0` while the session is live. Run after the program exits, it prints `0` regardless,
+because the adapter is gone either way -- which is exactly how a DAP run can be mistaken for a
+native one.
 
 ## Choosing fixtures deliberately
 
@@ -224,7 +275,7 @@ and those have entirely different causes.
 | 10c | *Fixture:* both report a bare `SourceFile: Main.flix`, not a path — record it | |
 | 10 | Duplicate bare-name `Main.flix` binds to **neither** rather than to the wrong one — or *not reachable*, with evidence | |
 | 11 | Pause, continue, terminate and detach behave | |
-| 12 | **No DAP process starts** — `ps aux \| grep FlixDebugAdapter` finds nothing | |
+| 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | |
 
 ### Known open question: `let args` — evidence before any fix

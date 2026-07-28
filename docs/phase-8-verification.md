@@ -6,7 +6,7 @@ Written to be read before claiming the milestone complete. A row marked **not ru
 that will probably pass; it is a row nobody has measured. Where a row is unreachable, the evidence
 for that is recorded rather than the conclusion alone.
 
-Status as of 2026-07-28, at `f524d5d`. 202 automated tests, 0 failures.
+Status as of 2026-07-28, at `4160531`. 203 automated tests, 0 failures.
 
 | | Meaning |
 | --- | --- |
@@ -24,7 +24,7 @@ Status as of 2026-07-28, at `f524d5d`. 202 automated tests, 0 failures.
 | 1 | Adopted parser, recovery, fuzz, incremental-edit, editor, folding and gutter tests pass | ✅ 92 tests in `:language` — `FlixParsingTest`, `FlixErrorRecoveryTest`, `FlixRareSyntaxTest`, `FlixRareSyntaxRecoveryTest`, `FlixRareSyntaxFuzzTest`, `FlixIncrementalEditTest`, `FlixEditorBasicsTest`, `FlixFoldingTest`, `FlixRunLineMarkerContributorTest` |
 | 2 | The 428-file corpus is lossless, error-free, and matches the declaration/`def main` oracle | ✅ **427 of 427 (100%)**, up from 211 (49.3%) at adoption; one documented exclusion. `FlixCorpusTest`, see [parser evaluation](intellij-flix-parser-evaluation.md) |
 | 3 | Exactly one language, file type, parser, highlighter, gutter marker, LSP session and run configuration | ✅ `FlixPluginDescriptorTest` (8 checks) plus `checkIntegrationGlue`, which now fails the build on a class registered in two modules |
-| 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ⚠️ `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases). Diagnostics were verified live during the fork LSP fix — 5 resolution errors before, 0 after, via a scripted LSP handshake. **Completion and hover have never been exercised in a test or a recorded session.** |
+| 4 | LSP completion, hover, diagnostics and `flix.runMain` work after `languageMapping` | ⚠️ `flix.runMain`'s argument handling is unit-tested (`FlixRunMainActionTest`, 7 cases). Diagnostics verified live during the fork LSP fix — 5 resolution errors before, 0 after, through a scripted LSP handshake — and confirmed in the IDE. **Completion and hover have never been exercised in a test or a recorded session.** |
 | 5 | `checkIntegrationGlue`, build and plugin verification pass | ⚠️ `checkIntegrationGlue` and `build` pass and run in `check`. **`verifyPlugin` (the JetBrains Plugin Verifier) has never been run** — the task exists but is not wired into any pipeline, and there is no CI. |
 
 ---
@@ -113,7 +113,7 @@ plugin owes every other JVM language, and it is the one row that cannot regress 
 | Adopted PSI and highlighting without TextMate | ✅ TextMate removed; highlighting confirmed in use |
 | One green arrow beside `def main` | ✅ confirmed live; the earlier duplicate was fixed by backend-only registration |
 | Run uses the canonical Flix configuration | ⬜ not run — the configuration landed in `7451ba4` |
-| Debug opens the native JVM debugger | ⬜ **not run.** A stale `DAPConfiguration` in the sandbox was hijacking the gutter arrow; cleared, and a producer factory bug fixed in `fa7f2df`. Neither fix is confirmed |
+| Debug opens the native JVM debugger | ⬜ **not run**, and three defects were fixed on the way to it, none confirmed live: a stale `DAPConfiguration` hijacking the gutter arrow (cleared), a producer building an unregistered configuration type (`fa7f2df`), and — the substantive one — both `GenericDebuggerRunner` conditions unsatisfied, so no debug session could ever have started (`e18ec1b`) |
 | Flix, Java and Kotlin breakpoints coexist | ⚠️ Flix + Java ✅; Kotlin ⬜ |
 | Stepping crosses Flix↔Java and Flix↔Kotlin | ⚠️ Flix↔Java ✅ (gate rows 3–5); Flix↔Kotlin ⬜ |
 | With the Scala plugin, a run crosses Flix↔Scala 3 | ⬜ |
@@ -127,14 +127,20 @@ plugin owes every other JVM language, and it is the one row that cannot regress 
 
 Ordered by what blocks the milestone rather than by matrix position.
 
-1. **The manual smoke test's Run and Debug rows** — the run configuration and DAP retirement have
-   never been exercised in a session. With DAP gone there is no fallback, so this is the highest
-   risk item.
-3. **Required interop rows 2 and 3** — Kotlin. The fixture now exists; row 3 needs an inline
-   function added to it.
-4. **`verifyPlugin`** — never run, and the cheapest of these to fix.
-5. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; both need an IDE
-   with the respective plugin.
-6. **Class redefinition and stale-cache SMAP tests** — no coverage, and no known failure either.
+1. **The manual smoke test's Run and Debug rows.** The run configuration has never been exercised in
+   a session, and three defects were found in it by review rather than by use — including two that
+   made a debug session impossible. With DAP retired there is no fallback, so this is the highest
+   risk item and the one that unblocks the most.
+2. **Required interop rows 2 and 3** — Kotlin. The fixture exists; row 3 additionally needs an
+   inline function, which the current Kotlin `Greeter` does not have.
+3. **`verifyPlugin`** — never run, and the cheapest of these.
+4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
+   with the respective plugin installed.
+5. **Class redefinition and stale-cache SMAP tests** — no coverage, and no known failure either.
+6. **`FlixPositionManager.getAllClasses` and the class-prepare filter** have no direct test. Both
+   need a real `Project` for `SourcePosition`, and this module already mixes `ParsingTestCase` with a
+   mock application in a way that has caused cross-test interference. The rules they compose are
+   covered; the composition is not.
 
-Nothing here is blocked on a decision. Every item is a measurement someone has to take.
+Nothing here is blocked on a decision. Every item is a measurement someone has to take, or a test
+someone has to find a safe fixture for.

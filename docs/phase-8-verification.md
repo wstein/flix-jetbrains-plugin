@@ -6,7 +6,7 @@ Written to be read before claiming the milestone complete. A row marked **not ru
 that will probably pass; it is a row nobody has measured. Where a row is unreachable, the evidence
 for that is recorded rather than the conclusion alone.
 
-Status as of 2026-07-28, at `982c190`. 225 automated tests, 0 failures.
+Status as of 2026-07-28, at `757b811`. 229 automated tests, 0 failures.
 
 | | Meaning |
 | --- | --- |
@@ -77,7 +77,7 @@ The plan asks for these specifically. 49 tests in `:debugger` cover most:
 | Duplicate base names | ✅ `FlixForwardResolutionTest` — resolves to **neither**, which is also why gate row 10 is unreachable live |
 | Absent information | ✅ `FlixSourceLocationsTest` — `AbsentInformationException`, absent line tables, unknown lines |
 | Multiple locations per line | ✅ `FlixSourceLocationsTest`, and the row-9 work above |
-| Class prepare | ⚠️ the requestor's filter rule is exercised indirectly; there is no test that drives a prepare event |
+| Class prepare | ⚠️ the rule the filter applies is covered by `FlixClassSelectionTest` through `getAllClasses`; no test drives an actual prepare event, which needs a `RequestManager` that cannot be stubbed |
 | Stepping-filter wiring | ✅ `FlixSteppingFilterTest` — added after review; mutation-checked (inverting the arrived-check, dropping the budget, or stepping out instead of in all fail it) |
 | **Class redefinition** | ✅ `FlixSourceCacheTest` — a hot swap keeps the same `ReferenceType`, so only invalidation can yield the new sources |
 | **Stale cache invalidation** | ✅ `FlixSourceCacheTest` — cleared on resume, which is when a redefinition can have happened |
@@ -137,23 +137,10 @@ Ordered by what blocks the milestone rather than by matrix position.
 3. **`verifyPlugin`** — the CI job existed but verified against no IDEs. Targets are now configured, so the next CI run is the first that checks anything; expect it to have something to say.
 4. **Optional profiles** — Scala (rows 5, 6) and Groovy (row 7). Fixtures exist; each needs an IDE
    with the respective plugin installed.
-5. **`FlixPositionManager.getAllClasses` and the class-prepare filter** have no direct test, and the
-   obstacle is now known rather than assumed. Both start from a `SourcePosition`, so the fixture must
-   produce a file that is *both* typed as Flix **and** present in the file index — `FlixSourceFiles`
-   resolves through the index, so a `LightVirtualFile` from `ParsingTestCase` fails the positive
-   case, while `BasePlatformTestCase` gives an indexed file whose type is plain text because a
-   debugger-module fixture does not load the language module's `fileType` registration. Registering
-   it in the test is not available either: `FileTypeManagerEx.registerFileType` does not exist in
-   IU-2026.1.3.
-
-   Three routes, in increasing order of usefulness: move the test to the `language` module, which
-   owns that registration; give the debugger module a fixture that loads the language descriptor;
-   or add a top-level integration-test module depending on every content module at once, which
-   would also cover the cross-boundary flows nothing exercises today — a `flix.runMain` CodeLens in
-   `backend` actually starting the run configuration in `debugger`, for instance. The third is the
-   route [ADR 0003](adr/0003-cross-module-contracts.md) records as adopted in principle. None is a
-   two-line change, and the rules being composed are individually covered, so this stays a known
-   gap rather than a badly closed one.
+5. **The class-prepare filter** has no direct test. `getAllClasses` now does — see
+   `FlixClassSelectionTest` — but driving `createPrepareRequests` needs a `RequestManager`, which is
+   a class rather than an interface and cannot be stubbed. Both apply the same rule, so what is
+   untested is the plumbing rather than the decision.
 
 Nothing here is blocked on a decision. Every item is a measurement someone has to take, or a test
 someone has to find a safe fixture for.

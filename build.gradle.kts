@@ -29,6 +29,14 @@ dependencies {
         pluginModule(implementation(project(":backend")))
 
         testFramework(TestFrameworkType.Platform)
+
+        // Test-scoped only. Root-plugin integration tests need to name debugger APIs
+        // (SourcePosition, DebugProcess) to drive FlixPositionManager against the assembled plugin,
+        // where `.flix` actually resolves to the Flix file type. `testBundledPlugin` rather than
+        // `bundledPlugin` because the latter would make the *shipped* plugin depend on the Java
+        // plugin, and ADR 0001 requires the language layer to keep loading in IDEs without one --
+        // that dependency belongs to the debugger content module alone.
+        testBundledPlugin("com.intellij.java")
     }
 
     // Registration tests live here rather than in :language because they assert that the

@@ -3,6 +3,7 @@ package dev.wstein.flixplugin.run
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.execution.actions.LazyRunConfigurationProducer
 import com.intellij.execution.configurations.ConfigurationFactory
+import com.intellij.execution.configurations.ConfigurationTypeUtil
 import com.intellij.openapi.util.Ref
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
@@ -27,8 +28,19 @@ import org.flixlang.intellij.run.entryPointSymbolOrNull
  */
 class FlixRunConfigurationProducer : LazyRunConfigurationProducer<FlixRunConfiguration>() {
 
+    /**
+     * The factory of the **registered** configuration type, not a fresh instance of it.
+     *
+     * Constructing `FlixRunConfigurationType()` here would compile and look right while producing a
+     * second, unregistered type object. The platform identifies configurations by their factory and
+     * type, so a configuration built from that duplicate is not the same kind of thing as one the
+     * user saves, restores from `workspace.xml`, or edits in the dialog -- and the mismatch shows up
+     * as a configuration that will not run or will not be recognised again, far from its cause.
+     */
     override fun getConfigurationFactory(): ConfigurationFactory =
-        FlixRunConfigurationType.FlixConfigurationFactory(FlixRunConfigurationType())
+        ConfigurationTypeUtil.findConfigurationType(FlixRunConfigurationType::class.java)
+            .configurationFactories
+            .single()
 
     override fun setupConfigurationFromContext(
         configuration: FlixRunConfiguration,

@@ -336,6 +336,7 @@ from (pinned as `flixCorpusCommit` in `gradle.properties`), and `flix-lab`'s `Fl
 - [Architecture decision records](docs/adr/README.md)
 - [Parser corpus evaluation](docs/intellij-flix-parser-evaluation.md) -- the gate evidence behind
   ADR 0001
+- [Native JVM debugger gate](docs/native-debugger-gate.md) -- the runbook for proving ADR 0002
 - [IntelliJ Platform SDK Plugin SDK][docs]
 - [Modular Plugins (content modules)][docs:modular-plugins]
 - [LSP4IJ][lsp4ij]

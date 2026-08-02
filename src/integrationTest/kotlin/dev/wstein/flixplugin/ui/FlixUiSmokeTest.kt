@@ -217,7 +217,7 @@ class FlixUiSmokeTest {
         source.copyToRecursively(target, followLinks = false, overwrite = true)
         java.nio.file.Files.copy(
             compiler,
-            target.resolve("flix-vendor-uitest.jar"),
+            target.resolve("flix.jar"),
             java.nio.file.StandardCopyOption.REPLACE_EXISTING,
         )
         return target.toAbsolutePath()
@@ -241,20 +241,20 @@ class FlixUiSmokeTest {
      */
     private fun requireCompilerJar(): Path =
         checkNotNull(resolveCompilerJar()) {
-            "No Flix compiler jar found. Set $PINNED_JAR_ENV, or place a flix-vendor-*.jar in the " +
+            "No Flix compiler jar found. Set $FLIX_JAR_ENV, or place flix.jar in the " +
                 "repository root. Without one the language server cannot start and no UI assertion " +
                 "here is meaningful."
         }
 
     /** The same resolution order the plugin itself uses, so the test cannot disagree with it. */
     private fun resolveCompilerJar(): Path? {
-        System.getenv(PINNED_JAR_ENV)?.takeIf { it.isNotBlank() }?.let { pinned ->
+        System.getenv(FLIX_JAR_ENV)?.takeIf { it.isNotBlank() }?.let { pinned ->
             return Path.of(pinned).takeIf { it.exists() }
         }
         val root = Path.of(".").toAbsolutePath().normalize()
         return root.takeIf { it.isDirectory() }
-            ?.listDirectoryEntries("flix-vendor-*.jar")
-            ?.maxByOrNull { it.fileName.toString() }
+            ?.resolve("flix.jar")
+            ?.takeIf { it.exists() }
     }
 
     private fun waitUntil(what: String, timeout: kotlin.time.Duration, condition: () -> Boolean) {
@@ -273,7 +273,7 @@ class FlixUiSmokeTest {
 
         /** Set by the `testIdeUi` task from the `lsp4ijDistribution` configuration. */
         const val LSP4IJ_PROPERTY = "path.to.lsp4ij"
-        const val PINNED_JAR_ENV = "FLIX_FORK_JAR"
+        const val FLIX_JAR_ENV = "FLIX_JAR"
         const val BUILT_PLUGIN_PROPERTY = "path.to.build.plugin"
         const val POLL_MS = 500L
     }

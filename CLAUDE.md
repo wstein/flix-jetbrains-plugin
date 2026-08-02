@@ -146,7 +146,7 @@ and which evaluator the IDE picks per frame. Keep that boundary explicit when re
 
 ## The Flix compiler
 
-Resolved as `$FLIX_FORK_JAR`, else the newest `flix-vendor-*.jar` in the project root. Non-obvious
+Resolved as `$FLIX_JAR`, else `flix.jar` in the project root. Non-obvious
 rules, all encoded in `FlixLaunchCommand` and pinned by tests:
 
 - Options go **after** the subcommand. `flix --Xdebug run` fails with an error naming neither.
@@ -160,7 +160,7 @@ rules, all encoded in `FlixLaunchCommand` and pinned by tests:
 IDE. It is **not** in `check`: it drives real Swing components with an AWT robot, so it takes over
 the cursor on macOS and needs `xvfb` plus a window manager on Linux.
 
-It requires a compiler jar (`FLIX_FORK_JAR`, or `flix-vendor-*.jar` in the repo root). Without one
+It requires a compiler jar (`FLIX_JAR`, or `flix.jar` in the repo root). Without one
 the language server cannot start and the IDE never finishes code analysis, so `openFile` times out
 waiting for a daemon that will never settle.
 

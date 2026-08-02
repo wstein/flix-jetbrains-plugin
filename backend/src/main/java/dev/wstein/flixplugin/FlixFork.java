@@ -23,6 +23,6 @@ final class FlixFork {
     }
 
     static Path resolveJar(Project project) {
-        return FlixJar.resolve(project.getBasePath(), System.getenv(FlixJar.PINNED_JAR_ENV));
+        return FlixJar.resolve(project.getBasePath(), System.getenv(FlixJar.JAR_ENV));
     }
 }

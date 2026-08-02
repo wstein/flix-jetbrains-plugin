@@ -3,16 +3,12 @@ package dev.wstein.flixplugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.nio.file.Path;
-import java.util.Comparator;
-import java.util.stream.Stream;
 
 /**
  * Which Flix compiler jar this plugin launches.
  *
- * <p>Mirrors {@code scripts/flix-fork}: {@code $FLIX_FORK_JAR} if set, otherwise the most recently
- * modified {@code flix-vendor-*.jar} in the project root. Everything this plugin starts — the
+ * <p>{@code $FLIX_JAR} if set, otherwise {@code flix.jar} in the project root. Everything this plugin starts — the
  * language server, and the run/debug configuration — must agree on that choice, or a debug session
  * runs a different compiler than the one the editor was analysed with.
  *
@@ -26,7 +22,7 @@ import java.util.stream.Stream;
 public final class FlixJar {
 
     /** The environment variable that pins the jar, bypassing discovery. */
-    public static final String PINNED_JAR_ENV = "FLIX_FORK_JAR";
+    public static final String JAR_ENV = "FLIX_JAR";
 
     private FlixJar() {
     }
@@ -35,7 +31,7 @@ public final class FlixJar {
      * The jar to launch.
      *
      * @param basePath the project root to search, or {@code null} if the project has none
-     * @param pinnedJar the value of {@link #PINNED_JAR_ENV}, or {@code null}/blank if unset
+     * @param pinnedJar the value of {@link #JAR_ENV}, or {@code null}/blank if unset
      * @throws IllegalStateException if no jar can be resolved, with a message naming what to do
      */
     public static @NotNull Path resolve(@Nullable String basePath, @Nullable String pinnedJar) {
@@ -44,21 +40,15 @@ public final class FlixJar {
         }
         if (basePath == null) {
             throw new IllegalStateException(
-                    "Project has no base path; cannot locate flix-vendor-*.jar. Set "
-                            + PINNED_JAR_ENV + " to the compiler jar instead.");
+                    "Project has no base path; cannot locate flix.jar. Set "
+                            + JAR_ENV + " to the compiler jar instead.");
         }
-        File[] candidates = new File(basePath).listFiles(
-                (dir, name) -> name.startsWith("flix-vendor-") && name.endsWith(".jar"));
-        if (candidates == null || candidates.length == 0) {
-            throw new IllegalStateException("No flix-vendor-*.jar found in " + basePath
-                    + ". Build github.com/wstein/flix-fork and drop the resulting jar there, or set "
-                    + PINNED_JAR_ENV + ".");
+        Path jar = Path.of(basePath, "flix.jar");
+        if (!jar.toFile().isFile()) {
+            throw new IllegalStateException("No flix.jar found in " + basePath
+                    + ". Place the Flix compiler jar at the project root, or set "
+                    + JAR_ENV + ".");
         }
-        // Newest wins: rebuilding the fork drops a new jar beside the old one rather than replacing
-        // it, so picking any other would silently keep running a stale compiler.
-        return Stream.of(candidates)
-                .max(Comparator.comparingLong(File::lastModified))
-                .map(File::toPath)
-                .orElseThrow();
+        return jar;
     }
 }

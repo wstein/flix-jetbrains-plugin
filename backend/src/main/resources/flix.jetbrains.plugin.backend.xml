@@ -20,8 +20,7 @@
                 factoryClass="dev.wstein.flixplugin.FlixLanguageServerFactory">
             <description><![CDATA[
             The Flix "Plain-LSP" server (<code>flix lsp</code>), resolved from the open project's
-            <code>flix-vendor-*.jar</code> (or <code>$FLIX_FORK_JAR</code>), the same way
-            <code>scripts/flix-fork</code> does.
+            <code>flix.jar</code> (or <code>$FLIX_JAR</code>).
             ]]></description>
         </server>
 

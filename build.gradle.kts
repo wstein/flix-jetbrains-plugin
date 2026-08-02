@@ -129,7 +129,7 @@ val testIdeUi by intellijPlatformTesting.testIdeUi.registering {
         classpath = sourceSets["integrationTest"].runtimeClasspath
 
         // Inherited so the test can resolve a compiler jar the same way the plugin does.
-        environment("FLIX_FORK_JAR", providers.environmentVariable("FLIX_FORK_JAR").getOrElse(""))
+        environment("FLIX_JAR", providers.environmentVariable("FLIX_JAR").getOrElse(""))
 
         // Resolved inside the provider rather than at configuration time, so the configuration
         // cache is not asked to serialize a resolved artifact set.

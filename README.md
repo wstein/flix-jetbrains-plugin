@@ -75,8 +75,8 @@ breakpoint on one can never verify no matter what the IDE does.
 
 ### Which compiler is used
 
-`$FLIX_FORK_JAR` if set, otherwise the most recently modified `flix-vendor-*.jar` in the project
-root. Every process the plugin starts -- the language server and the debuggee -- resolves it the
+`$FLIX_JAR` if set, otherwise `flix.jar` in the project root. Every process the plugin starts
+-- the language server and the debuggee -- resolves it the
 same way, so a debug session cannot run a different compiler than the editor was analysed with.
 
 **The build matters, not just the flag.** Two fixes in

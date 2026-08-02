@@ -5,7 +5,6 @@ import com.intellij.testFramework.HeavyPlatformTestCase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 
 /**
  * Uses HeavyPlatformTestCase (a project backed by real files on disk) rather than the lighter
@@ -15,40 +14,30 @@ import java.nio.file.attribute.FileTime;
  */
 public class FlixForkTest extends HeavyPlatformTestCase {
 
-    public void testResolvesTheMostRecentlyModifiedFlixVendorJar() throws IOException {
+    public void testResolvesFlixJarFromTheProjectRoot() throws IOException {
         Path base = Path.of(getProject().getBasePath());
         Files.createDirectories(base);
-        Path older = base.resolve("flix-vendor-2026.01.01.1.jar");
-        Path newer = base.resolve("flix-vendor-2026.07.24.1.jar");
-        Files.createFile(older);
-        Files.createFile(newer);
-        Files.setLastModifiedTime(older, FileTime.fromMillis(1_000));
-        Files.setLastModifiedTime(newer, FileTime.fromMillis(2_000));
+        Path jar = base.resolve("flix.jar");
+        Files.createFile(jar);
 
         Path resolved = FlixFork.resolveJar(getProject());
 
-        assertEquals(newer.toAbsolutePath().normalize(), resolved.toAbsolutePath().normalize());
+        assertEquals(jar.toAbsolutePath().normalize(), resolved.toAbsolutePath().normalize());
     }
 
     public void testThrowsWhenNoFlixVendorJarIsPresent() {
         try {
             FlixFork.resolveJar(getProject());
-            fail("expected IllegalStateException when no flix-vendor-*.jar exists in the project root");
+            fail("expected IllegalStateException when no flix.jar exists in the project root");
         } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("flix-vendor-*.jar"));
+            assertTrue(expected.getMessage().contains("flix.jar"));
         }
     }
 
-    public void testIgnoresFilesNotMatchingTheFlixVendorJarPattern() throws IOException {
+    public void testDoesNotUseAVersionedVendorJarAsTheDefault() throws IOException {
         Path base = Path.of(getProject().getBasePath());
         Files.createDirectories(base);
-        Files.createFile(base.resolve("some-other-library.jar"));
-        Files.createFile(base.resolve("flix-vendor-1.0.0.jar.sha256"));
-        Path onlyMatch = base.resolve("flix-vendor-1.0.0.jar");
-        Files.createFile(onlyMatch);
-
-        Path resolved = FlixFork.resolveJar(getProject());
-
-        assertEquals(onlyMatch.toAbsolutePath().normalize(), resolved.toAbsolutePath().normalize());
+        Files.createFile(base.resolve("flix-vendor-1.0.0.jar"));
+        assertThrows(IllegalStateException.class, () -> FlixFork.resolveJar(getProject()));
     }
 }

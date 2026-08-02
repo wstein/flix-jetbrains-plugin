@@ -7,7 +7,7 @@ import com.redhat.devtools.lsp4ij.server.OSProcessStreamConnectionProvider;
 import java.nio.file.Path;
 
 /**
- * Launches `java -jar <flix-vendor jar> lsp` -- Flix's "Plain-LSP" server (confirmed by running
+ * Launches `java -jar <flix.jar> lsp` -- Flix's "Plain-LSP" server (confirmed by running
  * `./scripts/flix-fork lsp`: it prints "Starting Default LSP Server..." and speaks LSP over its
  * own stdio, exactly what OSProcessStreamConnectionProvider expects). This is the same server
  * binary+command the official VS Code Flix extension downloads and runs; only the launcher

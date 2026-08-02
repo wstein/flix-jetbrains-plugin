@@ -15,19 +15,25 @@ plugins {
 // introduces project-level repositories, and Gradle then ignores the settings-level
 // dependencyResolutionManagement block for this project -- which is where localPlatformArtifacts()
 // lives, without which the local IDE artifact cannot be resolved.
-// Pinned to one immutable snapshot build, not to the floating `-SNAPSHOT` alias.
+// Pinned to a tagged flix-spec release, not the floating snapshot alias.
 //
-// The alias resolves to whatever was published most recently, so the fixture set can change
-// underneath this repository with no commit here: it went from 113 fixtures to 136 in a single
-// afternoon. Gradle also caches snapshots for 24 hours by default, so the same commit could
-// resolve differently depending on the day. Either way a fixture-set change would surface as an
-// apparent grammar regression.
+// A snapshot resolves to whatever was published most recently, so the fixture set can change
+// underneath this repository with no commit here -- it went from 113 fixtures to 136 in a single
+// afternoon while this was pinned to a timestamped snapshot build. Gradle also caches snapshots
+// for 24 hours by default, so the same commit could resolve differently depending on the day.
+// Either way a fixture-set change would surface as an apparent grammar regression.
 //
 // That is the same defect this test exists to retire -- FlixCorpusTest reads whichever Flix
 // checkout happens to sit beside the repository -- so it must not be reintroduced one layer up.
-// Bumping this is a reviewed change: a newer flix-spec build can carry a different Flix pin and
-// therefore different expected trees.
-val flixSpecVersion = "0.1.0-flix0.75.1-20260802.162350-6"
+// A release is immutable by flix-spec's own publish guard, which refuses to republish an existing
+// version, so pinning one is the actual fix rather than a narrower version of the same problem.
+//
+// flix-spec's version is plain semver as of its v0.75.1 release: the Flix pin is no longer
+// encoded in the coordinate (a version can advertise a pin but never enforce one), and is
+// instead asserted directly in testPinMatchesLocalFlixCheckout via pin.json inside the artifact.
+// Bumping this version is a reviewed change: a newer flix-spec release can carry a different Flix
+// pin and therefore different expected trees.
+val flixSpecVersion = "0.75.1"
 
 repositories {
     mavenCentral()
@@ -39,9 +45,9 @@ repositories {
         name = "flixSpec"
         url = uri("https://wstein.github.io/flix-spec/maven/")
         content { includeGroup("io.github.wstein") }
-        // The repository publishes under a -SNAPSHOT alias; the dependency pins one immutable
-        // build within it, so snapshot resolution must stay enabled while the version does not float.
-        mavenContent { snapshotsOnly() }
+        // Pinned to a release version (see flixSpecVersion below), so only release coordinates
+        // need to resolve here. snapshotsOnly() would refuse a release version outright.
+        mavenContent { releasesOnly() }
     }
     intellijPlatform {
         defaultRepositories()

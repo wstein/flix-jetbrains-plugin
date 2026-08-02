@@ -281,7 +281,13 @@ private aliasedName ::= ident (ARROW_THICK_R ident)?
 // #3 above), including it here would make the far more common `query <db> select ... from ...`
 // expression unparseable -- losing pattern-position support for the literal name "query" is a
 // much smaller gap than that.
-private ident ::= NAME_LOWERCASE | NAME_UPPERCASE | NAME_MATH | UNDERSCORE | GENERIC_OPERATOR | STATIC_UPPER_KW
+// Not `private`: the reference compiler wraps every identifier in its own AST node (`Ident`), so
+// this rule must produce a real composite PSI element too, not inline its matched token directly
+// into whatever rule references it. Confirmed via flix-spec's conformance suite -- a `private`
+// `ident` was the single largest source of tree-shape divergence from the reference, touching
+// nearly every declaration, parameter, and case name (see flix-spec's docs/CONFORMANCE.md, "a
+// permanent structural gap, not a map bug", and FlixSpecConformanceTest.kt's DIVERGENCE_BASELINE).
+ident ::= NAME_LOWERCASE | NAME_UPPERCASE | NAME_MATH | UNDERSCORE | GENERIC_OPERATOR | STATIC_UPPER_KW
 
 qualifiedName ::= ident (DOT ident)*
 

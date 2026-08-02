@@ -1,30 +1,25 @@
 package org.flixlang.intellij.run
 
-import com.intellij.lang.ASTNode
 import com.intellij.psi.PsiElement
-import com.intellij.psi.TokenType
+import com.intellij.psi.util.PsiTreeUtil
 import org.flixlang.intellij.lang.psi.FlixDefDecl
+import org.flixlang.intellij.lang.psi.FlixIdent
 import org.flixlang.intellij.lang.psi.FlixModuleDecl
-import org.flixlang.intellij.lang.psi.FlixTypes
 
 /**
- * A defDecl's name comes from Flix.bnf's `private ident ::= NAME_LOWERCASE | ...` -- a private
- * rule Grammar-Kit inlines rather than wrapping in its own PSI node, so there is no generated
- * `getIdent()`/`getName()` accessor: the name is just a raw leaf token following `DEF_KW`, with a
- * whitespace node in between that must be skipped.
+ * `ident` is a real (non-`private`) rule in Flix.bnf, so Grammar-Kit generates a `getIdent()`
+ * accessor -- used to be a raw leaf token hunt here before `ident` gained its own PSI node.
+ *
+ * Read via [PsiTreeUtil.getChildOfType] rather than the generated `getIdent()` directly:
+ * Grammar-Kit marks it `@NotNull` because the grammar requires an `ident` in this position, but
+ * the generated implementation (`findNotNullChildByClass`) asserts that at runtime rather than
+ * guaranteeing it structurally, and a `def` with no name yet -- mid-typing, or genuinely malformed
+ * input -- has no such child at all. [PsiTreeUtil.getChildOfType] returns `null` instead of
+ * asserting, matching how every caller here already expects a name to be optionally absent.
  */
-fun FlixDefDecl.nameLeafOrNull(): ASTNode? {
-    val defKw = node.findChildByType(FlixTypes.DEF_KW) ?: return null
-    var sibling = defKw.treeNext
-    while (sibling != null && sibling.elementType == TokenType.WHITE_SPACE) {
-        sibling = sibling.treeNext
-    }
-    return sibling
-}
+fun FlixDefDecl.namePsiOrNull(): PsiElement? = PsiTreeUtil.getChildOfType(this, FlixIdent::class.java)
 
-fun FlixDefDecl.nameOrNull(): String? = nameLeafOrNull()?.text
-
-fun FlixDefDecl.namePsiOrNull(): PsiElement? = nameLeafOrNull()?.psi
+fun FlixDefDecl.nameOrNull(): String? = namePsiOrNull()?.text
 
 /**
  * The symbol to pass to the compiler's `--entrypoint`, or `null` if this declaration has no name.

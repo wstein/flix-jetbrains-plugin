@@ -106,10 +106,11 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
     }
 
     /**
-     * Every `def main` the grammar finds must be a real [FlixDefDecl] named `main` whose name leaf
-     * lies inside the declaration. `FlixRunLineMarkerContributor` anchors the gutter icon on
-     * exactly that leaf, so a corpus-wide check here is what keeps the green arrow from drifting
-     * onto the wrong line -- or disappearing -- as the grammar changes.
+     * Every `def main` the grammar finds must be a real [FlixDefDecl] named `main` whose name
+     * (its `Ident` node) lies inside the declaration. `FlixRunLineMarkerContributor` anchors the
+     * gutter icon on the single leaf token inside that node, so a corpus-wide check here is what
+     * keeps the green arrow from drifting onto the wrong line -- or disappearing -- as the grammar
+     * changes.
      */
     fun testEntryPointsAreAddressable() {
         val corpus = locateCorpus() ?: run {
@@ -124,13 +125,13 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
             PsiTreeUtil.findChildrenOfType(psi, FlixDefDecl::class.java)
                 .filter { it.nameOrNull() == "main" }
                 .forEach { decl ->
-                    val nameLeaf = decl.namePsiOrNull()
-                    assertNotNull("def main in $relative has no addressable name leaf", nameLeaf)
+                    val namePsi = decl.namePsiOrNull()
+                    assertNotNull("def main in $relative has no addressable name", namePsi)
                     assertTrue(
-                        "def main name leaf in $relative lies outside its declaration",
-                        decl.textRange.contains(nameLeaf!!.textRange),
+                        "def main name in $relative lies outside its declaration",
+                        decl.textRange.contains(namePsi!!.textRange),
                     )
-                    assertEquals("def main name leaf text in $relative", "main", nameLeaf.text)
+                    assertEquals("def main name text in $relative", "main", namePsi.text)
                     mains++
                 }
         }

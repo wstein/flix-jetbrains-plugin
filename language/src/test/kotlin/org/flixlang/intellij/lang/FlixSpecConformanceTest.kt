@@ -45,21 +45,23 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
 
         /**
          * A divergence *count* ratchet for [testConformanceAgainstReference], not an exact-fixture-
-         * set one like [KNOWN_DIVERGENCES]: the dominant remaining divergence class (see
-         * `docs/CONFORMANCE.md` in flix-spec, "a permanent structural gap, not a map bug") is
-         * `ident` being `private` in this repository's own grammar, which touches nearly every
-         * declaration -- an exact-set ratchet would likely never move at all, since a fixture with
-         * even one lingering divergence anywhere in its tree never joins the "fully agreeing" set.
-         * The count still catches a regression the moment one lands, matching the semantics
-         * `flix.spec.Conformance --baseline` uses on the flix-spec side.
+         * set one like [KNOWN_DIVERGENCES]: an exact-set ratchet moves in large, lumpy steps here
+         * (see the history of this constant) rather than never at all, but the count still catches
+         * a regression the moment one lands, matching the semantics `flix.spec.Conformance
+         * --baseline` uses on the flix-spec side, and needs no per-fixture bookkeeping.
          *
-         * Measured after fixing the `ignored`-vs-`elide` conflation bug in
-         * `ast/projection/flix-jetbrains-plugin.json` (flix-spec commit 7ddf005): depth 78% -> 89%,
-         * 505 nodes compared. Lower this when a real fix (a flix-spec map improvement, or making
-         * `ident` non-private here) measurably reduces it -- never raise it to make a regression
-         * pass.
+         * History:
+         *   - 378, after fixing the `ignored`-vs-`elide` conflation bug in flix-spec's
+         *     `ast/projection/flix-jetbrains-plugin.json` (flix-spec commit 7ddf005): depth 78% ->
+         *     89%, 505 nodes compared, 0/136 fixtures agreeing.
+         *   - 102, after making `ident` non-`private` in this repository's own `Flix.bnf`: it was
+         *     the single largest remaining divergence class, touching nearly every declaration,
+         *     parameter, and case name. 80/136 fixtures now agree. Depth *dropped* to 58% in the
+         *     same change -- not a regression: the newly-real `IDENT` node has no entry yet in
+         *     flix-spec's projection map, so it counts as unmapped (421 occurrences) rather than
+         *     compared, until that map is updated on the flix-spec side.
          */
-        private const val DIVERGENCE_BASELINE = 378
+        private const val DIVERGENCE_BASELINE = 102
     }
 
     override fun getTestDataPath(): String = ""

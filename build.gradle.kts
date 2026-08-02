@@ -92,7 +92,7 @@ dependencies {
 
     // The UI smoke test drives a real IDE, so it needs JUnit 5 and Starter's own transitive
     // surface: the API returns Kodein `DI` and coroutine `Deferred` in public signatures.
-    integrationTestImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    integrationTestImplementation("org.junit.jupiter:junit-jupiter:6.1.2")
     integrationTestImplementation("org.kodein.di:kodein-di-jvm:7.20.2")
     integrationTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.1")
 

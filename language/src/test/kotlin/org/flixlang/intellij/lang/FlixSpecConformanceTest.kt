@@ -63,6 +63,66 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         sb.append("]}")
     }
 
+    /** `upstream.commit` recorded in the artifact's pin.json, read without a JSON dependency. */
+    private fun flixSpecPinnedCommit(): String? =
+        javaClass.getResourceAsStream("/pin.json")?.use { stream ->
+            val text = stream.readBytes().decodeToString()
+            val upstream = text.substringAfter("\"upstream\"", "")
+            Regex("\"commit\"\\s*:\\s*\"([0-9a-f]{40})\"").find(upstream)?.groupValues?.get(1)
+        }
+
+    /** HEAD of the Flix checkout this repository is testing against, or null if there is none. */
+    private fun localFlixCommit(): Pair<File, String>? {
+        val checkout = FlixCorpusTest.locateCorpus() ?: return null
+        val proc = ProcessBuilder("git", "-C", checkout.absolutePath, "rev-parse", "HEAD")
+            .redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().readText().trim()
+        return if (proc.waitFor() == 0 && out.length == 40) checkout to out else null
+    }
+
+    /**
+     * Fails when the Flix that flix-spec was derived from is not the Flix this repository tests
+     * against.
+     *
+     * This is the mismatch no version scheme can catch. flix-spec's coordinate describes the
+     * artifact, not the consumer, so a build can depend on fixtures derived from one Flix while
+     * FlixCorpusTest reads a checkout of another -- which is exactly the situation this repository
+     * was in. The two facts have to be compared, not encoded in a name and trusted.
+     *
+     * Skips rather than fails when no checkout is present: absence is a missing input, not a
+     * disagreement, and FlixCorpusTest already reports that separately.
+     */
+    fun testPinMatchesLocalFlixCheckout() {
+        val pinned = flixSpecPinnedCommit()
+        assertNotNull("flix-spec artifact has no readable pin.json", pinned)
+
+        val local = localFlixCommit()
+        if (local == null) {
+            println("[flix-spec] pin check SKIPPED: no Flix git checkout found (set -DflixCorpusDir or FLIX_DIR)")
+            return
+        }
+
+        val (checkout, head) = local
+
+        // An explicit override, not a tolerance: working deliberately against a different Flix is
+        // legitimate, silently accepting a mismatch is not. The flag has to be typed, so the
+        // inconsistency is always someone's stated decision.
+        if (System.getProperty("flixSpec.allowPinMismatch") == "true" && pinned != head) {
+            println(
+                "[flix-spec] pin MISMATCH allowed by -DflixSpec.allowPinMismatch=true: " +
+                    "artifact=$pinned checkout=$head ($checkout)",
+            )
+            return
+        }
+
+        assertEquals(
+            "flix-spec is derived from Flix $pinned but $checkout is at $head.\n" +
+                "Fixtures and the local corpus describe different compilers; one of them must move.",
+            pinned,
+            head,
+        )
+    }
+
     /** The flix-spec artifact on the test classpath, located by a file it is known to contain. */
     private fun flixSpecJar(): File {
         val marker = javaClass.getResource("/ast/treekind.json")

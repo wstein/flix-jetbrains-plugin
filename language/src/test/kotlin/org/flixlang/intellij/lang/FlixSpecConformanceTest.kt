@@ -42,6 +42,24 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
             "fixtures/positive/declarations__uses-and-imports.flix" to
                 "trailing ';' after a use declaration is rejected",
         )
+
+        /**
+         * A divergence *count* ratchet for [testConformanceAgainstReference], not an exact-fixture-
+         * set one like [KNOWN_DIVERGENCES]: the dominant remaining divergence class (see
+         * `docs/CONFORMANCE.md` in flix-spec, "a permanent structural gap, not a map bug") is
+         * `ident` being `private` in this repository's own grammar, which touches nearly every
+         * declaration -- an exact-set ratchet would likely never move at all, since a fixture with
+         * even one lingering divergence anywhere in its tree never joins the "fully agreeing" set.
+         * The count still catches a regression the moment one lands, matching the semantics
+         * `flix.spec.Conformance --baseline` uses on the flix-spec side.
+         *
+         * Measured after fixing the `ignored`-vs-`elide` conflation bug in
+         * `ast/projection/flix-jetbrains-plugin.json` (flix-spec commit 7ddf005): depth 78% -> 89%,
+         * 505 nodes compared. Lower this when a real fix (a flix-spec map improvement, or making
+         * `ident` non-private here) measurably reduces it -- never raise it to make a regression
+         * pass.
+         */
+        private const val DIVERGENCE_BASELINE = 378
     }
 
     override fun getTestDataPath(): String = ""
@@ -194,5 +212,73 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
             }
         }
         assertTrue(message, regressions.isEmpty() && fixed.isEmpty())
+    }
+
+    /** `/ast/projection/flix-jetbrains-plugin.json` from the flix-spec artifact's classpath. */
+    private fun loadProjectionMap(): Conformance.ProjectionMap {
+        val text = javaClass.getResourceAsStream("/ast/projection/flix-jetbrains-plugin.json")
+            ?.use { it.readBytes().decodeToString() }
+            ?: error("flix-spec artifact has no /ast/projection/flix-jetbrains-plugin.json")
+        return Conformance.loadProjectionMap(Json.parse(text))
+    }
+
+    /** Every JSON file under `fixtures/expected` in the flix-spec artifact, keyed by source path. */
+    private fun loadExpectedTrees(jar: File): Map<String, Conformance.KTree> =
+        JarFile(jar).use { jf ->
+            val entries = jf.entries().asSequence()
+                .map { it.name }
+                .filter { it.startsWith("fixtures/expected/") && it.endsWith(".json") }
+                .toList()
+            check(entries.isNotEmpty()) { "flix-spec artifact contains no fixtures/expected/*.json" }
+            entries.associate { entry ->
+                val text = jf.getInputStream(jf.getEntry(entry)).use { it.readBytes().decodeToString() }
+                val units = Conformance.loadUnits(Json.parse(text))
+                check(units.size == 1) { "$entry: expected exactly one unit, found ${units.size}" }
+                units.entries.single().toPair()
+            }
+        }
+
+    /**
+     * Parses and projects every fixture into a [Conformance.KTree], keyed by its
+     * `.flix` source path under `fixtures/positive` or `fixtures/negative`. Self-contained rather than reusing the file this
+     * test's [testFixturesParseAndProject] writes to `build/flix-spec-projection/`, so this test
+     * does not depend on JUnit running the two in a particular order.
+     */
+    private fun projectAllFixtures(jar: File): Map<String, Conformance.KTree> =
+        JarFile(jar).use { jf ->
+            val fixtures = jf.entries().asSequence()
+                .map { it.name }
+                .filter { it.endsWith(".flix") && (it.startsWith("fixtures/positive/") || it.startsWith("fixtures/negative/")) }
+                .sorted()
+                .toList()
+            fixtures.associateWith { entry ->
+                val source = jf.getInputStream(jf.getEntry(entry)).use { it.readBytes().decodeToString() }
+                val name = entry.substringAfterLast('/').removeSuffix(".flix")
+                val psi = createPsiFile(name, source)
+                ensureParsed(psi)
+                val sb = StringBuilder()
+                project(psi, sb)
+                Conformance.kindTree(Json.parse(sb.toString()))!!
+            }
+        }
+
+    fun testConformanceAgainstReference() {
+        val jar = flixSpecJar()
+        val map = loadProjectionMap()
+        val expected = loadExpectedTrees(jar)
+        val actual = projectAllFixtures(jar)
+
+        val result = Conformance.run(expected, actual, map)
+        println("[flix-spec] " + result.summary(map.consumer))
+
+        if (result.divergences.size > DIVERGENCE_BASELINE) {
+            val message = buildString {
+                appendLine("${result.divergences.size} divergences exceeds baseline $DIVERGENCE_BASELINE")
+                result.divergences.take(10).forEach { (source, d) ->
+                    appendLine("  $source ${d.path}: expected '${d.expected}', got '${d.actual}' (${d.reason})")
+                }
+            }
+            fail(message)
+        }
     }
 }

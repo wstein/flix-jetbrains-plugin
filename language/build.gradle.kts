@@ -15,8 +15,22 @@ plugins {
 // introduces project-level repositories, and Gradle then ignores the settings-level
 // dependencyResolutionManagement block for this project -- which is where localPlatformArtifacts()
 // lives, without which the local IDE artifact cannot be resolved.
+// Pinned deliberately: bumping it is a reviewed change, because a new flix-spec version can carry
+// a different Flix pin and therefore different expected trees.
+val flixSpecVersion = "0.1.0-flix0.75.1-SNAPSHOT"
+
 repositories {
     mavenCentral()
+    // flix-spec: the shared conformance fixtures, TreeKind/TokenKind inventories and projection
+    // schemas, published as a Maven artifact from GitHub Pages. A versioned dependency rather than
+    // a git submodule on purpose -- a floating submodule pointer across several CI configurations
+    // defeats the pin that flix-spec exists to hold.
+    maven {
+        name = "flixSpec"
+        url = uri("https://wstein.github.io/flix-spec/maven/")
+        content { includeGroup("io.github.wstein") }
+        mavenContent { snapshotsOnly() }
+    }
     intellijPlatform {
         defaultRepositories()
     }
@@ -35,6 +49,11 @@ dependencies {
     // BasePlatformTestCase derives from JUnit 3-style junit.framework.TestCase; testFramework
     // supplies the IntelliJ fixtures but not JUnit itself.
     testImplementation("junit:junit:4.13.2")
+
+    // Fixtures and inventories are consumed from the published artifact, pinned by version, so the
+    // grammar is checked against a known revision of the Flix reference compiler rather than
+    // against whichever Flix checkout happens to sit beside this repository.
+    testImplementation("io.github.wstein:flix-spec:$flixSpecVersion")
 }
 
 // Grammar-Kit generates the lexer, parser and PSI from src/main/grammar into a build directory

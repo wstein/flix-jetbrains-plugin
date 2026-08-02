@@ -7,4 +7,11 @@
         <module name="intellij.platform.frontend"/>
         <module name="flix.jetbrains.plugin.shared"/>
     </dependencies>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Flix Diagrams"
+                    anchor="right"
+                    icon="com.intellij.icons.AllIcons.Toolwindows.ToolWindowPalette"
+                    factoryClass="dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory"/>
+    </extensions>
 </idea-plugin>

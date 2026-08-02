@@ -2,6 +2,7 @@ package dev.wstein.flixplugin.run
 
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.RemoteConnection
+import com.intellij.util.execution.ParametersListUtil
 import dev.wstein.flixplugin.FlixLaunchCommand
 import java.io.IOException
 import java.nio.file.Path
@@ -23,8 +24,14 @@ import java.nio.file.Path
 internal class FlixLaunch(
     private val jar: Path,
     private val entryPoint: String?,
+    vmOptions: String? = null,
+    programParameters: String? = null,
     val debugPort: Int?,
 ) {
+
+    /** Kept for callers that only need the compiler's default JVM and program arguments. */
+    constructor(jar: Path, entryPoint: String?, debugPort: Int?) :
+        this(jar, entryPoint, null, null, debugPort)
 
     /**
      * The full command, including the JDWP agent when debugging.
@@ -35,6 +42,11 @@ internal class FlixLaunch(
     val command: List<String> = when (debugPort) {
         null -> FlixLaunchCommand.run(jar, entryPoint)
         else -> FlixLaunchCommand.debug(jar, entryPoint, debugPort, true)
+    }.toMutableList().apply {
+        // JVM options must precede `-jar`; the JVM treats everything after it as Flix CLI input.
+        addAll(1, ParametersListUtil.parse(vmOptions.orEmpty()))
+        // Arguments for the Flix `run` command belong after the command itself.
+        addAll(ParametersListUtil.parse(programParameters.orEmpty()))
     }
 
     /**
@@ -59,7 +71,14 @@ internal class FlixLaunch(
          * `getState` first and `createRemoteConnection` afterwards, so anything that re-derived it
          * would hand out two different ports.
          */
-        fun of(jar: Path, entryPoint: String?, debug: Boolean): FlixLaunch {
+        fun of(
+            jar: Path,
+            entryPoint: String?,
+            vmOptions: String? = null,
+            programParameters: String? = null,
+            debug: Boolean,
+            inheritedJavaToolOptions: String? = System.getenv(JAVA_TOOL_OPTIONS),
+        ): FlixLaunch {
             val port = if (!debug) {
                 null
             } else {
@@ -68,7 +87,7 @@ internal class FlixLaunch(
                 // launch adds. Two agents cannot share a debuggee (ADR 0002), and the JVM reports
                 // that as a transport error at startup rather than as a configuration problem.
                 try {
-                    FlixLaunchCommand.requireNoInheritedJdwpAgent(System.getenv(JAVA_TOOL_OPTIONS))
+                    FlixLaunchCommand.requireNoInheritedJdwpAgent(inheritedJavaToolOptions)
                 } catch (e: FlixLaunchCommand.JdwpAlreadyConfiguredException) {
                     throw ExecutionException(e.message, e)
                 }
@@ -78,7 +97,11 @@ internal class FlixLaunch(
                     throw ExecutionException("Could not allocate a port for the debugger", e)
                 }
             }
-            return FlixLaunch(jar, entryPoint, port)
+            return FlixLaunch(jar, entryPoint, vmOptions, programParameters, port)
         }
+
+        /** Kept for callers that only need the compiler's default JVM and program arguments. */
+        fun of(jar: Path, entryPoint: String?, debug: Boolean): FlixLaunch =
+            of(jar, entryPoint, null, null, debug)
     }
 }

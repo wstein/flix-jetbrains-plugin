@@ -61,8 +61,8 @@ class FlixLaunchTest {
         // The platform reads the port through two separate callbacks; anything that re-derived it
         // rather than storing it would hand out two different numbers. Two launches must also not
         // collide, since two debug sessions can run at once.
-        val first = FlixLaunch.of(jar, null, debug = true)
-        val second = FlixLaunch.of(jar, null, debug = true)
+        val first = FlixLaunch.of(jar, null, null, null, debug = true, inheritedJavaToolOptions = null)
+        val second = FlixLaunch.of(jar, null, null, null, debug = true, inheritedJavaToolOptions = null)
 
         assertTrue("a debug launch must allocate a port", first.debugPort != null)
         assertTrue("two concurrent sessions must not share a port", first.debugPort != second.debugPort)
@@ -73,6 +73,23 @@ class FlixLaunchTest {
 
     @Test
     fun `a non-debug launch allocates no port at all`() {
-        assertNull(FlixLaunch.of(jar, null, debug = false).debugPort)
+        assertNull(FlixLaunch.of(jar, null, null, null, debug = false, inheritedJavaToolOptions = null).debugPort)
+    }
+
+    @Test
+    fun `VM and program options are placed on their respective sides of the jar`() {
+        val launch = FlixLaunch(
+            jar,
+            "Main.main",
+            vmOptions = "-Xmx2g -Dflix.mode=test",
+            programParameters = "one \"two words\"",
+            debugPort = 5005,
+        )
+
+        assertEquals(
+            listOf("java", "-Xmx2g", "-Dflix.mode=test", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005", "-jar"),
+            launch.command.take(5),
+        )
+        assertEquals(listOf("one", "two words"), launch.command.takeLast(2))
     }
 }

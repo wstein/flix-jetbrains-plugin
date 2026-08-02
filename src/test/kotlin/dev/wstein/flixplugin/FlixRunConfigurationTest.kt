@@ -5,6 +5,7 @@ import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.wstein.flixplugin.run.FlixRunConfiguration
 import dev.wstein.flixplugin.run.FlixRunConfigurationType
+import org.jdom.Element
 
 /**
  * How the run configuration behaves when it cannot run.
@@ -27,7 +28,7 @@ class FlixRunConfigurationTest : BasePlatformTestCase() {
     }
 
     fun testRefusesInTheDialogWhenNoCompilerJarCanBeFound() {
-        // The fixture project has no flix-vendor-*.jar, which is exactly the state a new user is in.
+        // The fixture project has no flix.jar, which is exactly the state a new user is in.
         try {
             newConfiguration().checkConfiguration()
             fail("expected the configuration to refuse while it can still be corrected")
@@ -36,7 +37,7 @@ class FlixRunConfigurationTest : BasePlatformTestCase() {
             // "not found" is not actionable. Naming the file and the override is.
             assertTrue(
                 "the message must say what to do, got: $message",
-                message.contains("flix-vendor-*.jar") && message.contains(FlixJar.PINNED_JAR_ENV),
+                message.contains("flix.jar") && message.contains(FlixJar.JAR_ENV),
             )
         }
     }
@@ -53,5 +54,42 @@ class FlixRunConfigurationTest : BasePlatformTestCase() {
         val configuration = newConfiguration()
         configuration.entryPoint = "Foo.Bar.demo"
         assertEquals("Foo.Bar.demo", configuration.entryPoint)
+    }
+
+    fun testLaunchSettingsRoundTripThroughTheConfiguration() {
+        val configuration = newConfiguration()
+
+        configuration.vmOptions = "-Xmx2g"
+        configuration.programParameters = "one \"two words\""
+        configuration.workingDirectory = "/tmp/flix-project"
+        configuration.envs = mapOf("FLIX_MODE" to "test")
+        configuration.isPassParentEnvs = false
+
+        assertEquals("-Xmx2g", configuration.vmOptions)
+        assertEquals("one \"two words\"", configuration.programParameters)
+        assertEquals("/tmp/flix-project", configuration.workingDirectory)
+        assertEquals(mapOf("FLIX_MODE" to "test"), configuration.envs)
+        assertFalse(configuration.isPassParentEnvs)
+    }
+
+    fun testLaunchSettingsArePersisted() {
+        val configuration = newConfiguration().apply {
+            vmOptions = "-Xmx2g"
+            programParameters = "one \"two words\""
+            workingDirectory = "/tmp/flix-project"
+            envs = mapOf("FLIX_MODE" to "test")
+            isPassParentEnvs = false
+        }
+        val persisted = Element("configuration")
+        configuration.writeExternal(persisted)
+
+        val restored = newConfiguration()
+        restored.readExternal(persisted)
+
+        assertEquals(configuration.vmOptions, restored.vmOptions)
+        assertEquals(configuration.programParameters, restored.programParameters)
+        assertEquals(configuration.workingDirectory, restored.workingDirectory)
+        assertEquals(configuration.envs, restored.envs)
+        assertEquals(configuration.isPassParentEnvs, restored.isPassParentEnvs)
     }
 }

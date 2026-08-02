@@ -2,6 +2,7 @@ package dev.wstein.flixplugin.run
 
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.Executor
+import com.intellij.execution.CommonProgramRunConfigurationParameters
 import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.configurations.CommandLineState
 import com.intellij.execution.configurations.ConfigurationFactory
@@ -70,7 +71,9 @@ class FlixRunConfiguration(
     project: Project,
     factory: ConfigurationFactory,
     name: String,
-) : LocatableConfigurationBase<FlixRunConfigurationOptions>(project, factory, name), ModuleRunProfile {
+) : LocatableConfigurationBase<FlixRunConfigurationOptions>(project, factory, name),
+    ModuleRunProfile,
+    CommonProgramRunConfigurationParameters {
 
     public override fun getOptions(): FlixRunConfigurationOptions =
         super.getOptions() as FlixRunConfigurationOptions
@@ -79,6 +82,36 @@ class FlixRunConfiguration(
         get() = options.entryPoint
         set(value) {
             options.entryPoint = value
+        }
+
+    override fun getProgramParameters(): String? = options.programParameters
+
+    override fun setProgramParameters(value: String?) {
+        options.programParameters = value
+    }
+
+    override fun getWorkingDirectory(): String? = options.workingDirectory
+
+    override fun setWorkingDirectory(value: String?) {
+        options.workingDirectory = value
+    }
+
+    override fun getEnvs(): Map<String, String> = options.envs
+
+    override fun setEnvs(value: Map<String, String>) {
+        options.envs = value.toMutableMap()
+    }
+
+    override fun isPassParentEnvs(): Boolean = options.passParentEnvs
+
+    override fun setPassParentEnvs(value: Boolean) {
+        options.passParentEnvs = value
+    }
+
+    var vmOptions: String?
+        get() = options.vmOptions
+        set(value) {
+            options.vmOptions = value
         }
 
     override fun getConfigurationEditor(): SettingsEditor<out LocatableConfigurationBase<FlixRunConfigurationOptions>> =
@@ -111,11 +144,22 @@ class FlixRunConfiguration(
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState =
         FlixCommandLineState(
             environment,
-            FlixLaunch.of(resolveJar(), entryPoint, debug = executor.id == DefaultDebugExecutor.EXECUTOR_ID),
+            FlixLaunch.of(
+                resolveJar(),
+                entryPoint,
+                vmOptions,
+                programParameters,
+                debug = executor.id == DefaultDebugExecutor.EXECUTOR_ID,
+                inheritedJavaToolOptions = envs[FlixLaunch.JAVA_TOOL_OPTIONS]
+                    ?: System.getenv(FlixLaunch.JAVA_TOOL_OPTIONS).takeIf { isPassParentEnvs },
+            ),
+            workingDirectory,
+            envs.toMap(),
+            isPassParentEnvs,
         )
 
     private fun resolveJar(): Path =
-        FlixJar.resolve(project.basePath, System.getenv(FlixJar.PINNED_JAR_ENV))
+        FlixJar.resolve(project.basePath, System.getenv(FlixJar.JAR_ENV))
 
     /**
      * Starts the compiler, and -- for a debug run -- tells the platform where to attach.
@@ -133,6 +177,9 @@ class FlixRunConfiguration(
     internal class FlixCommandLineState(
         environment: ExecutionEnvironment,
         private val launch: FlixLaunch,
+        private val workingDirectory: String?,
+        private val envs: Map<String, String>,
+        private val passParentEnvs: Boolean,
     ) : CommandLineState(environment), RemoteConnectionCreator {
 
         override fun createRemoteConnection(environment: ExecutionEnvironment): RemoteConnection? =
@@ -148,7 +195,12 @@ class FlixRunConfiguration(
 
         override fun startProcess(): ProcessHandler {
             val commandLine = GeneralCommandLine(launch.command)
-                .withWorkDirectory(environment.project.basePath)
+                .withWorkDirectory(workingDirectory?.takeIf { it.isNotBlank() } ?: environment.project.basePath)
+                .withEnvironment(envs)
+                .withParentEnvironmentType(
+                    if (passParentEnvs) GeneralCommandLine.ParentEnvironmentType.CONSOLE
+                    else GeneralCommandLine.ParentEnvironmentType.NONE,
+                )
                 .withCharset(Charsets.UTF_8)
             val handler = KillableColoredProcessHandler(commandLine)
             // Prints the exit code, which is the difference between "it stopped" and "it failed"

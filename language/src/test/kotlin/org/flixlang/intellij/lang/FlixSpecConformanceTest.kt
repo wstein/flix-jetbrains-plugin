@@ -85,6 +85,13 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     }` always wraps exactly one `statement`, so it was always spliced away, even though
          *     the reference's Expr.Block is a real node regardless of statement count.
          *     88/136 agree, 1024 nodes compared.
+         *   - Still 91, after also giving every *type*-level operator (arrow, rvadd/rvsub, rvand,
+         *     +/-, &, xor, or, and, unary ~/not/rvnot) its own Operator wrapper rule, the same
+         *     generalization as the expression-level fix but one level further (flix-spec 0.75.6).
+         *     No measurable effect on this corpus yet -- the affected positions are not currently
+         *     reached by the comparator, blocked by other, unrelated divergences deeper in the same
+         *     fixtures -- but the map should describe the real structure, not just score well
+         *     against what today's divergence set happens to reach.
          */
         private const val DIVERGENCE_BASELINE = 91
     }

@@ -778,15 +778,29 @@ type ::= arrowType (COLON kind)?
 // with a bare effect suffix (`Unit \ IO` was wrongly wrapped as Type.Function, since the trailing
 // `(BACKSLASH type)?` gave `arrowType` arity 2 even with no arrow at all). This mirrors the
 // reference's actual recursive structure instead of approximating it either way.
-arrowType ::= rvAddSubType (arrow type (BACKSLASH type)?)?
-rvAddSubType ::= rvAndType ((RVADD_KW | RVSUB_KW) rvAndType)*
-rvAndType ::= addSubType (RVAND_KW addSubType)*
-addSubType ::= ampType ((PLUS | MINUS) ampType)*
-ampType ::= xorType (AMPERSAND xorType)*
-xorType ::= orType (XOR_KW orType)*
-orType ::= andType (OR_KW andType)*
-andType ::= unaryTypeLevel (AND_KW unaryTypeLevel)*
-unaryTypeLevel ::= (RVNOT_KW | TILDE | NOT_KW) unaryTypeLevel | typeApplication
+// Every binary/unary type operator gets its own `*Operator` wrapper, same as the expression
+// precedence chain (see infixAppExpr's comment): Parser2.Type.ttype's Pratt loop and unaryType()
+// wrap literally every type operator token as Operator too, uniformly. `arrow` itself stays
+// `private` -- it is also used bare at several non-operator positions (lambda syntax, struct-put,
+// kind arrows), which do not share Type.Binary's shape, so `arrowOperator` wraps it only here.
+arrowType ::= rvAddSubType (arrowOperator type (BACKSLASH type)?)?
+arrowOperator ::= arrow
+rvAddSubType ::= rvAndType (rvAddSubOperator rvAndType)*
+rvAddSubOperator ::= RVADD_KW | RVSUB_KW
+rvAndType ::= addSubType (rvAndOperator addSubType)*
+rvAndOperator ::= RVAND_KW
+addSubType ::= ampType (addSubOperator ampType)*
+addSubOperator ::= PLUS | MINUS
+ampType ::= xorType (ampOperator xorType)*
+ampOperator ::= AMPERSAND
+xorType ::= orType (xorOperator orType)*
+xorOperator ::= XOR_KW
+orType ::= andType (orTypeOperator andType)*
+orTypeOperator ::= OR_KW
+andType ::= unaryTypeLevel (andTypeOperator unaryTypeLevel)*
+andTypeOperator ::= AND_KW
+unaryTypeLevel ::= unaryTypeOperator unaryTypeLevel | typeApplication
+unaryTypeOperator ::= RVNOT_KW | TILDE | NOT_KW
 
 typeApplication ::= typeDelimited typeArgumentList*
 

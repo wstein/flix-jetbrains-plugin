@@ -267,8 +267,19 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     shape, not whether it succeeds; no fixture currently exercises that distinction.
          *     Fixed both operator-error.flix and expressions__missing-semicolon-before-let.flix
          *     outright. 126/136 agree.
+         *   - 19, after giving `matchRule` an explicit alternative for `=`/`->` typo'd for `=>`
+         *     (`case Foo = true` / `case Bar -> false`). Same shape as the earlier typeAndEffect
+         *     slash-typo fix, not generic recovery: Parser2.Expr.matchRule special-cases both
+         *     mistakes directly (ExpectedArrowThickRGotEqual / ExpectedArrowThickRGotArrowThinR),
+         *     consuming the wrong token and still parsing the rule body normally. Both branches
+         *     produce the same empty ErrorTree regardless of which wrong token fired (confirmed
+         *     against flix-spec's own reference tree before writing the fix), so one unified
+         *     `matchRuleArrowError` alternative covers both. The same pattern also exists in
+         *     `extMatchRule`/`selectRule`/`catchRule` in Parser2.scala, left unchanged here since no
+         *     fixture currently exercises those positions. Fixed
+         *     expressions__match-rule-wrong-arrow.flix outright. 127/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 21
+        private const val DIVERGENCE_BASELINE = 19
     }
 
     override fun getTestDataPath(): String = ""

@@ -708,7 +708,12 @@ block ::= CURLY_L CURLY_R | CURLY_L statement CURLY_R
 matchOrMatchLambdaExpr ::=
     MATCH_KW expr CURLY_L (matchRule (COMMA? matchRule)*)? CURLY_R
   | MATCH_KW pattern arrow expr
-matchRule ::= CASE_KW pattern (IF_KW expr)? ARROW_THICK_R statement
+// `=` or `->`/tight-arrow typo'd for `=>` is another Parser2.scala-special-cased mistake, not
+// generic recovery (Parser2.Expr.matchRule): consume the wrong token, synthesize an empty
+// ErrorTree in place of the expected ARROW_THICK_R, and still parse the rule body normally.
+private matchRuleWrongArrow ::= EQUAL | arrow
+matchRuleArrowError ::= matchRuleWrongArrow
+matchRule ::= CASE_KW pattern (IF_KW expr)? (ARROW_THICK_R | matchRuleArrowError) statement
 
 extMatchOrLambdaExpr ::=
     EMATCH_KW pattern arrow expr

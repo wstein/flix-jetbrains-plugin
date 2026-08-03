@@ -132,7 +132,8 @@
     "MISSING_SEMICOLON_ERROR": "ErrorTree",
     "OPERATOR_ERROR": "OperatorError",
     "IMPLICIT_OPERATOR": "Operator",
-    "STATEMENT_OPERAND": "Expr.Binary"
+    "STATEMENT_OPERAND": "Expr.Binary",
+    "MATCH_RULE_ARROW_ERROR": "ErrorTree"
   },
   "ignored": [
     "STATEMENT_OPERAND",

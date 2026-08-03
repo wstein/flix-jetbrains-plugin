@@ -346,7 +346,14 @@ redefDecl ::= REDEF_KW ident typeParameterList? parameterList COLON typeAndEffec
 
 lawDecl ::= LAW_KW ident COLON FORALL_KW typeParameterList? parameterList? typeConstraints? equalityConstraintList? expr
 
-enumDecl ::= RESTRICTABLE_KW? ENUM_KW ident restrictableEnumIndex? typeParameterList? enumSingletonBody? derivationList? (CURLY_L enumCaseList? CURLY_R)?
+// `private`, a pure dispatcher on RESTRICTABLE_KW: the reference closes a different TreeKind
+// (Decl.RestrictableEnum vs Decl.Enum) purely based on that keyword's presence, which a single
+// Grammar-Kit rule can't do -- one rule always produces one node kind for every alternative. Split
+// into two real rules instead, so the map has something distinct to target; `enumDecl` itself
+// stays private so it doesn't add a third wrapper level neither side has.
+private enumDecl ::= restrictableEnumDecl | plainEnumDecl
+restrictableEnumDecl ::= RESTRICTABLE_KW ENUM_KW ident restrictableEnumIndex? typeParameterList? enumSingletonBody? derivationList? (CURLY_L enumCaseList? CURLY_R)?
+plainEnumDecl ::= ENUM_KW ident restrictableEnumIndex? typeParameterList? enumSingletonBody? derivationList? (CURLY_L enumCaseList? CURLY_R)?
 private restrictableEnumIndex ::= BRACKET_L parameter BRACKET_R
 // Not `private`: the reference wraps a case's payload types in their own `CaseBody` node --
 // confirmed for both positions this rule covers, the singleton short-hand (`enum Color(String)`,

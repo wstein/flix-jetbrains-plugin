@@ -92,8 +92,14 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     reached by the comparator, blocked by other, unrelated divergences deeper in the same
          *     fixtures -- but the map should describe the real structure, not just score well
          *     against what today's divergence set happens to reach.
+         *   - 90, after splitting `enumDecl` into `restrictableEnumDecl`/`plainEnumDecl`: one
+         *     native kind can't produce two different reference TreeKinds (Decl.RestrictableEnum
+         *     vs Decl.Enum), which depend purely on whether RESTRICTABLE_KW was present, so the
+         *     old single ENUM_DECL always matched Decl.Enum, wrongly, for restrictable enums
+         *     (flix-spec 0.75.7). `enumDecl` itself stays `private` so the split adds no extra
+         *     wrapper level. 89/136 agree, 1038 nodes compared.
          */
-        private const val DIVERGENCE_BASELINE = 91
+        private const val DIVERGENCE_BASELINE = 90
     }
 
     override fun getTestDataPath(): String = ""

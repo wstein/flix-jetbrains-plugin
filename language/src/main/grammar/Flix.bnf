@@ -399,25 +399,55 @@ statement ::= expr (SEMI expr)*
 
 // ---- precedence chain, loosest to tightest (mirrors Parser2.Expr.Op.precedence exactly) ----
 
+// Every precedence level below wraps its operator token(s) in its own `*Operator` rule, each
+// mapping to the reference's single `Operator` kind (many native names to one canonical kind,
+// same shape as every level already mapping to Expr.Binary/Expr.Unary). Parser2.scala's
+// `binaryOp()`/`unaryExpr()` wrap literally every operator this way, uniformly -- confirmed
+// against real fixture output (`<+>`, `:::`, `instanceof` all produce `Expr.Binary` with an
+// `Operator` child), not assumed from the two positions (backtick infix, generic/math operator)
+// found first. Before this, none of these tokens produced any node at all (bare alternatives in
+// the enclosing rule), so the operator itself was invisible to comparison.
 expr ::= instanceofExpr
 
-instanceofExpr ::= orExpr (INSTANCEOF_KW orExpr)*
-orExpr ::= andExpr (OR_KW andExpr)*
-andExpr ::= equalityExpr (AND_KW equalityExpr)*
-equalityExpr ::= relationalExpr ((EQUAL_EQUAL | ANGLED_EQUAL | BANG_EQUAL) relationalExpr)*
-relationalExpr ::= consExpr ((ANGLE_L | ANGLE_R | ANGLE_L_EQUAL | ANGLE_R_EQUAL) consExpr)*
+instanceofExpr ::= orExpr (instanceofOperator orExpr)*
+instanceofOperator ::= INSTANCEOF_KW
+orExpr ::= andExpr (orOperator andExpr)*
+orOperator ::= OR_KW
+andExpr ::= equalityExpr (andOperator equalityExpr)*
+andOperator ::= AND_KW
+equalityExpr ::= relationalExpr (equalityOperator relationalExpr)*
+equalityOperator ::= EQUAL_EQUAL | ANGLED_EQUAL | BANG_EQUAL
+relationalExpr ::= consExpr (relationalOperator consExpr)*
+relationalOperator ::= ANGLE_L | ANGLE_R | ANGLE_L_EQUAL | ANGLE_R_EQUAL
 // `::`/`:::` are right-associative per Parser2.Expr.Op.isRightAssoc -- modeled as self-recursion
 // on the right rather than the usual left-iterative `(OP next)*` chain used everywhere else.
-consExpr ::= additiveExpr ((COLON_COLON | COLON_COLON_COLON) consExpr)?
-additiveExpr ::= multiplicativeExpr ((PLUS | MINUS) multiplicativeExpr)*
-multiplicativeExpr ::= channelPutExpr ((STAR | SLASH) channelPutExpr)*
-channelPutExpr ::= discardExpr (ANGLED_PLUS discardExpr)*
-discardExpr ::= DISCARD_KW discardExpr | infixAppExpr
-infixAppExpr ::= userOpExpr (TICK qualifiedName TICK userOpExpr)*
-userOpExpr ::= lazyForceExpr ((GENERIC_OPERATOR | NAME_MATH) lazyForceExpr)*
-lazyForceExpr ::= (LAZY_KW | FORCE_KW) lazyForceExpr | signExpr
-signExpr ::= (PLUS | MINUS) signExpr | notExpr
-notExpr ::= NOT_KW notExpr | postfixExpr
+consExpr ::= additiveExpr (consOperator consExpr)?
+consOperator ::= COLON_COLON | COLON_COLON_COLON
+additiveExpr ::= multiplicativeExpr (additiveOperator multiplicativeExpr)*
+additiveOperator ::= PLUS | MINUS
+multiplicativeExpr ::= channelPutExpr (multiplicativeOperator channelPutExpr)*
+multiplicativeOperator ::= STAR | SLASH
+channelPutExpr ::= discardExpr (channelPutOperator discardExpr)*
+channelPutOperator ::= ANGLED_PLUS
+discardExpr ::= discardOperator discardExpr | infixAppExpr
+discardOperator ::= DISCARD_KW
+// Both `infixOperatorName` and `operatorSymbol` map to the reference's single `Operator` kind
+// (flix-spec's projection map: many native names to one canonical kind, same as every precedence
+// level already mapping to Expr.Binary). Neither existed before: the backtick-delimited name and
+// the bare symbolic-operator token both parsed with no distinct node of their own, so the
+// reference's Operator wrapper had nothing to map onto -- confirmed via flix-spec's conformance
+// suite, which found the operator-name position indistinguishable from any other qualified name
+// or bare identifier once `ident`/`qualifiedName` themselves became comparable.
+infixAppExpr ::= userOpExpr (TICK infixOperatorName TICK userOpExpr)*
+infixOperatorName ::= qualifiedName
+userOpExpr ::= lazyForceExpr (operatorSymbol lazyForceExpr)*
+operatorSymbol ::= GENERIC_OPERATOR | NAME_MATH
+lazyForceExpr ::= lazyForceOperator lazyForceExpr | signExpr
+lazyForceOperator ::= LAZY_KW | FORCE_KW
+signExpr ::= signOperator signExpr | notExpr
+signOperator ::= PLUS | MINUS
+notExpr ::= notOperator notExpr | postfixExpr
+notOperator ::= NOT_KW
 
 // ---- postfix chain: function application, field/method access, indexing ----
 
@@ -529,7 +559,12 @@ private ascribeSuffix ::= COLON typeAndEffect
 private tupleSuffix ::= (EQUAL expr)? (COMMA argument)+
 
 // Set of tokens accepted as a bare "operator section" inside parens, per TokenKind.isOperator.
-private operatorToken ::= PLUS | MINUS | STAR | SLASH | ANGLE_L | ANGLE_R | ANGLED_EQUAL | ANGLE_L_EQUAL | ANGLE_R_EQUAL | EQUAL_EQUAL | BANG_EQUAL | GENERIC_OPERATOR | COLON_COLON_COLON
+// Not `private`: the reference wraps this single token in its own `Operator` node too
+// (Parser2.scala's operator-section case in `parenOrTupleOrLambdaExpr`, :2057), the same kind
+// `operatorSymbol` above maps onto. A different token set from `operatorSymbol` (this one covers
+// every operator usable in a section, not just the two `userOpExpr` needs), but both are
+// many-native-names-to-one-canonical-kind, same as every precedence level mapping to Expr.Binary.
+operatorToken ::= PLUS | MINUS | STAR | SLASH | ANGLE_L | ANGLE_R | ANGLED_EQUAL | ANGLE_L_EQUAL | ANGLE_R_EQUAL | EQUAL_EQUAL | BANG_EQUAL | GENERIC_OPERATOR | COLON_COLON_COLON
 
 ifExpr ::= IF_KW PAREN_L expr PAREN_R expr (ELSE_KW expr)?
 
@@ -742,9 +777,18 @@ unaryTypeLevel ::= (RVNOT_KW | TILDE | NOT_KW) unaryTypeLevel | typeApplication
 
 typeApplication ::= typeDelimited typeArgumentList*
 
+// `typeVariable` before `qualifiedTypeName`: both can start with NAME_LOWERCASE (a bare lowercase
+// name is ambiguous between "type variable" and "single-segment qualified type name" from the
+// token alone), and Grammar-Kit's ordered choice takes the first alternative that matches, so
+// listing `qualifiedTypeName` first made `typeVariable` unreachable -- every bare lowercase name
+// parsed as a one-segment qualified type name instead, silently. The reference compiler has no
+// such ambiguity because it dispatches on token kind directly (Parser2.scala's `typeDelimited`:
+// NameLowercase -> variableType(), NameUppercase -> a qualified type name); this ordering
+// reproduces that by falling through to `qualifiedTypeName` only when `typeVariable` cannot match
+// (NAME_UPPERCASE and multi-segment names are outside `typeVariable`'s token set).
 typeDelimited ::=
-    qualifiedTypeName
-  | typeVariable
+    typeVariable
+  | qualifiedTypeName
   | constantType
   | tupleOrRecordRowType
   | recordOrEffectSetType

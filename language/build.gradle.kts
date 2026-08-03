@@ -33,7 +33,7 @@ plugins {
 // instead asserted directly in testPinMatchesLocalFlixCheckout via pin.json inside the artifact.
 // Bumping this version is a reviewed change: a newer flix-spec release can carry a different Flix
 // pin and therefore different expected trees.
-val flixSpecVersion = "0.75.2"
+val flixSpecVersion = "0.75.4"
 
 repositories {
     mavenCentral()

@@ -60,8 +60,19 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     same change -- not a regression: the newly-real `IDENT` node has no entry yet in
          *     flix-spec's projection map, so it counts as unmapped (421 occurrences) rather than
          *     compared, until that map is updated on the flix-spec side.
+         *   - 127, after flix-spec mapped IDENT/TYPE_VARIABLE and fixed a wrong TYPE_PARAMETER
+         *     guess (flix-spec 0.75.3). 76/136 agree, depth 93%. Agreement dropped from an
+         *     intermediate 80/136 in the same change that raised depth -- comparing deeper found
+         *     real divergences a shallower comparison never reached, same pattern as every prior
+         *     step here.
+         *   - 106, after also un-privating `typeVariable`'s reachability (it existed and was
+         *     already public, but listed after `qualifiedTypeName` in an ordered choice, so it
+         *     never fired) and giving every precedence level's operator token its own wrapper rule
+         *     (flix-spec 0.75.4): the reference wraps literally every operator -- `<+>`, `:::`,
+         *     `instanceof`, not just the two positions found first -- as its own `Operator` node.
+         *     84/136 agree, 1019 nodes compared. The Operator divergence category is now empty.
          */
-        private const val DIVERGENCE_BASELINE = 102
+        private const val DIVERGENCE_BASELINE = 106
     }
 
     override fun getTestDataPath(): String = ""

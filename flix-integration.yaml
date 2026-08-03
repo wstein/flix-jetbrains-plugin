@@ -39,6 +39,11 @@ registrations:
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor
 
+  frontend:
+    # Placeholder landing spot for upcoming trait hierarchy, module structure, and Datalog
+    # EDB/IDB schema visualizations.
+    com.intellij.toolWindow: dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory
+
   debugger:
     com.intellij.debugger.javaDebugAware: dev.wstein.flixplugin.debugger.FlixJavaDebugAware
     com.intellij.debugger.positionManagerFactory: dev.wstein.flixplugin.debugger.FlixPositionManagerFactory

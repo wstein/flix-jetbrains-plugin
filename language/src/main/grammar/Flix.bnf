@@ -420,25 +420,49 @@ statement ::= expr (SEMI expr)*
 // the enclosing rule), so the operator itself was invisible to comparison.
 expr ::= instanceofExpr
 
-instanceofExpr ::= orExpr (instanceofOperator orExpr)*
+// Every binary precedence level below uses Grammar-Kit's `left` rule modifier ("take an AST
+// node on the left (previous sibling) and enclose it by becoming its parent" -- Grammar-Kit's
+// README.md), not true grammar-level left recursion. Parsing stays flat/iterative (the `X
+// XTail*` shape generates a plain `while` loop, no backtracking), and PSI tree construction
+// folds each repetition into a properly left-associative nested tree as an O(1)-per-repetition
+// marker-reparenting step -- the same mechanism every JetBrains-authored Grammar-Kit grammar
+// uses for binary expressions. A naive self-recursive rule
+// (`additiveExpr ::= additiveExpr additiveOperator multiplicativeExpr | multiplicativeExpr`)
+// was tried first and reverted: it parsed a synthetic 8-operand chain of bare identifiers in
+// single-digit milliseconds, but hung indefinitely on the very first real corpus file
+// (`Abort.flix`), reproduced down to a minimal case (`bold(red(fromString(m))) + nl + header +
+// nl + trace` -- a several-levels-deep nested-call operand chained with plain identifiers,
+// ordinary code, not a contrived edge case). Every level here is verified against the full
+// 428-file corpus, not just the one that first surfaced the naive-recursion defect.
+instanceofExpr ::= orExpr instanceofExprTail*
+left instanceofExprTail ::= instanceofOperator orExpr
 instanceofOperator ::= INSTANCEOF_KW
-orExpr ::= andExpr (orOperator andExpr)*
+orExpr ::= andExpr orExprTail*
+left orExprTail ::= orOperator andExpr
 orOperator ::= OR_KW
-andExpr ::= equalityExpr (andOperator equalityExpr)*
+andExpr ::= equalityExpr andExprTail*
+left andExprTail ::= andOperator equalityExpr
 andOperator ::= AND_KW
-equalityExpr ::= relationalExpr (equalityOperator relationalExpr)*
+equalityExpr ::= relationalExpr equalityExprTail*
+left equalityExprTail ::= equalityOperator relationalExpr
 equalityOperator ::= EQUAL_EQUAL | ANGLED_EQUAL | BANG_EQUAL
-relationalExpr ::= consExpr (relationalOperator consExpr)*
+relationalExpr ::= consExpr relationalExprTail*
+left relationalExprTail ::= relationalOperator consExpr
 relationalOperator ::= ANGLE_L | ANGLE_R | ANGLE_L_EQUAL | ANGLE_R_EQUAL
 // `::`/`:::` are right-associative per Parser2.Expr.Op.isRightAssoc -- modeled as self-recursion
 // on the right rather than the usual left-iterative `(OP next)*` chain used everywhere else.
+// Right recursion is ordinary recursive descent (no backtracking, no `left` needed): each level
+// is only ever entered once per position, unlike the naive *left*-recursive shape that hung.
 consExpr ::= additiveExpr (consOperator consExpr)?
 consOperator ::= COLON_COLON | COLON_COLON_COLON
-additiveExpr ::= multiplicativeExpr (additiveOperator multiplicativeExpr)*
+additiveExpr ::= multiplicativeExpr additiveExprTail*
+left additiveExprTail ::= additiveOperator multiplicativeExpr
 additiveOperator ::= PLUS | MINUS
-multiplicativeExpr ::= channelPutExpr (multiplicativeOperator channelPutExpr)*
+multiplicativeExpr ::= channelPutExpr multiplicativeExprTail*
+left multiplicativeExprTail ::= multiplicativeOperator channelPutExpr
 multiplicativeOperator ::= STAR | SLASH
-channelPutExpr ::= discardExpr (channelPutOperator discardExpr)*
+channelPutExpr ::= discardExpr channelPutExprTail*
+left channelPutExprTail ::= channelPutOperator discardExpr
 channelPutOperator ::= ANGLED_PLUS
 discardExpr ::= discardOperator discardExpr | infixAppExpr
 discardOperator ::= DISCARD_KW
@@ -449,9 +473,11 @@ discardOperator ::= DISCARD_KW
 // reference's Operator wrapper had nothing to map onto -- confirmed via flix-spec's conformance
 // suite, which found the operator-name position indistinguishable from any other qualified name
 // or bare identifier once `ident`/`qualifiedName` themselves became comparable.
-infixAppExpr ::= userOpExpr (TICK infixOperatorName TICK userOpExpr)*
+infixAppExpr ::= userOpExpr infixAppExprTail*
+left infixAppExprTail ::= TICK infixOperatorName TICK userOpExpr
 infixOperatorName ::= qualifiedName
-userOpExpr ::= lazyForceExpr (operatorSymbol lazyForceExpr)*
+userOpExpr ::= lazyForceExpr userOpExprTail*
+left userOpExprTail ::= operatorSymbol lazyForceExpr
 operatorSymbol ::= GENERIC_OPERATOR | NAME_MATH
 lazyForceExpr ::= lazyForceOperator lazyForceExpr | signExpr
 lazyForceOperator ::= LAZY_KW | FORCE_KW
@@ -792,19 +818,28 @@ type ::= arrowType (COLON kind)?
 // kind arrows), which do not share Type.Binary's shape, so `arrowOperator` wraps it only here.
 arrowType ::= rvAddSubType (arrowOperator type (BACKSLASH type)?)?
 arrowOperator ::= arrow
-rvAddSubType ::= rvAndType (rvAddSubOperator rvAndType)*
+// `left` throughout (see the expression precedence chain's comment for why, and what it
+// replaces): every level below is a binary chain, verified against the full 428-file corpus.
+rvAddSubType ::= rvAndType rvAddSubTypeTail*
+left rvAddSubTypeTail ::= rvAddSubOperator rvAndType
 rvAddSubOperator ::= RVADD_KW | RVSUB_KW
-rvAndType ::= addSubType (rvAndOperator addSubType)*
+rvAndType ::= addSubType rvAndTypeTail*
+left rvAndTypeTail ::= rvAndOperator addSubType
 rvAndOperator ::= RVAND_KW
-addSubType ::= ampType (addSubOperator ampType)*
+addSubType ::= ampType addSubTypeTail*
+left addSubTypeTail ::= addSubOperator ampType
 addSubOperator ::= PLUS | MINUS
-ampType ::= xorType (ampOperator xorType)*
+ampType ::= xorType ampTypeTail*
+left ampTypeTail ::= ampOperator xorType
 ampOperator ::= AMPERSAND
-xorType ::= orType (xorOperator orType)*
+xorType ::= orType xorTypeTail*
+left xorTypeTail ::= xorOperator orType
 xorOperator ::= XOR_KW
-orType ::= andType (orTypeOperator andType)*
+orType ::= andType orTypeTail*
+left orTypeTail ::= orTypeOperator andType
 orTypeOperator ::= OR_KW
-andType ::= unaryTypeLevel (andTypeOperator unaryTypeLevel)*
+andType ::= unaryTypeLevel andTypeTail*
+left andTypeTail ::= andTypeOperator unaryTypeLevel
 andTypeOperator ::= AND_KW
 unaryTypeLevel ::= unaryTypeOperator unaryTypeLevel | typeApplication
 unaryTypeOperator ::= RVNOT_KW | TILDE | NOT_KW

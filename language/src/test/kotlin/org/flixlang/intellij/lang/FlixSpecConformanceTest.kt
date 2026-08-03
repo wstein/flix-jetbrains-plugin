@@ -133,8 +133,32 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     special-cases exactly this input as an effect set. Restructured to require a bar or a
          *     field, verified clean against the 428-file corpus. 109/136 agree, 1144 nodes compared,
          *     depth 93%.
+         *   - 46, after restructuring every binary precedence level (9 expression, 7 type) from
+         *     Grammar-Kit's flat `sub (op sub)*` repetition to `sub subTail*` / `left subTail ::=
+         *     op sub`. The flat shape puts every repetition as a flat sibling under one node
+         *     (`a + b + c` -> one 5-child ADDITIVE_EXPR), but the reference's Pratt loop closes a
+         *     new Expr.Binary per operator (`Binary(Binary(a,+,b),+,c)`) -- confirmed via
+         *     declarations__definitions-may-be-named-by-a-user-defined-opera.flix's own `x + y + 1`
+         *     body. A naive self-recursive rule (`additiveExpr ::= additiveExpr op x | x`) was
+         *     tried first and is NOT what `left` replaces it with: that naive form parsed a
+         *     synthetic 8-operand chain of bare identifiers in single-digit milliseconds but hung
+         *     indefinitely on the very first real corpus file (`Abort.flix`), reproduced down to a
+         *     minimal case (`bold(red(fromString(m))) + nl + header + nl + trace` -- several
+         *     levels of nested-call operand chained with plain identifiers, ordinary code, not a
+         *     contrived edge case). Grammar-Kit's actual documented mechanism for this
+         *     (README.md's `left` rule modifier: "take an AST node on the left (previous sibling)
+         *     and enclose it by becoming its parent") avoids the problem entirely -- parsing stays
+         *     flat and iterative (a plain generated `while` loop), and tree nesting is an O(1) PSI
+         *     marker-reparenting step, the same mechanism every JetBrains-authored Grammar-Kit
+         *     grammar uses for binary expressions. Every level was verified together against the
+         *     same full 428-file corpus run (still fast: single-digit seconds, unchanged from
+         *     before) and the complete 96-test suite (95 pass; the one failure is the pre-existing,
+         *     unrelated local-checkout pin mismatch). 111/136 agree, 1178 nodes compared, depth
+         *     93%. `consExpr` (`::`/`:::`) and `arrowType` (the effect-suffix backslash) needed no
+         *     change: both are already right-recursive through the *next* rule, not
+         *     self-recursive, which is ordinary recursive descent with no left-recursion risk.
          */
-        private const val DIVERGENCE_BASELINE = 51
+        private const val DIVERGENCE_BASELINE = 46
     }
 
     override fun getTestDataPath(): String = ""

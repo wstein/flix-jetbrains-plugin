@@ -844,9 +844,15 @@ recordFieldType ::= ident EQUAL type
 tupleType ::= PAREN_L (type (COMMA type)* COMMA?)? PAREN_R
 
 // `{...}` is ambiguous between a record type and an effect set; likewise resolved by ordered
-// alternation + backtracking rather than explicit lookahead.
+// alternation + backtracking rather than explicit lookahead. `recordType`'s alternatives must
+// each require *something* between the braces -- Parser2.scala's recordOrEffectSetType()
+// special-cases bare `{}` as an effect set (isRecord=false when the very next token is CurlyR),
+// and since recordType is tried first here, a fully-optional inner group would let it steal the
+// empty-braces match before effectSetType ever gets a turn.
 recordOrEffectSetType ::= recordType | effectSetType
-recordType ::= (CURLY_L BAR CURLY_R) | (CURLY_L (recordFieldType (COMMA recordFieldType)* COMMA?)? (BAR type)? CURLY_R)
+recordType ::= (CURLY_L BAR CURLY_R)
+             | (CURLY_L BAR type CURLY_R)
+             | (CURLY_L recordFieldType (COMMA recordFieldType)* COMMA? (BAR type)? CURLY_R)
 effectSetType ::= CURLY_L (type (COMMA type)* COMMA?)? CURLY_R
 
 extensibleType ::= HASH_BAR (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? BAR_HASH

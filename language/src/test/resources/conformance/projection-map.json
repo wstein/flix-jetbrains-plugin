@@ -105,7 +105,11 @@
     "OR_TYPE_OPERATOR": "Operator",
     "AND_TYPE_OPERATOR": "Operator",
     "UNARY_TYPE_OPERATOR": "Operator",
-    "BLOCK": "Expr.Block"
+    "BLOCK": "Expr.Block",
+    "VARIABLE_PATTERN": "Ident",
+    "DEBUG_INTERPOLATOR_EXPR": "Expr.DebugInterpolator",
+    "CHECKED_EFFECT_CAST_EXPR": "Expr.CheckedEffectCast",
+    "CHECKED_TYPE_CAST_EXPR": "Expr.CheckedTypeCast"
   },
   "ignored": [
     "ADDITIVE_EXPR",
@@ -121,10 +125,7 @@
     "BLOCK_OR_RECORD_EXPR",
     "CATCH_BODY",
     "CHANNEL_PUT_EXPR",
-    "CHECKED_EFFECT_CAST_EXPR",
-    "CHECKED_TYPE_CAST_EXPR",
     "CONS_EXPR",
-    "DEBUG_INTERPOLATOR_EXPR",
     "DISCARD_EXPR",
     "EQUALITY_EXPR",
     "EXPR",
@@ -209,7 +210,6 @@
     "THROW_EXPR",
     "TUPLE_OR_RECORD_ROW_TYPE",
     "TYPE",
-    "TYPE_AND_EFFECT",
     "TYPE_APPLICATION",
     "TYPE_ARGUMENT",
     "TYPE_DELIMITED",
@@ -218,7 +218,6 @@
     "UNARY_TYPE_LEVEL",
     "USER_OP_EXPR",
     "USES_OR_IMPORTS",
-    "VARIABLE_PATTERN",
     "WITH_BODY",
     "XOR_TYPE"
   ],
@@ -256,12 +255,17 @@
     "LAZY_FORCE_EXPR": "Was entirely unmapped, not just missing its Operator sub-node: lazy/force/discard/channel-put share the reference's Expr.Unary/Expr.Binary with every other precedence level, but had no `mappings` entry at all before this pass, only `ignored` for the no-operator pass-through case (which was already correct -- these follow the same dual-listing pattern as ADDITIVE_EXPR, not the PARAMETER_LIST bug).",
     "ENUM_SINGLETON_BODY": "Was `private` in the consumer's grammar (no PSI node at all), fixed on the consumer side. Covers two positions that share the identical reference TreeKind: the singleton short-hand (`enum Color(String)`, a direct child of Decl.Enum) and the regular per-case payload (`case Circle(Float64)`, a child of Case) -- Parser2.scala's `enumDecl`/`enumCases` both close a CaseBody mark the same way.",
     "BLOCK": "Another instance of the PARAMETER_LIST class of bug: `block ::= CURLY_L CURLY_R | CURLY_L statement CURLY_R` always wraps exactly one `statement`, so it was always spliced away by `ignored` (arity 1 <= 1) even though the reference's Expr.Block is a real, mandatory node -- not in `elide` -- regardless of how many statements the block holds.",
+    "VARIABLE_PATTERN": "The opposite fix from PARAMETER_LIST/BLOCK: was in `ignored` at arity 0 (`variablePattern ::= NAME_LOWERCASE | NAME_MATH | UNDERSCORE` matches the bare token directly, no composite child), so the elision chain-follow found nothing to replace it with and deleted the node entirely -- not spliced-and-kept-as-child, gone. The reference's Pattern.Variable also elides (it is in `elide`), but only after wrapping an Ident child; changing the consumer's grammar to match that shape (`variablePattern ::= ident`) was tried first and reverted: `ident`'s token set includes NAME_UPPERCASE, which overlaps tagPattern's first token and broke real parsing (corpus dropped from 100% to 49.2%, `use` statements failing several lines later). Mapped directly to `Ident` instead, unconditionally, bypassing elision -- both sides end up as an arity-0 Ident once each side's own bare-token child is filtered out (Ident's only child in the reference is a raw NameLowercase token, not a `kind`-bearing node), so this matches without touching the grammar at all.",
+    "DEBUG_INTERPOLATOR_EXPR": "Same PARAMETER_LIST-class bug: `debugInterpolatorExpr ::= DEBUG_INTERPOLATOR exprDelimited` always wraps exactly one child, so it was always spliced away by `ignored` even though the reference's Expr.DebugInterpolator is a real, mandatory node distinguishing `d\"...\"` from an ordinary interpolated string -- not in `elide`.",
+    "CHECKED_EFFECT_CAST_EXPR": "Same PARAMETER_LIST-class bug, both checked-cast forms: `checkedEffectCastExpr ::= CHECKED_ECAST_KW (PAREN_L expr PAREN_R)?` and `checkedTypeCastExpr ::= CHECKED_CAST_KW (PAREN_L expr PAREN_R)?` each wrap 0 or 1 children (the parenthesized argument is itself optional in the reference's checkedTypeCastExpr/checkedEffectCastExpr), so both were always spliced away by `ignored` even though Expr.CheckedEffectCast/Expr.CheckedTypeCast are real nodes regardless of arity -- neither is in `elide`. `checked_cast` and `checked_ecast` are distinct reference TreeKinds (Expr.CheckedTypeCast/Expr.CheckedEffectCast), not variants of one kind.",
     "ARROW_OPERATOR": "The INFIX_OPERATOR_NAME finding generalizes a second time: Parser2.Type.ttype's Pratt loop and unaryType() wrap literally every *type*-level operator as Operator too, not just expression-level ones. Every level of the type precedence chain (arrow, rvadd/rvsub, rvand, +/-, &, xor, or, and, unary ~/not/rvnot) gained its own `*Operator` rule the same way the expression chain did; all nine map to this same canonical Operator. See RV_ADD_SUB_OPERATOR through UNARY_TYPE_OPERATOR for the rest.",
     "RESTRICTABLE_ENUM_DECL": "ENUM_DECL was one native kind for two reference TreeKinds -- the reference closes Decl.RestrictableEnum instead of Decl.Enum purely based on whether RESTRICTABLE_KW was present, which a single Grammar-Kit rule can't express (one rule, one node kind, for every alternative). Split into two real rules on the consumer side (a private `enumDecl` dispatcher over the two, so no third wrapper level is added); PLAIN_ENUM_DECL takes over ENUM_DECL's old mapping to Decl.Enum unchanged.",
-    "ARROW_TYPE": "Another TYPE_PARAMETER-class guess-from-the-name mistake, caught the same way: `Type.Function` never appears in any `fixtures/expected/*.json`. Parser2.Type.ttype's Pratt loop treats arrow as just another entry in TYPE_OP_PRECEDENCE -- the same generic binary-operator code path as +/-/&/xor/etc. -- and closes `TreeKind.Type.Binary` for it, not a distinct function-type kind. Confirmed against `types__arrow-types-are-right-associative.flix`'s own expected tree before changing this."
+    "ARROW_TYPE": "Another TYPE_PARAMETER-class guess-from-the-name mistake, caught the same way: `Type.Function` never appears in any `fixtures/expected/*.json`. Parser2.Type.ttype's Pratt loop treats arrow as just another entry in TYPE_OP_PRECEDENCE -- the same generic binary-operator code path as +/-/&/xor/etc. -- and closes `TreeKind.Type.Binary` for it, not a distinct function-type kind. Confirmed against `types__arrow-types-are-right-associative.flix`'s own expected tree before changing this.",
+    "TYPE_AND_EFFECT": "Was in `ignored`, wrongly -- elision only fires at arity <= 1, so a def with an effect (`Unit \\ IO`, two TYPE children: the return type and the effect) kept TYPE_AND_EFFECT as a real wrapper node instead of splicing it away, while a def without one (arity 1) elided correctly. The reference has no such wrapper at all in either case: `Decl.Def`'s return type and its optional effect type are direct siblings of the def's other children, not nested under anything. Confirmed via a direct PSI dump, not the minified single-line projected JSON -- eyeballing that JSON's brace nesting by hand is exactly how this looked like a grammar bug (STATEMENT nested inside TYPE_AND_EFFECT) that a pretty-printed dump of the same tree shows was never actually there. Moved to `flatten`, which splices unconditionally regardless of arity, matching every position `typeAndEffect` appears in (defDecl, redefDecl, signatureDecl, opDecl)."
   },
   "flatten": [
     "DECLARATION",
-    "DUMMY_BLOCK"
+    "DUMMY_BLOCK",
+    "TYPE_AND_EFFECT"
   ]
 }

@@ -108,8 +108,33 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     now lives next to the grammar changes it tracks instead of forcing a flix-spec release
          *     for a consumer-only edit; `flixSpecVersion` is pinned back to 0.75.1, the only version
          *     flix-spec still publishes. 92/136 agree, 1055 nodes compared, depth 92%.
+         *   - 51, after four map-only fixes to conformance/projection-map.json, none touching
+         *     Flix.bnf. All four are the PARAMETER_LIST/ignored-vs-elide class or its mirror image:
+         *     TYPE_AND_EFFECT moved from `ignored` to `flatten` -- elision only fires at arity <= 1,
+         *     so a def *with* an effect (`Unit \ IO`, two TYPE children) kept TYPE_AND_EFFECT as a
+         *     real wrapper the reference has no counterpart for at all, while a def *without* one
+         *     (arity 1) elided correctly -- the asymmetry alone was worth 16 divergences and flipped
+         *     8 fixtures to full agreement, the single largest jump measured against this map.
+         *     VARIABLE_PATTERN moved from `ignored` to a direct `Ident` mapping -- the mirror-image
+         *     bug: at arity 0 (`variablePattern` matches a bare token, no composite child) the
+         *     elision chain-follow found nothing to replace it with and deleted the node outright,
+         *     rather than collapsing to Ident the way the reference's Pattern.Variable-wrapping-Ident
+         *     does. Fixing this by widening `variablePattern` to route through `ident` was tried
+         *     first and reverted: `ident`'s token set overlaps tagPattern's first token and dropped
+         *     the 428-file corpus to 49.2% (`use` statements failing several lines later) -- the
+         *     map-only fix has no such risk, since both sides collapse to the same arity-0 Ident
+         *     once each side's bare-token child is filtered out. DEBUG_INTERPOLATOR_EXPR and both
+         *     CHECKED_EFFECT_CAST_EXPR/CHECKED_TYPE_CAST_EXPR moved from `ignored` to `mappings`,
+         *     the ordinary PARAMETER_LIST-class fix: each always wraps 0 or 1 children by
+         *     construction, so `ignored` always fired, even though none of the three reference
+         *     kinds are in `elide`. Also fixed, unrelated to the map: `recordType`'s alternatives in
+         *     Flix.bnf could all match empty, so bare `{}` was always consumed as an empty record
+         *     before `effectSetType` ever got a turn -- Parser2.scala's recordOrEffectSetType()
+         *     special-cases exactly this input as an effect set. Restructured to require a bar or a
+         *     field, verified clean against the 428-file corpus. 109/136 agree, 1144 nodes compared,
+         *     depth 93%.
          */
-        private const val DIVERGENCE_BASELINE = 86
+        private const val DIVERGENCE_BASELINE = 51
     }
 
     override fun getTestDataPath(): String = ""

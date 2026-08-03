@@ -562,21 +562,26 @@ private postfixSuffix ::=
   | arrow NAME_LOWERCASE (EQUAL expr)?                      // e->f  /  e->f = v  (StructGet / StructPut; `arrow` merges tight/whitespace "->", see header note #2)
   | BRACKET_L expr BRACKET_R (EQUAL expr)?                  // e[i]  /  e[i] = v  (Index / IndexMut)
 
-// Tried `{pin=1}` (with and without a matching `recoverWhile`) to match Parser2.scala's
-// `arguments()`, which never requires PAREN_R to succeed -- it closes ArgumentList unconditionally
-// rather than discarding the whole call. Reverted both attempts: a bare pin broke
-// `testUnclosedExtTagArgsRecovers` in FlixRareSyntaxRecoveryTest (a truncated `xvar A(` swallowed
-// the *following* top-level declaration instead of leaving it for `declaration`'s own
-// `declarationRecover`), and adding a matching `argumentListRecover` (stop at COMMA/PAREN_R/
-// declarationStart) was worse -- 14 previously-passing FlixRareSyntaxTest cases started reporting
-// spurious errors on ordinary, well-formed argument lists (e.g. "';' unexpected" on valid fixpoint
-// query syntax), meaning pin's commit semantics broke correct backtracking at one of
-// argumentList's other four call sites (extTagExpr's `argumentList?`, invokeSuperConstructorExpr,
-// the InvokeConstructor alternative, ...) in a way not yet root-caused. `argumentList` itself
-// (used across five different rule shapes, some optional/speculative) is evidently not a safe
-// place for a blanket pin; a fix here would need either a narrower construct-specific rule that
-// only pins in the single-callee `postfixSuffix` position, or a much deeper study of Grammar-Kit's
-// generated pin/recoverWhile interaction across multiple call sites of the same rule.
+// Tried `{pin=1}` on the shared `argumentList` below three times, all reverted:
+//   1. A bare pin broke `testUnclosedExtTagArgsRecovers` in FlixRareSyntaxRecoveryTest -- a
+//      truncated `xvar A(` (extTagExpr's `argumentList?`) swallowed the *following* top-level
+//      declaration instead of leaving it for `declaration`'s own `declarationRecover`.
+//   2. Adding a matching `argumentListRecover` (stop at COMMA/PAREN_R/declarationStart) was
+//      worse: 14 previously-passing FlixRareSyntaxTest cases started reporting spurious errors
+//      on ordinary, well-formed argument lists at other call sites.
+//   3. Isolating the pin to a private, single-call-site `applyArgumentList` used only by
+//      `postfixSuffix`'s bare-Apply alternative (leaving extTagExpr/invokeSuperConstructorExpr/
+//      the InvokeConstructor alternative on the original, untouched, unpinned rule) still broke
+//      `testUnclosedExtTagArgsRecovers` -- turns out the two call sites weren't actually
+//      conflicting with each other structurally; `postfixSuffix` wraps *every* `exprDelimited`
+//      primary, including `extTagExpr` itself, so after extTagExpr's own (unpinned) `A(`
+//      argument attempt backs off leaving `(` unconsumed, the *outer* postfixSuffix loop gets a
+//      second look at that same leftover `(` and hits the pinned `applyArgumentList`
+//      alternative there instead -- a subtler collision than "argumentList has five call
+//      sites", closer to "any pinned alternative inside postfixSuffix can catch a leftover `(`
+//      left behind by an unrelated, already-backtracked earlier attempt at the same position."
+// `argumentList` is not a safe place for `pin` without a considerably deeper redesign of how
+// postfixSuffix's alternatives interact with primaries that themselves optionally consume `(`.
 argumentList ::= PAREN_L (argument (COMMA argument)* COMMA?)? PAREN_R
 argument ::= expr (EQUAL expr)?
 

@@ -227,8 +227,17 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     numeric-literal-errors, unterminated-regex, unterminated-string-interpolation,
          *     operator-error, effect-annotation-wrong-slash, unclosed-paren) -- real progress on
          *     each even though they still diverge. 123/136 agree.
+         *   - 30, after giving `typeAndEffect` an explicit alternative for `/` where `\` was meant
+         *     (`def f(): Unit / IO = ...`). Unlike everything else on this list, this one is not
+         *     generic recovery: Parser2.Type.typeAndEffect special-cases this exact typo directly
+         *     (`ParseError.ExpectedBackslashGotSlash`), consuming the `/` and still parsing the
+         *     effect type normally rather than losing the suffix. `typeAndEffectSlashError`
+         *     deliberately isn't `private`: its only content is the SLASH token, which (like every
+         *     bare token) carries no `kind` and is already invisible to the comparison, so a real
+         *     node is what makes it land as the reference's empty ErrorTree sibling instead of
+         *     vanishing into typeAndEffect's `flatten`ed children. 124/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 31
+        private const val DIVERGENCE_BASELINE = 30
     }
 
     override fun getTestDataPath(): String = ""

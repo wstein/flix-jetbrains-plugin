@@ -843,7 +843,16 @@ predicateParam ::= ident (PAREN_L (type (COMMA type)* COMMA?)? (SEMI type)? PARE
 // TYPES
 // =================================================================================================
 
-typeAndEffect ::= type (BACKSLASH type)?
+// `/` instead of `\` for the effect separator is a common typo Parser2.Type.typeAndEffect
+// special-cases directly (not generic recovery): ParseError.ExpectedBackslashGotSlash, consuming
+// the `/` and still going on to parse the effect type normally rather than losing the whole
+// type-and-effect suffix. `typeAndEffectSlashError` is deliberately not `private`: its only
+// content is the SLASH token, which -- like every bare token -- carries no `kind` and so is
+// already invisible to the conformance comparison (see Conformance.kt's kindTree, "drops token
+// leaves"); giving it a real node of its own is what makes it land as the reference's empty
+// ErrorTree sibling instead of vanishing into typeAndEffect's `flatten`ed children entirely.
+typeAndEffectSlashError ::= SLASH
+typeAndEffect ::= type ((BACKSLASH type) | (typeAndEffectSlashError type))?
 
 // Kind ascription (": Kind") applies once, around the whole binary-operator chain, matching
 // Parser2.Type.ttype's trailing `if (eat(Colon)) { ... Ascribe }` step. One native TYPE kind

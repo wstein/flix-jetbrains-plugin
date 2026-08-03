@@ -157,8 +157,32 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     93%. `consExpr` (`::`/`:::`) and `arrowType` (the effect-suffix backslash) needed no
          *     change: both are already right-recursive through the *next* rule, not
          *     self-recursive, which is ordinary recursive descent with no left-recursion risk.
+         *   - 40, after clearing every remaining *positive*-fixture divergence bar the one
+         *     documented in KNOWN_DIVERGENCES. Six independent fixes, each the ordinary
+         *     PARAMETER_LIST-class bug or the enumDecl-class one-native-kind-two-reference-kinds
+         *     split, none touching the precedence chain: GUARD (`if (cond)` in a Datalog rule
+         *     body) moved from `ignored` to `mappings` -- always arity 1, so always elided, even
+         *     though the reference's Predicate.Guard is real regardless. `latticeTermExpr`/
+         *     `latticeTermPattern` (the `; term` tail in `P(x; term)`) un-privated -- inlined with
+         *     no node of their own, but the reference wraps the tail in a mandatory
+         *     Predicate.LatticeTerm. `fixpointSolveExpr` split into `provenanceSolveExpr`
+         *     (`psolve`) / `projectSolveExpr` (`solve`) -- one native kind closing two reference
+         *     kinds (Expr.FixpointSolveWithProvenance vs. Expr.FixpointSolveWithProject) purely on
+         *     which keyword was present. `invokeSuperExpr` split into `invokeSuperMethodExpr` /
+         *     `invokeSuperConstructorExpr` the same way (`super.m()` vs. bare `super()`). `type`'s
+         *     kind-ascription tail (`expr : Kind`) moved from `(COLON kind)?` to `left
+         *     typeAscribeTail ::= COLON kind` -- the highest-blast-radius change of the six, since
+         *     `type` is the entry point for every type position in this grammar, but safe by the
+         *     same reasoning as the precedence-chain fix: parses `arrowType` exactly once (no
+         *     dispatcher-fallback re-parse), verified against the generated code before trusting
+         *     it. `parenOrTupleOrLambdaExpr`'s plain-paren case (`(u - f)`, no ascription or tuple
+         *     suffix) split out into its own `parenExpr` rule -- folded into the same wrapper as
+         *     unit/operator-section/lambda, so arity 1 always elided it even though the
+         *     reference's Expr.Paren is real there. Each verified individually against the full
+         *     428-file corpus before moving to the next. 116/136 agree, 1200 nodes compared, depth
+         *     94%.
          */
-        private const val DIVERGENCE_BASELINE = 46
+        private const val DIVERGENCE_BASELINE = 40
     }
 
     override fun getTestDataPath(): String = ""

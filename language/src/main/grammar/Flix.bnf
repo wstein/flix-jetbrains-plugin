@@ -584,13 +584,21 @@ structPutExpr ::= ident arrow NAME_LOWERCASE EQUAL expr
 unaryLambdaExpr ::= ident arrow expr
 
 // `(...)`-headed forms: unit lambda, unit tuple, operator section, lambda, ascription, tuple, paren.
+// The plain (no-suffix) case is its own rule, `parenExpr`, rather than folded into this one:
+// PAREN_OR_TUPLE_OR_LAMBDA_EXPR is in `ignored` (elides at arity <= 1, correct for the
+// unit/operator-section/lambda alternatives above, which never reach arity 1 here), but a plain
+// `(u - f)` is exactly arity 1 and the reference's Expr.Paren is a real, mandatory node for it --
+// not in `elide` -- so folding it into the same wrapper meant it was always spliced away too.
 parenOrTupleOrLambdaExpr ::=
     PAREN_L PAREN_R arrow expr                     // unit lambda: () -> e
   | PAREN_L PAREN_R                                // unit
   | PAREN_L operatorToken PAREN_R                  // operator section, e.g. (+)
   | lambdaExpr                                     // (params) -> e
-  | PAREN_L expr (ascribeSuffix | tupleSuffix)? PAREN_R
+  | PAREN_L expr ascribeSuffix PAREN_R
+  | PAREN_L expr tupleSuffix PAREN_R
+  | parenExpr
 
+parenExpr ::= PAREN_L expr PAREN_R
 lambdaExpr ::= parameterList arrow expr
 private ascribeSuffix ::= COLON typeAndEffect
 private tupleSuffix ::= (EQUAL expr)? (COMMA argument)+
@@ -675,7 +683,14 @@ catchRule ::= CASE_KW ident COLON qualifiedName ARROW_THICK_R statement
 
 throwExpr ::= THROW_KW expr
 
-invokeSuperExpr ::= SUPER_KW ((DOT ident argumentList) | argumentList)
+// One native kind can't produce two different reference TreeKinds: `super.method(...)` closes
+// Expr.InvokeSuperMethod, bare `super(...)` closes Expr.InvokeSuperConstructor
+// (Parser2.scala's invokeSuperExpr dispatches on whether a `.` follows `super`) -- same shape
+// as the enumDecl/restrictableEnumDecl and solve/psolve splits. Private dispatcher over two
+// real rules, so no third wrapper level is added.
+private invokeSuperExpr ::= invokeSuperMethodExpr | invokeSuperConstructorExpr
+invokeSuperMethodExpr ::= SUPER_KW DOT ident argumentList
+invokeSuperConstructorExpr ::= SUPER_KW argumentList
 
 ambiguousNewExpr ::= NEW_KW type newBody
 private newBody ::=
@@ -706,11 +721,14 @@ fixpointConstraint ::= predicateHead (COLON_MINUS predicateBody (COMMA predicate
 
 fixpointLambdaExpr ::= predicateParamList arrow expr
 
-// Covers both `solve` and `psolve`; `psolve` never takes a `project` clause (matches
-// Parser2.Expr.fixpointSolveExpr's early return for isPSolve).
-fixpointSolveExpr ::=
-    PSOLVE_KW expr (COMMA expr)*
-  | SOLVE_KW expr (COMMA expr)* (PROJECT_KW ident (COMMA ident)*)?
+// One native kind can't produce two different reference TreeKinds: `solve` closes
+// Expr.FixpointSolveWithProject (it can carry a `project` clause) and `psolve` closes
+// Expr.FixpointSolveWithProvenance (Parser2.Expr.fixpointSolveExpr's early return for
+// isPSolve, which never takes one) -- same shape as the enumDecl/restrictableEnumDecl split.
+// Split into a private dispatcher over two real rules, so no third wrapper level is added.
+private fixpointSolveExpr ::= provenanceSolveExpr | projectSolveExpr
+provenanceSolveExpr ::= PSOLVE_KW expr (COMMA expr)*
+projectSolveExpr ::= SOLVE_KW expr (COMMA expr)* (PROJECT_KW ident (COMMA ident)*)?
 
 fixpointInjectExpr ::= INJECT_KW expr (COMMA expr)* INTO_KW predicateAndArity (COMMA predicateAndArity)*
 predicateAndArity ::= ident SLASH LITERAL_INT
@@ -770,10 +788,13 @@ unaryPattern ::= MINUS literalPattern
 
 predicateHead ::= ident termList?
 termList ::= PAREN_L (expr (COMMA expr)* COMMA?)? (SEMI latticeTermExpr)? PAREN_R
-private latticeTermExpr ::= expr
+// Was `private`, inlining with no node of its own; the reference wraps the lattice-term tail in
+// a real, mandatory Predicate.LatticeTerm regardless of the term's own shape.
+latticeTermExpr ::= expr
 
 patternList ::= PAREN_L (pattern (COMMA pattern)* COMMA?)? (SEMI latticeTermPattern)? PAREN_R
-private latticeTermPattern ::= pattern
+// Same fix as latticeTermExpr above, pattern-position counterpart.
+latticeTermPattern ::= pattern
 
 predicateBody ::= guard | functional | predicateAtom
 guard ::= IF_KW PAREN_L expr PAREN_R
@@ -790,8 +811,16 @@ predicateParam ::= ident (PAREN_L (type (COMMA type)* COMMA?)? (SEMI type)? PARE
 typeAndEffect ::= type (BACKSLASH type)?
 
 // Kind ascription (": Kind") applies once, around the whole binary-operator chain, matching
-// Parser2.Type.ttype's trailing `if (eat(Colon)) { ... Ascribe }` step.
-type ::= arrowType (COLON kind)?
+// Parser2.Type.ttype's trailing `if (eat(Colon)) { ... Ascribe }` step. One native TYPE kind
+// can't produce two different reference TreeKinds (Type.Type when absent -- transparent, per
+// TYPE's existing ignored/elide dual-listing below -- vs Type.Ascribe when present); same shape
+// as the enumDecl/solve/super splits, but expressed with `left` (as for the precedence chain)
+// rather than a private dispatcher: `type` is the entry point for every type position in this
+// grammar, so a dispatcher's fallback alternative would re-parse the entire arrowType chain a
+// second time on every ordinary (unascribed) type, which is the overwhelming common case.
+// `left` parses arrowType exactly once and only wraps it if `: kind` actually follows.
+type ::= arrowType typeAscribeTail?
+left typeAscribeTail ::= COLON kind
 
 // ---- precedence chain, loosest to tightest (mirrors Parser2.Type.TYPE_OP_PRECEDENCE exactly) ----
 // Every level except arrow is left-associative (the reference algorithm has no isRightAssoc

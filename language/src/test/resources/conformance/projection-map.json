@@ -134,7 +134,15 @@
     "IMPLICIT_OPERATOR": "Operator",
     "STATEMENT_OPERAND": "Expr.Binary",
     "MATCH_RULE_ARROW_ERROR": "ErrorTree",
-    "JVM_METHOD_NAME_ERROR": "ErrorTree"
+    "JVM_METHOD_NAME_ERROR": "ErrorTree",
+    "TRAIT_MEMBER_ERROR": "ErrorTree",
+    "SIGNATURE_NAME_ERROR_INNER": "ErrorTree",
+    "SIGNATURE_NAME_ERROR": "Ident",
+    "SIGNATURE_PARAMETER_LIST_ERROR_INNER": "ErrorTree",
+    "SIGNATURE_PARAMETER_LIST_ERROR": "ParameterList",
+    "SIGNATURE_COLON_ERROR": "ErrorTree",
+    "SIGNATURE_TYPE_ERROR_INNER": "ErrorTree",
+    "SIGNATURE_TYPE_ERROR": "Type.Type"
   },
   "ignored": [
     "STATEMENT_OPERAND",

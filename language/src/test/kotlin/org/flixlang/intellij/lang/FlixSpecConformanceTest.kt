@@ -365,8 +365,58 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     61 of the grammar's 79 keyword tokens. Fixed
          *     expressions__anonymous-class-with-methods-and-a-constructor.flix outright. 131/136
          *     agree.
+         *   - 8, resolving declarations__trait-and-instance-with-an-operator-signature.flix
+         *     (`pub def <=>(x: a, y: a): Bool` -- `<=>` lexes as ANGLED_EQUAL, not any name-shaped
+         *     token, inside a trait). The deepest and most novel change on this branch: three
+         *     grammar pieces plus new project infrastructure, none viable independently --
+         *     confirmed by two earlier attempts within this same investigation that were built
+         *     incrementally and reverted when each new layer of the problem surfaced.
+         *       1. signatureDecl's ident/parameterList/colon/typeAndEffect each get a zero-width
+         *          (no tokens consumed) ErrorTree fallback -- Parser2.expectAny's own behavior
+         *          when a token matches neither the expected kind set nor NAME_LIKE: produce an
+         *          empty error and move on, leaving the same bad token for the *next* position's
+         *          own attempt, cascading through all four. `Ident[ErrorTree]` and
+         *          `Type.Type[ErrorTree]` for the name/return-type positions (empty ErrorTree
+         *          nested one level in, reusing the position's normal wrapper), a bare ErrorTree
+         *          for the colon position, matching Parser2.expect's own fallback exactly.
+         *       2. `traitMemberError`, a new external rule (`<<consumeUntilTraitMemberStart>>`),
+         *          mirrors Parser2.traitDecl's own hand-written recovery
+         *          (`while (!nth(0).isFirstInTraitDecl && !eat(CurlyR) && !eof()) advance()`) --
+         *          the one thing a declarative Grammar-Kit rule can't express ("consume any token,
+         *          repeatedly," with no built-in wildcard, and enumerating the ~150
+         *          non-trait-member-start tokens by hand would be both unwieldy and silently wrong
+         *          the moment a new token is added elsewhere). Required a `parserUtilClass`
+         *          (FlixParserUtil.kt, extending GeneratedParserUtilBase so every existing
+         *          generated call still resolves through the same `import static X.*`) -- the
+         *          first use of Grammar-Kit's external-rule mechanism on this branch. A real bug
+         *          surfaced and was fixed before this landed: the recovery function's first
+         *          version unconditionally consumed CURLY_R as its very first check, which broke
+         *          two previously-clean corpus fixtures (declarations__sealed-trait.flix,
+         *          declarations__trait-with-law-signature-and-associated-type.flix) by eating a
+         *          trait body's own legitimate closing brace after an ordinary, well-formed last
+         *          member -- caught by testFixturesParseAndProject and FlixFoldingTest failing,
+         *          not assumed. Fixed by returning false (no recovery attempted) when CURLY_R is
+         *          the very first token seen with nothing skipped yet, matching how Parser2.scala's
+         *          outer `nth(0) match` checks `case CurlyR` *before* ever falling into its
+         *          recovery branch -- only reaching CURLY_R after already skipping something else
+         *          means "the garbage run ends here."
+         *       3. `traitDecl`'s body (`CURLY_L traitMember* CURLY_R`, extracted into a private
+         *          `traitBody` sub-rule) gets `{pin=1}`: without it, `traitMember*` matching zero
+         *          iterations (because the first member's own name is malformed and, before piece
+         *          1, its containing rule backtracks past even its own leading DEF_KW) leaves the
+         *          whole optional group requiring CURLY_R immediately after CURLY_L, which fails
+         *          and rolls back CURLY_L itself too -- confirmed by an earlier, reverted attempt
+         *          at piece 1 alone producing exactly this catastrophic backtrack. Unlike `block`'s
+         *          own reverted pin attempt, there's no sibling alternative here that legitimately
+         *          needs `traitBody` to fail and backtrack (a trait's body is never ambiguous with
+         *          anything else the way `{...}` is between block and record), so this one is safe
+         *          on that count.
+         *     Every piece verified via direct PSI dump (both the target malformed input and the
+         *     two regressed well-formed fixtures) before trusting the full suite, then verified
+         *     clean against the full 428-file corpus and both rare-syntax test suites.
+         *     132/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 10
+        private const val DIVERGENCE_BASELINE = 8
     }
 
     override fun getTestDataPath(): String = ""

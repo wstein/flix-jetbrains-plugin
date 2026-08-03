@@ -55,6 +55,13 @@
  */
 {
   parserClass="org.flixlang.intellij.lang.parser.FlixParser"
+  // Only needed for `traitMemberError`'s `<<consumeUntilTraitMemberStart>>` external rule below --
+  // extends GeneratedParserUtilBase itself, so every other generated call (recursion_guard_,
+  // consumeToken, report_error_, ...) still resolves through the same `import static X.*` exactly
+  // as it did with the implicit default. See FlixParserUtil.kt's own class comment for why this
+  // exists: a declarative Grammar-Kit rule can't express "consume any token, of whichever kind,
+  // repeatedly", which Parser2.scala's own hand-written trait-body recovery loop needs.
+  parserUtilClass="org.flixlang.intellij.lang.parser.FlixParserUtil"
   extends="com.intellij.extapi.psi.ASTWrapperPsiElement"
 
   psiClassPrefix="Flix"
@@ -343,13 +350,66 @@ private declarationBody ::=
 
 moduleDecl ::= MOD_KW qualifiedName CURLY_L usesOrImports declaration* CURLY_R
 
-traitDecl ::= TRAIT_KW ident typeParameterList? typeConstraints? (CURLY_L traitMember* CURLY_R)?
-traitMember ::= annotationList modifierList (lawDecl | signatureDecl | associatedTypeSigDecl)
+traitDecl ::= TRAIT_KW ident typeParameterList? typeConstraints? traitBody?
+// `{pin=1}` on the second alternative only: once CURLY_L is seen, commit -- without this,
+// `traitMember*` matching zero iterations (because the first member's own name is malformed and
+// its containing rule has no pin of its own, so it backtracks past even its leading DEF_KW/
+// LAW_KW/TYPE_KW, undoing everything) leaves the whole `(CURLY_L traitMember* CURLY_R)?` group
+// requiring CURLY_R immediately after CURLY_L, which fails and rolls back CURLY_L itself too --
+// unlike `block`'s own pin attempt (reverted above), there's no sibling alternative here that
+// legitimately needs `traitBody` to fail and backtrack (a trait's body is never ambiguous with
+// anything else the way `{...}` is between block and record), so this one is safe on that count.
+// (Grammar-Kit's pin is rule-level, not alternative-level -- `private traitBody` exists so the
+// pin has a rule of its own to attach to, the same reason `blockWithStatement` exists.)
+private traitBody ::= CURLY_L traitMember* CURLY_R {pin=1}
+
+// Fallback for a trait member that starts with neither LAW_KW/DEF_KW/TYPE_KW nor a modifier
+// (e.g. a member name that's an operator token, `<=>`, which lexes as ANGLED_EQUAL and can't
+// begin *anything* recognized here): mirrors Parser2.traitDecl's own hand-written recovery
+// (`while (!nth(0).isFirstInTraitDecl && !eat(CurlyR) && !eof()) advance()`), which a declarative
+// rule can't express directly -- see FlixParserUtil.kt's own comment on why this needs an
+// external rule rather than an enumerated token set. `consumeUntilTraitMemberStart` stops
+// (without consuming) at anything that could start the next member, letting `traitMember*`'s own
+// next iteration pick up from there, or consumes CURLY_R if that's what it hits (the trait body's
+// own closing brace, folded into this recovery the same way the reference does).
+traitMemberError ::= <<consumeUntilTraitMemberStart>>
+traitMember ::= annotationList modifierList (lawDecl | signatureDecl | associatedTypeSigDecl | traitMemberError)
 
 instanceDecl ::= INSTANCE_KW qualifiedName BRACKET_L type BRACKET_R typeConstraints? equalityConstraintList? (CURLY_L instanceMember* CURLY_R)?
 instanceMember ::= annotationList modifierList (defDecl | redefDecl | associatedTypeDefDecl)
 
-signatureDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? (EQUAL statement)?
+// A trait signature name that's neither a valid ident token nor a keyword at all (e.g. `<=>`,
+// which the lexer tokenizes as the relational operator ANGLED_EQUAL, not any name-shaped token --
+// unlike jvmMethod's RUN_KW case above, this isn't even in `ident`'s reach or a recognizable
+// keyword) is Parser2.expectAny's own fallback for exactly this: when the current token matches
+// neither the expected kind set nor NAME_LIKE, produce a genuinely empty (zero-width, no tokens
+// consumed) ErrorTree in its place and move on -- unlike every other ErrorTree-producing fallback
+// on this branch, which always consumes at least the one bad token, this one consumes literally
+// nothing, leaving the same bad token for parameterList's own attempt right after, which fails
+// the exact same way, and so on through colon and the return type. Each of the four positions
+// below (name, parameter list, colon, return type) gets its own zero-width fallback, verified via
+// PSI dump against flix-spec's own reference tree for exactly this shape before trusting the full
+// suite -- Ident[ErrorTree] and Type.Type[ErrorTree] (an empty ErrorTree nested one level in,
+// reusing the position's normal wrapper) for the name and return-type positions, a bare
+// (unwrapped) ErrorTree for the colon position, matching Parser2.expect's own fallback exactly.
+// Not just a nicety: without these, signatureDecl backtracks *entirely* on a malformed name
+// (undoing even its own leading DEF_KW), which then defeats `traitMemberError`'s own recovery --
+// DEF_KW ends up back at the front of the input, and `traitMemberError` correctly refuses to skip
+// it (it's a perfectly legitimate trait-member start), so neither can make progress. These four
+// fallbacks are what let signatureDecl actually commit past DEF_KW instead of round-tripping.
+private signatureNameErrorInner ::=
+signatureNameError ::= signatureNameErrorInner
+private signatureParameterListErrorInner ::=
+signatureParameterListError ::= signatureParameterListErrorInner
+signatureColonError ::=
+private signatureTypeErrorInner ::=
+signatureTypeError ::= signatureTypeErrorInner
+signatureDecl ::=
+    DEF_KW (ident | signatureNameError) typeParameterList?
+    (parameterList | signatureParameterListError)
+    (COLON | signatureColonError)
+    (typeAndEffect | signatureTypeError)
+    typeConstraints? equalityConstraintList? (EQUAL statement)?
 
 // `pin=9` commits once `EQUAL` (the 9th element) has matched, so a body that fails to parse at
 // all -- e.g. an unterminated char/string/regex literal, whose lexeme doesn't start any known

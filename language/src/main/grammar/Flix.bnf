@@ -747,18 +747,22 @@ unaryLambdaExpr ::= ident arrow expr
 // unit/operator-section/lambda alternatives above, which never reach arity 1 here), but a plain
 // `(u - f)` is exactly arity 1 and the reference's Expr.Paren is a real, mandatory node for it --
 // not in `elide` -- so folding it into the same wrapper meant it was always spliced away too.
-// Tried adding a `malformedParenExpr` last-resort alternative here (a bare `(` that none of the
-// shapes below can make sense of, e.g. `(1, 2` reaching an enclosing `}` with no closing `)`
-// anywhere before it -- Parser2.parenOrTupleOrLambdaExpr's own `Malformed(Tuple)` case) paired
-// with pinning `block` so the rest of that malformed content could still be recovered via
-// `statement`'s own `statementOperand`/`implicitOperator` machinery. Reverted both: pinning
-// `block` broke `blockOrRecordExpr ::= block | recordOperationExpr`'s disambiguation (see
-// `block`'s own comment for the full account -- a record literal like `{ x = 1, y = 2 }` has a
-// prefix that's also a valid partial `statement`, so a pinned `block` never properly fails and
-// backtracks to let `recordOperationExpr` try). `malformedParenExpr` alone, without the pin, is
-// safe (verified against the full corpus) but provides no measurable benefit on its own -- the
-// unpinned `block`'s own closing-`}` requirement still fails just as before, collapsing back to
-// the same full-ErrorTree shape either way. Left out rather than carried as dead weight.
+// `malformedParenExpr` is the last-resort alternative: a bare `(` that none of the shapes below
+// can make sense of, e.g. `(1, 2` reaching an enclosing `}` with no closing `)` anywhere before
+// it. Parser2.parenOrTupleOrLambdaExpr detects this with an explicit bracket-balance lookahead
+// scan (hitting a top-level `}` or EOF before finding the matching `)`) and produces
+// `Malformed(Tuple)`, consuming just the `(` -- not something a static grammar rule can replicate
+// with real lookahead, but every alternative below already requires a real closing `)` to
+// succeed, so if none of them match, that's necessarily because no reachable `)` exists either
+// (Grammar-Kit's ordinary backtracking already explores the same space the reference's scan
+// checks explicitly). `malformedParenExpr` consuming only `(` and returning is what lets the
+// content that follows (`1, 2` here) fall through to `statement`'s own `statementOperand`/
+// `implicitOperator` recovery instead of being swallowed by this rule's own failed attempts.
+// A first attempt at this, paired with pinning `block`, was reverted (see `block`'s own comment
+// above): pinning `block` broke `blockOrRecordExpr`'s disambiguation before that disambiguation
+// was resolved by an explicit lookahead predicate instead of backtracking. Now that `block` is
+// safely pinned again, `malformedParenExpr` is what actually lets the rest of a malformed tuple's
+// content recover once `block`'s own commit keeps the surrounding `{ ... }` from collapsing.
 parenOrTupleOrLambdaExpr ::=
     PAREN_L PAREN_R arrow expr                     // unit lambda: () -> e
   | PAREN_L PAREN_R                                // unit
@@ -767,8 +771,10 @@ parenOrTupleOrLambdaExpr ::=
   | PAREN_L expr ascribeSuffix PAREN_R
   | PAREN_L expr tupleSuffix PAREN_R
   | parenExpr
+  | malformedParenExpr
 
 parenExpr ::= PAREN_L expr PAREN_R
+malformedParenExpr ::= PAREN_L
 lambdaExpr ::= parameterList arrow expr
 private ascribeSuffix ::= COLON typeAndEffect
 private tupleSuffix ::= (EQUAL expr)? (COMMA argument)+
@@ -788,18 +794,21 @@ letExpr ::= LET_KW pattern (COLON type)? EQUAL statement
 localDefExpr ::= annotationList DEF_KW ident parameterList (COLON typeAndEffect)? EQUAL statement
 
 regionExpr ::= REGION_KW ident block?
-// Tried `{pin=1}` here (via a private `blockWithStatement` sub-rule, since Grammar-Kit's pin is
-// rule-level, not alternative-level -- writing it directly inside this rule's own `A | B` was
-// silently ignored). Reverted: `blockOrRecordExpr ::= block | recordOperationExpr` relies on
-// `block` genuinely failing and backtracking whenever the `{...}` content isn't actually a
-// block, so `recordOperationExpr` gets a turn -- a record literal like `{ x = 1, y = 2 }` has a
-// prefix (`x`) that *is* also a valid (partial) `statement` on its own (the loop just stops
-// before `=`, which isn't a recognized continuation), so once pinned, `block` always "succeeds"
-// on that prefix instead of properly failing, permanently starving `recordOperationExpr` of a
-// turn. Broke a previously-clean corpus fixture (expressions__records.flix) this way. Pinning
-// `block` would need a way to first rule out "this could be a record" before committing, which a
-// static Grammar-Kit rule can't easily express without an external predicate.
-block ::= CURLY_L CURLY_R | CURLY_L statement CURLY_R
+// `{pin=1}` on the second alternative (via a private `blockWithStatement` sub-rule, since
+// Grammar-Kit's pin is rule-level, not alternative-level). A first attempt at this pin was
+// reverted earlier on this branch: `blockOrRecordExpr ::= block | recordOperationExpr` relied on
+// `block` genuinely failing and backtracking whenever `{...}` content wasn't actually a block, so
+// `recordOperationExpr` got a turn -- but a record literal like `{ x = 1, y = 2 }` has a prefix
+// (`x`) that's also a valid (partial) `statement` on its own, so once pinned, `block` always
+// "succeeded" on that prefix instead of properly failing, permanently starving
+// `recordOperationExpr`. Safe now: `blockOrRecordExpr` below resolves block-vs-record with an
+// explicit 2-token lookahead predicate *before* choosing (matching Parser2.isBlockExpr() exactly
+// -- see `isBlockNotRecord`'s own comment in FlixParserUtil.kt), the same way the reference
+// itself avoids ever needing to backtrack between the two. Once that predicate says "block",
+// `recordOperationExpr` is never reached at all, so there's nothing left needing `block` to fail
+// and backtrack for.
+block ::= CURLY_L CURLY_R | blockWithStatement
+private blockWithStatement ::= CURLY_L statement CURLY_R {pin=1}
 
 // The braced form is tried first: `match node->next { ... }` would otherwise be swallowed by the
 // match-lambda alternative, which matches `node -> next` and then chokes on `{`. Ordering the
@@ -836,7 +845,12 @@ private forFragment ::= guardFragment | generatorOrLetFragment
 guardFragment ::= IF_KW expr
 generatorOrLetFragment ::= pattern (ARROW_THIN_L expr | EQUAL expr)
 
-blockOrRecordExpr ::= block | recordOperationExpr
+// Disambiguates block vs. record with an explicit 2-token lookahead predicate before choosing
+// (`isBlockGuard`, zero-width, `private` so it adds no PSI node of its own), matching
+// Parser2.isBlockExpr() exactly -- see FlixParserUtil.kt's own comment on `isBlockNotRecord` for
+// the full account of why this replaced plain ordered-alternative backtracking.
+private isBlockGuard ::= <<isBlockNotRecord>>
+blockOrRecordExpr ::= (isBlockGuard block) | recordOperationExpr
 recordOperationExpr ::= CURLY_L (recordOp (COMMA recordOp)* COMMA?)? (BAR expr)? CURLY_R
 recordOp ::=
     PLUS ident EQUAL expr    // RecordOpExtend

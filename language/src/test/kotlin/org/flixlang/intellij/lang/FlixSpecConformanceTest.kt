@@ -415,8 +415,41 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     two regressed well-formed fixtures) before trusting the full suite, then verified
          *     clean against the full 428-file corpus and both rare-syntax test suites.
          *     132/136 agree.
+         *   - 7, resolving expressions__malformed-tuple-reaches-enclosing-brace.flix (`{ (1, 2 }`,
+         *     the unclosed tuple that first motivated `malformedParenExpr` several steps back).
+         *     What blocked it wasn't the tuple recovery itself -- `malformedParenExpr` alone was
+         *     already verified safe -- it was that pinning `block` (needed so the tuple's own
+         *     malformed content doesn't collapse the whole `{ ... }` around it) broke
+         *     `blockOrRecordExpr`'s own `block | recordOperationExpr` disambiguation, the same way
+         *     it did two attempts ago: a record literal like `{ x = 1, y = 2 }` has a leading field
+         *     name that's also a valid partial `statement`, so a pinned `block` always "succeeded"
+         *     on that prefix instead of properly failing to let `recordOperationExpr` try.
+         *     Resolved by not relying on backtracking between the two at all: `isBlockGuard`, a new
+         *     external rule (`<<isBlockNotRecord>>`), mirrors Parser2.isBlockExpr() exactly -- a
+         *     fixed 2-token lookahead (`{ }` / `{ x = ... }` / `{ +x ... }` / `{ -x ... }` is a
+         *     record shape, everything else is a block) decides *before* either alternative is
+         *     attempted, the same way the reference itself avoids the ambiguity. Once that
+         *     predicate says "block", `recordOperationExpr` is never reached at all, so `block`
+         *     pinning safely has nothing left it needs to backtrack for. Verified via PSI dump
+         *     against five cases before trusting the full suite: the malformed tuple itself, a
+         *     record update, a record extend, empty braces (`{}}`, which Parser2.isBlockExpr()
+         *     itself treats as record-shaped, not block-shaped), and an ordinary block -- all five
+         *     dispatched correctly, and the full 428-file corpus + both rare-syntax test suites
+         *     stayed clean despite this predicate now governing every block/record use in the
+         *     grammar. Turned out not to need the "phantom top-level declaration wrapping leftover
+         *     garbage" mechanism this fixture was originally thought to share with
+         *     lexical__unterminated-string-interpolation.flix (still open, see below) -- this
+         *     fixture's malformed content stays fully contained within one declaration's body, so
+         *     no orphaned top-level tokens ever result.
+         *     133/136 agree. Both remaining real divergences are now structurally out of reach for
+         *     different reasons rather than unattempted: declarations__doc-comment-misplaced-
+         *     before-paren.flix needs comments threaded into the AST as real semantic nodes, which
+         *     this grammar deliberately never does (see header simplification #1); lexical__
+         *     unterminated-string-interpolation.flix's only remaining gap is a bare synthetic Err
+         *     token the reference's own lexer emits on EOF-with-open-interpolation-depth, which
+         *     this lexer has no equivalent state for.
          */
-        private const val DIVERGENCE_BASELINE = 8
+        private const val DIVERGENCE_BASELINE = 7
     }
 
     override fun getTestDataPath(): String = ""

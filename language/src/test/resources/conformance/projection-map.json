@@ -142,7 +142,8 @@
     "SIGNATURE_PARAMETER_LIST_ERROR": "ParameterList",
     "SIGNATURE_COLON_ERROR": "ErrorTree",
     "SIGNATURE_TYPE_ERROR_INNER": "ErrorTree",
-    "SIGNATURE_TYPE_ERROR": "Type.Type"
+    "SIGNATURE_TYPE_ERROR": "Type.Type",
+    "MALFORMED_PAREN_EXPR": "ErrorTree"
   },
   "ignored": [
     "STATEMENT_OPERAND",

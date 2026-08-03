@@ -22,6 +22,18 @@ import org.flixlang.intellij.lang.psi.FlixTypes
  * can't express: "consume any token, of whichever kind, repeatedly" has no built-in wildcard, and
  * enumerating the ~150 non-trait-member-start tokens by hand would be both unwieldy and silently
  * wrong the moment a new token is added elsewhere in the grammar.
+ *
+ * [isBlockNotRecord] mirrors Parser2.isBlockExpr() exactly: a `{` opens a block, a record literal,
+ * or a record operation, and the reference disambiguates with a fixed 2-token lookahead rather
+ * than trying one shape and backtracking to the other -- `{ }` / `{ x = ... }` / `{ +x ... }` /
+ * `{ -x ... }` are a record shape, everything else is a block. A prior attempt at this same
+ * fixture pinned `block` directly (reverted, see Flix.bnf's own comment above `blockOrRecordExpr`
+ * for the full account): once pinned, `block` could never fail and backtrack to let
+ * `recordOperationExpr` try, breaking every real record literal whose leading field name also
+ * happens to parse as a complete (if incomplete-looking) statement on its own. Resolving the
+ * ambiguity *before* choosing, the same way the reference does, is what makes pinning `block`
+ * safe: once this predicate says "block", `recordOperationExpr` is never reached anyway, so there
+ * is nothing left needing `block` to backtrack.
  */
 object FlixParserUtil : GeneratedParserUtilBase() {
 
@@ -58,5 +70,16 @@ object FlixParserUtil : GeneratedParserUtilBase() {
             consumedAny = true
         }
         return consumedAny
+    }
+
+    @JvmStatic
+    fun isBlockNotRecord(builder: PsiBuilder, level: Int): Boolean {
+        val next1 = builder.lookAhead(1)
+        val next2 = builder.lookAhead(2)
+        val isRecordShape = next1 == FlixTypes.CURLY_R ||
+            (next1 == FlixTypes.NAME_LOWERCASE && next2 == FlixTypes.EQUAL) ||
+            (next1 == FlixTypes.PLUS && next2 == FlixTypes.NAME_LOWERCASE) ||
+            (next1 == FlixTypes.MINUS && next2 == FlixTypes.NAME_LOWERCASE)
+        return !isRecordShape
     }
 }

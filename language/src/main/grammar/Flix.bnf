@@ -562,27 +562,27 @@ private postfixSuffix ::=
   | arrow NAME_LOWERCASE (EQUAL expr)?                      // e->f  /  e->f = v  (StructGet / StructPut; `arrow` merges tight/whitespace "->", see header note #2)
   | BRACKET_L expr BRACKET_R (EQUAL expr)?                  // e[i]  /  e[i] = v  (Index / IndexMut)
 
-// Tried `{pin=1}` on the shared `argumentList` below three times, all reverted:
-//   1. A bare pin broke `testUnclosedExtTagArgsRecovers` in FlixRareSyntaxRecoveryTest -- a
-//      truncated `xvar A(` (extTagExpr's `argumentList?`) swallowed the *following* top-level
-//      declaration instead of leaving it for `declaration`'s own `declarationRecover`.
-//   2. Adding a matching `argumentListRecover` (stop at COMMA/PAREN_R/declarationStart) was
-//      worse: 14 previously-passing FlixRareSyntaxTest cases started reporting spurious errors
-//      on ordinary, well-formed argument lists at other call sites.
-//   3. Isolating the pin to a private, single-call-site `applyArgumentList` used only by
-//      `postfixSuffix`'s bare-Apply alternative (leaving extTagExpr/invokeSuperConstructorExpr/
-//      the InvokeConstructor alternative on the original, untouched, unpinned rule) still broke
-//      `testUnclosedExtTagArgsRecovers` -- turns out the two call sites weren't actually
-//      conflicting with each other structurally; `postfixSuffix` wraps *every* `exprDelimited`
-//      primary, including `extTagExpr` itself, so after extTagExpr's own (unpinned) `A(`
-//      argument attempt backs off leaving `(` unconsumed, the *outer* postfixSuffix loop gets a
-//      second look at that same leftover `(` and hits the pinned `applyArgumentList`
-//      alternative there instead -- a subtler collision than "argumentList has five call
-//      sites", closer to "any pinned alternative inside postfixSuffix can catch a leftover `(`
-//      left behind by an unrelated, already-backtracked earlier attempt at the same position."
-// `argumentList` is not a safe place for `pin` without a considerably deeper redesign of how
-// postfixSuffix's alternatives interact with primaries that themselves optionally consume `(`.
-argumentList ::= PAREN_L (argument (COMMA argument)* COMMA?)? PAREN_R
+// Tried `{pin=1}` on `argumentList` three times before this and reverted all three -- see git
+// history for the full account. Attempts 1 and 3 both broke on the exact same input
+// (`testUnclosedExtTagArgsRecovers`'s truncated `xvar A(` immediately followed by a real
+// top-level `def`), and dumping the actual PSI tree (not just the pass/fail signal) for that
+// input finally showed *why*, not just *that* it failed: once PAREN_L pins the rule, the
+// generated parser goes on to try parsing an `argument` at the current position regardless of
+// what that position holds -- and `argument`'s `expr` genuinely CAN start with DEF_KW, via
+// `localDefExpr` (a local def used as an expression, e.g. `{ def g(): Int32 = 1; g() }`). So the
+// pinned parser doesn't fail to find an argument and leave `def` alone the way the unpinned
+// version did -- it happily parses the entire *next top-level declaration* as if it were a local
+// def passed as an argument, because that's a completely well-formed `expr` in isolation.
+// Parser2.scala's own `arguments()` hits this identically and has an explicit guard for it (see
+// its own comment): "Remove KeywordDef from isFirstExpr for arguments only. This handles the
+// common case of incomplete arguments followed by another declaration gracefully." `!DEF_KW`
+// below is that same guard, gating both the first argument and every argument after a comma (a
+// truncated call could be followed by a comma before hitting the next declaration too) --
+// verified the pin is now safe by dumping the same input's PSI tree again and confirming
+// `afterUnclosedXvar` parses as a sibling top-level Decl.Def, not a swallowed argument, before
+// trusting the full test suite's green result.
+argumentList ::= PAREN_L (argumentListContents)? PAREN_R {pin=1}
+private argumentListContents ::= !DEF_KW argument (COMMA !DEF_KW argument)* COMMA?
 argument ::= expr (EQUAL expr)?
 
 // Both spellings of "->" are accepted everywhere an arrow is expected (see header note #2).

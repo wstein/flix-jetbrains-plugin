@@ -315,8 +315,26 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     corpus (this touches every numeric literal in the grammar) and both rare-syntax
          *     test suites. Fixed lexical__numeric-literal-errors.flix outright -- all seven
          *     sub-cases at once. 129/136 agree.
+         *   - 12, a fourth and finally successful attempt at pinning `argumentList` (see Flix.bnf's
+         *     own comment above the rule for the first three, all reverted). This one is grounded
+         *     in the actual PSI tree, not another guess: dumping `xvar A(` followed by a real `def`
+         *     under attempts 1 and 3 showed the *real* root cause for the first time -- once
+         *     PAREN_L pins the rule, the parser goes on to try parsing an `argument` at the current
+         *     position regardless of what it holds, and `argument`'s `expr` genuinely can start
+         *     with DEF_KW via `localDefExpr` (a local def used as an expression). So the pinned
+         *     parser doesn't fail to find an argument and leave `def` alone -- it happily parses
+         *     the *next top-level declaration* as if it were a local-def argument, since that's a
+         *     completely well-formed `expr` on its own. Parser2.scala's own `arguments()` hits this
+         *     identically and has an explicit guard for it ("Remove KeywordDef from isFirstExpr for
+         *     arguments only"). The fix mirrors that guard directly: `!DEF_KW` gates both the first
+         *     argument and every argument after a comma. Verified by dumping the PSI tree for both
+         *     known trigger cases (the `xvar A(`-then-`def` case, and `println(` truncated at EOF)
+         *     and confirming the exact right shape *before* trusting the full suite, then verified
+         *     clean against the full 428-file corpus and both rare-syntax test suites (including
+         *     every case the first two attempts broke). Fixed unclosed-paren.flix outright.
+         *     130/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 14
+        private const val DIVERGENCE_BASELINE = 12
     }
 
     override fun getTestDataPath(): String = ""

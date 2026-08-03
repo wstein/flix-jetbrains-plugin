@@ -33,14 +33,17 @@ plugins {
 // instead asserted directly in testPinMatchesLocalFlixCheckout via pin.json inside the artifact.
 // Bumping this version is a reviewed change: a newer flix-spec release can carry a different Flix
 // pin and therefore different expected trees.
-val flixSpecVersion = "0.75.7"
+val flixSpecVersion = "0.75.1"
 
 repositories {
     mavenCentral()
-    // flix-spec: the shared conformance fixtures, TreeKind/TokenKind inventories and projection
-    // schemas, published as a Maven artifact from GitHub Pages. A versioned dependency rather than
-    // a git submodule on purpose -- a floating submodule pointer across several CI configurations
-    // defeats the pin that flix-spec exists to hold.
+    // flix-spec: the shared conformance fixtures and TreeKind/TokenKind inventories, published as a
+    // Maven artifact from GitHub Pages. A versioned dependency rather than a git submodule on
+    // purpose -- a floating submodule pointer across several CI configurations defeats the pin that
+    // flix-spec exists to hold. The projection map from this grammar's own PSI kinds onto that
+    // vocabulary lives in this repository instead (conformance/projection-map.json): it is knowledge
+    // about this grammar, not about the reference, so it belongs next to the grammar changes it
+    // tracks rather than forcing a flix-spec release for a consumer-only change.
     maven {
         name = "flixSpec"
         url = uri("https://wstein.github.io/flix-spec/maven/")

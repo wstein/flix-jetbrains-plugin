@@ -11,9 +11,11 @@ import java.util.jar.JarFile
 /**
  * Parses every fixture published by `flix-spec` and emits each parse as a canonical projected tree.
  *
- * This is the consumer half of the conformance check. `flix-spec` owns the comparison itself so
- * that several parser repositories do not re-derive it several times; this side is responsible only
- * for producing trees in the canonical shape.
+ * This is the consumer half of the conformance check. `flix-spec` owns the canonical `TreeKind`
+ * vocabulary and the fixtures; this side owns the comparison algorithm ([Conformance], ported from
+ * `flix-spec` since the published artifact is data-only), the projection map from this grammar's own
+ * PSI kinds onto that vocabulary (`conformance/projection-map.json`), and producing trees in the
+ * canonical shape to compare.
  *
  * Why this exists alongside [FlixCorpusTest]: that test gates on a parse-success *ratio* over
  * whichever Flix checkout happens to sit beside this repository, skipping entirely when none is
@@ -22,9 +24,8 @@ import java.util.jar.JarFile
  * versioned Maven artifact pinned to a known revision of the Flix reference compiler, so the same
  * input produces the same expectation on every machine and in CI.
  *
- * The projected trees are written to `build/flix-spec-projection/`. Feeding them to `flix-spec`'s
- * comparator, and ratcheting the divergence count, is a follow-up: the comparator is not yet
- * published as a runnable artifact, only the data is.
+ * The projected trees are written to `build/flix-spec-projection/`. [testConformanceAgainstReference]
+ * feeds them to [Conformance] and ratchets the divergence count via [DIVERGENCE_BASELINE].
  */
 class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
 
@@ -98,8 +99,17 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     old single ENUM_DECL always matched Decl.Enum, wrongly, for restrictable enums
          *     (flix-spec 0.75.7). `enumDecl` itself stays `private` so the split adds no extra
          *     wrapper level. 89/136 agree, 1038 nodes compared.
+         *   - 86, after fixing the ARROW_TYPE guess (Type.Function -> Type.Binary, the same
+         *     guessed-from-the-name mistake TYPE_PARAMETER made earlier -- neither kind is ever
+         *     actually produced by any expected tree in `fixtures/expected`) and, separately,
+         *     moving the projection map itself from flix-spec's `ast/projection/flix-jetbrains-plugin.json`
+         *     into this repository as `conformance/projection-map.json`. The map's content is
+         *     unchanged by the move -- it is knowledge about this grammar, not the reference, so it
+         *     now lives next to the grammar changes it tracks instead of forcing a flix-spec release
+         *     for a consumer-only edit; `flixSpecVersion` is pinned back to 0.75.1, the only version
+         *     flix-spec still publishes. 92/136 agree, 1055 nodes compared, depth 92%.
          */
-        private const val DIVERGENCE_BASELINE = 90
+        private const val DIVERGENCE_BASELINE = 86
     }
 
     override fun getTestDataPath(): String = ""
@@ -254,11 +264,21 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         assertTrue(message, regressions.isEmpty() && fixed.isEmpty())
     }
 
-    /** `/ast/projection/flix-jetbrains-plugin.json` from the flix-spec artifact's classpath. */
+    /**
+     * `conformance/projection-map.json`, committed in this repository rather than read from the
+     * flix-spec artifact.
+     *
+     * The map from this consumer's PSI element types onto canonical TreeKind names is knowledge
+     * about this grammar, not about the reference: every entry, `ignored`/`elide` decision and note
+     * here exists because of something specific to `Flix.bnf`. flix-spec still owns the canonical
+     * `TreeKind` vocabulary, the fixtures and the comparison algorithm ([Conformance]) that this map
+     * is fed into -- moving only the map keeps a projection-map-only change from forcing a flix-spec
+     * release, and keeps the map's edit history next to the grammar changes it tracks.
+     */
     private fun loadProjectionMap(): Conformance.ProjectionMap {
-        val text = javaClass.getResourceAsStream("/ast/projection/flix-jetbrains-plugin.json")
+        val text = javaClass.getResourceAsStream("/conformance/projection-map.json")
             ?.use { it.readBytes().decodeToString() }
-            ?: error("flix-spec artifact has no /ast/projection/flix-jetbrains-plugin.json")
+            ?: error("missing test resource conformance/projection-map.json")
         return Conformance.loadProjectionMap(Json.parse(text))
     }
 

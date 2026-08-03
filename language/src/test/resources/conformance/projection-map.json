@@ -128,9 +128,14 @@
     "INVOKE_SUPER_CONSTRUCTOR_EXPR": "Expr.InvokeSuperConstructor",
     "TYPE_ASCRIBE_TAIL": "Type.Ascribe",
     "PAREN_EXPR": "Expr.Paren",
-    "TYPE_AND_EFFECT_SLASH_ERROR": "ErrorTree"
+    "TYPE_AND_EFFECT_SLASH_ERROR": "ErrorTree",
+    "MISSING_SEMICOLON_ERROR": "ErrorTree",
+    "OPERATOR_ERROR": "OperatorError",
+    "IMPLICIT_OPERATOR": "Operator",
+    "STATEMENT_OPERAND": "Expr.Binary"
   },
   "ignored": [
+    "STATEMENT_OPERAND",
     "ADDITIVE_EXPR",
     "ADD_SUB_TYPE",
     "AMP_TYPE",

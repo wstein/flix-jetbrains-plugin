@@ -425,8 +425,54 @@ derivationList ::= WITH_KW qualifiedName (COMMA qualifiedName)*
 // EXPRESSIONS
 // =================================================================================================
 
-// Simplification #4 (see header): no implicit-semicolon / missing-operator recovery heuristics.
-statement ::= expr (SEMI expr)*
+// Simplification #4 partially reversed: Parser2.Expr.statement()'s error-recovery loop treats two
+// token classes specially when SEMI was expected between two statement operands (TokenKind's own
+// notBinaryOperator / canFollowBinaryOperator):
+//
+//   - LET_KW/FOREACH_KW/DISCARD_KW (notBinaryOperator) can never continue an expression, so their
+//     presence unconditionally means a semicolon was forgotten: synthesize an empty error marker
+//     in its place and keep parsing as if it were there (`missingSemicolonError`, an empty
+//     ErrorTree -- same tree shape as a real SEMI, which is itself invisible to the comparison
+//     since bare tokens carry no `kind`; see Conformance.kt's kindTree).
+//   - Anything that could plausibly be an *operand* of a binary expression
+//     (canFollowBinaryOperator: literals, false/true/null/if/match/not, bare names) instead means
+//     a binary *operator* was forgotten: synthesize an empty Operator[OperatorError] node between
+//     the two operands, producing an Expr.Binary (`statementOperand`/`implicitOperator`).
+//     Deliberately excludes DEF_KW (among many others) even though `localDefExpr` can start an
+//     expr: without that exclusion this recovery would swallow the *next top-level declaration*
+//     into the current statement -- `def foo(): Int32 = 1` immediately followed by
+//     `def bar(): Int32 = 2` would parse `def bar...` as a nested local def inside foo's body,
+//     since nothing here requires the missing operator's right operand to make semantic sense.
+//     Both gates are genuine zero-width lookahead (Grammar-Kit's `&`, matching PEG's and-predicate
+//     -- verified against the generated parser code, `_AND_`, before trusting it), not a bare
+//     token reference, so the actual gating token is left for the next `expr` to consume.
+//
+// Still not modeled: the reference's line-sensitivity for the second case (same source line as
+// the previous expression -> Binary/OperatorError; different line -> the same ErrorTree-based
+// substitution as the first case). This grammar has no line-sensitive lookahead, so the
+// binary-operator recovery fires the same way regardless of line. Acceptable: this whole path is
+// unreachable for well-formed input (the 428-file corpus already parses cleanly without any of
+// this) and only changes the *shape* of an already-malformed parse, not whether it succeeds.
+statement ::= statementOperand ((SEMI | missingSemicolonError) statementOperand)*
+
+private missingSemicolonBeforeToken ::= LET_KW | FOREACH_KW | DISCARD_KW
+private missingSemicolonGate ::= &missingSemicolonBeforeToken
+missingSemicolonError ::= missingSemicolonGate
+
+private canFollowBinaryOperatorToken ::=
+    HOLE_ANONYMOUS | FALSE_KW | IF_KW | MATCH_KW | NOT_KW | NULL_KW | TRUE_KW
+  | NAME_LOWERCASE | NAME_UPPERCASE | NAME_MATH
+  | LITERAL_INT | LITERAL_INT8 | LITERAL_INT16 | LITERAL_INT32 | LITERAL_INT64 | LITERAL_BIGINT
+  | LITERAL_FLOAT | LITERAL_FLOAT32 | LITERAL_FLOAT64 | LITERAL_BIGDECIMAL
+  | LITERAL_CHAR | LITERAL_REGEX | LITERAL_STRING | LITERAL_STRING_INTERPOLATION_L
+private implicitOperatorGate ::= &canFollowBinaryOperatorToken
+operatorError ::= implicitOperatorGate
+implicitOperator ::= operatorError
+
+// Dual-listed ignored/mapped in the projection map, same pattern as every precedence-chain level:
+// arity 1 (no implicit-operator recovery fired) elides transparently; arity 2+ maps to Expr.Binary.
+statementOperand ::= expr statementImplicitOperatorTail*
+left statementImplicitOperatorTail ::= implicitOperator expr
 
 // ---- precedence chain, loosest to tightest (mirrors Parser2.Expr.Op.precedence exactly) ----
 

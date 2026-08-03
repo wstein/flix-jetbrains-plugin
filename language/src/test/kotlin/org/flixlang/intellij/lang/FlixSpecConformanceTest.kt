@@ -295,8 +295,28 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     legitimate regex-literal tokenization broadly, not just this one fixture) and both
          *     rare-syntax test suites. Fixed lexical__unterminated-regex.flix outright. 128/136
          *     agree.
+         *   - 14, after a second, more general _Flix.flex fallback covering all seven
+         *     numeric-literal-error shapes bundled into lexical__numeric-literal-errors.flix at
+         *     once (1_, 0xZ, 0x1i99, 1i99, 1.5i32, 0x1g, 1x). Grounded directly in Lexer.scala's
+         *     acceptNumber() doc comment: "any characters in [0-9a-zA-Z_.] following a number
+         *     should be treated as an error part of the same number" (isNumberLikeChar =
+         *     digit|letter|'.'|'_'). Every strict numeric rule requires a specific, complete
+         *     shape, so trailing garbage a strict rule can't absorb (a lone trailing '_' not
+         *     followed by a digit, a non-hex digit after '0x', an unrecognized suffix, an int
+         *     suffix on a float, ...) simply isn't part of that rule's match, leaving JFlex to
+         *     re-lex the garbage as separate, unrelated tokens instead of one error. One rule,
+         *     `{DIGIT}[0-9a-zA-Z_.]*` -> BAD_CHARACTER, covers all seven: since every valid
+         *     suffix/digit/dot is itself within that same character class, it always *ties* in
+         *     length with whichever strict rule matched a well-formed literal in full, and ties
+         *     resolve to the first-listed (strict) rule -- so it only ever wins, and only ever
+         *     fires, when a strict rule left something behind. Same JFlex longest-match
+         *     resolution as DOT_WHITESPACE and the unterminated-regex fallback above, not a new
+         *     technique, just applied more broadly. Verified clean against the full 428-file
+         *     corpus (this touches every numeric literal in the grammar) and both rare-syntax
+         *     test suites. Fixed lexical__numeric-literal-errors.flix outright -- all seven
+         *     sub-cases at once. 129/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 17
+        private const val DIVERGENCE_BASELINE = 14
     }
 
     override fun getTestDataPath(): String = ""

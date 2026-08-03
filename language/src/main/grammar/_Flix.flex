@@ -423,6 +423,32 @@ ESCAPE = "\\" [^]
     {DIGITS} "f64" { return LITERAL_FLOAT64; }
     {DIGITS} "ff"  { return LITERAL_BIGDECIMAL; }
 
+    /* ---- malformed number literal: fallback for every numeric-literal error case ----
+     * Lexer.scala's acceptNumber() (see its own doc comment) treats *any* run of
+     * `[0-9a-zA-Z._]` following a number as an error that's part of the same malformed number,
+     * not a separate token -- e.g. `32q` is one wrong number, not `32` followed by a name `q`.
+     * Every strict rule above requires a specific, complete shape (a full suffix, a hex digit
+     * after '0x', a digit after '_', ...), so any trailing garbage a strict rule can't absorb
+     * (a lone trailing '_' with no digit after it, a non-hex digit after '0x', an unrecognized
+     * suffix, an int suffix on a float, ...) simply isn't part of that rule's match at all,
+     * leaving JFlex to re-lex the garbage as separate, unrelated tokens (`0xZ` -> LITERAL_INT
+     * "0", NAME_LOWERCASE "x", NAME_UPPERCASE "Z").
+     *
+     * This single fallback rule covers all seven numeric-literal-error shapes below by relying
+     * purely on JFlex's longest-match resolution, the same technique as the DOT_WHITESPACE and
+     * unterminated-regex fixes above: for well-formed numbers this always *ties* in length with
+     * whichever strict rule already matched the whole thing (since valid suffixes/digits/dots
+     * are themselves entirely within `[0-9a-zA-Z._]`), and ties resolve to the first-listed rule
+     * -- so it only ever wins, and only ever fires, when a strict rule left something behind:
+     *   1_       -- trailing '_' not followed by a digit (ExpectedDigit)
+     *   0xZ      -- '0x' not followed by a hex digit (ExpectedHexDigit)
+     *   0x1i99   -- hex digits followed by an unrecognized suffix (IncorrectHexNumberSuffix)
+     *   1i99     -- digits followed by an unrecognized suffix (IncorrectNumberSuffix)
+     *   1.5i32   -- an int suffix on a float-shaped literal (IntegerSuffixOnFloat)
+     *   0x1g     -- '0x' digits followed by a non-hex letter (MalformedHexNumber)
+     *   1x       -- digits followed by an unrecognized trailing letter (MalformedNumber) */
+    {DIGIT} [0-9a-zA-Z_.]* { return BAD_CHARACTER; }
+
     /* ---- user-defined ("generic") operators and underscore ---- */
     {GENERIC_OP} { return GENERIC_OPERATOR; }
     "_"          { return UNDERSCORE; }

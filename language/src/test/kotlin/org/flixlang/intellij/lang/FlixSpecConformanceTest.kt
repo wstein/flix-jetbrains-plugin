@@ -333,6 +333,27 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     clean against the full 428-file corpus and both rare-syntax test suites (including
          *     every case the first two attempts broke). Fixed unclosed-paren.flix outright.
          *     130/136 agree.
+         *   - Still 12, after pinning `interpolatedStringExpr` the same way (missing closing
+         *     LITERAL_STRING_INTERPOLATION_R, e.g. `"${x` truncated at EOF). Lower risk than
+         *     `argumentList`'s pin: one call site, not five, and no trailing *optional* step after
+         *     the last required piece to fall into a DEF_KW-style trap (the closing token is
+         *     mandatory, not an optional argument attempt) -- verified with the same PSI-dump
+         *     discipline regardless (both a bare truncation and a truncation immediately followed
+         *     by another top-level declaration), confirming Expr.StringInterpolation now gets the
+         *     reference's exact shape, `[LiteralStringInterpolationL, Expr.Expr, ErrorTree]`, and
+         *     the following declaration is never swallowed. The divergence count doesn't move
+         *     because it didn't need to: this fixture's *only* reported divergence, before and
+         *     after, is a single file-level arity mismatch (the comparator stops recursing once a
+         *     mismatch is hit, so a deeper structural fix within an already-diverging subtree is
+         *     invisible to the count either way) -- the reference's expected tree has a second,
+         *     trailing top-level declaration wrapping a bare synthetic `Err` token for the file's
+         *     final newline, from the reference's *own* lexer's UnterminatedStringInterpolation
+         *     handling upon reaching EOF with an interpolation still open. This grammar's lexer has
+         *     no equivalent EOF-with-open-interpolation-depth behavior, so it never synthesizes
+         *     that second declaration; replicating it would need a genuinely new, narrow lexer
+         *     mechanism for one fixture. Landed anyway since it is a real, independently-verified
+         *     correctness improvement to the one thing it's meant to fix, not merely inert.
+         *     130/136 agree (unchanged).
          */
         private const val DIVERGENCE_BASELINE = 12
     }

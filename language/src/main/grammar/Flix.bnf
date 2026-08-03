@@ -658,7 +658,19 @@ literalExpr ::=
   | LITERAL_INT | LITERAL_INT8 | LITERAL_INT16 | LITERAL_INT32 | LITERAL_INT64 | LITERAL_BIGINT
   | TRUE_KW | FALSE_KW | NULL_KW | LITERAL_REGEX
 
-interpolatedStringExpr ::= LITERAL_STRING_INTERPOLATION_L expr (LITERAL_STRING_INTERPOLATION_L expr)* LITERAL_STRING_INTERPOLATION_R
+// `pin=1` commits once the opening LITERAL_STRING_INTERPOLATION_L is seen, so an interpolation
+// missing its closing `}` (LITERAL_STRING_INTERPOLATION_R never arrives, e.g. because the source
+// truncates at EOF: `"${x` with nothing after) doesn't fail the whole interpolated-string
+// expression -- it reports a missing-token error and closes normally instead. Unlike
+// `argumentList`, there is no trailing *optional* step after the last required piece here (no
+// analogue of `argument`'s `expr` that could itself start swallowing unrelated content, e.g. via
+// `localDefExpr`'s DEF_KW) -- the only thing after the last interpolated `expr` is a single
+// required token, so this is a strictly narrower, lower-risk shape than argumentList's pin.
+// `interpolatedStringExpr` also has exactly one call site (immediately below), unlike
+// `argumentList`'s five, so there is no possibility of an unrelated sibling rule leaving a
+// half-consumed `"${` for an *outer* rule's pinned alternative to collide with the way
+// `postfixSuffix`'s pinned `argumentList` alternative collided with `extTagExpr`'s own attempt.
+interpolatedStringExpr ::= LITERAL_STRING_INTERPOLATION_L expr (LITERAL_STRING_INTERPOLATION_L expr)* LITERAL_STRING_INTERPOLATION_R {pin=1}
 
 // A struct put on a bare receiver -- `counter->state = x` -- is otherwise swallowed by
 // unaryLambdaExpr, which matches `counter -> state` as a lambda and then chokes on `=`. The

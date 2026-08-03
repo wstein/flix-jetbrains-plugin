@@ -100,6 +100,18 @@ internal data class FlixSources(val stratum: String?, val sources: List<Resolved
 
     /** Whether any declared source resolves to [file]. */
     fun declares(file: VirtualFile): Boolean = sources.any { it.file == file }
+
+    /**
+     * What this class declared and what each name resolved to, for the debug log.
+     *
+     * Prints the resolved path rather than just "resolved", because the two ways this fails are
+     * different bugs and otherwise indistinguishable: `unresolved` means the project index did not
+     * find the file at all, while a path that is printed and still did not match means the index
+     * found a *different* [VirtualFile] than the breakpoint's -- the same path resolving to two
+     * objects, which identity comparison then rejects.
+     */
+    fun describeSources(): String =
+        sources.joinToString(", ") { "${it.name} -> ${it.file?.path ?: "unresolved"}" }
 }
 
 /**

@@ -152,9 +152,22 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     override fun locationsOfLine(type: ReferenceType, position: SourcePosition): List<Location> {
         val target = flixTargetOf(position)
         val declared = sources.sourcesOf(type)
-        val stratum = declared.stratum ?: return noLocations(type, target)
+        val stratum = declared.stratum
+            ?: return noLocations(type, target, "declares no Flix source at all")
         val sourceNames = declared.namesFor(target.file)
-        if (sourceNames.isEmpty()) return noLocations(type, target)
+        if (sourceNames.isEmpty()) {
+            // Distinguished from the case above because the two are fixed in different places and
+            // look identical in the log otherwise. This one means the class *is* Flix and names a
+            // source, but none of its sources resolved to the breakpoint's file -- so it is a
+            // resolution question (project index, or a VirtualFile that no longer matches), not a
+            // question about the class.
+            return noLocations(
+                type,
+                target,
+                "declares ${declared.describeSources()} in stratum $stratum, " +
+                    "none of which resolved to ${target.file.path}",
+            )
+        }
 
         // One Flix line commonly compiles into several generated classes and several locations
         // within them -- closures and lambdas each get their own. Returning all of them is what
@@ -297,9 +310,9 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
     }
 
     /** No locations, and why -- see [locationsOfLine] for why this is not [NoDataException]. */
-    private fun noLocations(type: ReferenceType, target: Target): List<Location> {
+    private fun noLocations(type: ReferenceType, target: Target, reason: String): List<Location> {
         if (LOG.isDebugEnabled) {
-            LOG.debug("locationsOfLine(${type.name()}): not compiled from ${target.baseName}")
+            LOG.debug("locationsOfLine(${type.name()}): not compiled from ${target.baseName} -- $reason")
         }
         return emptyList()
     }

@@ -278,8 +278,25 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     `extMatchRule`/`selectRule`/`catchRule` in Parser2.scala, left unchanged here since no
          *     fixture currently exercises those positions. Fixed
          *     expressions__match-rule-wrong-arrow.flix outright. 127/136 agree.
+         *   - 17, after giving `_Flix.flex` an explicit fallback rule for an unterminated regex
+         *     literal (`regex"unterminated`, no closing quote before EOF). A lexer-level fix, not a
+         *     grammar one: without it, the strict `regex"..."` rule (which requires a real closing
+         *     quote to match at all) simply fails, so JFlex falls through character-by-character --
+         *     "regex" alone is a valid NAME_LOWERCASE identifier, so it gets lexed and later parsed
+         *     as an ordinary name expression before the broken remainder fragments the tree deeply.
+         *     Unlike char/string literals, which already collapsed cleanly into one PsiErrorElement
+         *     by incidence (not by any deliberate matching rule -- see Flix.tokens.txt's own "not
+         *     fully modeled in this port" note), regex's five-letter prefix was long enough to
+         *     parse as something real first. The new rule only ever fires as JFlex's own
+         *     longest-match fallback when the strict rule already failed to match anything, since a
+         *     real closing quote always makes the strict rule's match longer -- the same resolution
+         *     mechanism already relied on for DOT vs DOT_WHITESPACE earlier on this branch, not a
+         *     new technique. Verified clean against the full 428-file corpus (a lexer change risks
+         *     legitimate regex-literal tokenization broadly, not just this one fixture) and both
+         *     rare-syntax test suites. Fixed lexical__unterminated-regex.flix outright. 128/136
+         *     agree.
          */
-        private const val DIVERGENCE_BASELINE = 19
+        private const val DIVERGENCE_BASELINE = 17
     }
 
     override fun getTestDataPath(): String = ""

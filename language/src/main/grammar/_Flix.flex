@@ -347,6 +347,18 @@ ESCAPE = "\\" [^]
      * (Lexer.scala's acceptRegex never checks for '\n'), and there is no interpolation. */
     "regex\"" ( {ESCAPE} | [^\"\\] )* "\"" { return LITERAL_REGEX; }
 
+    /* ---- unterminated regex literal: no closing quote reachable before EOF. Without this, the
+     * strict rule above simply fails to match (it requires a real closing quote), so JFlex falls
+     * through character-by-character -- "regex" alone is a valid NAME_LOWERCASE identifier, so it
+     * gets lexed and later *parsed* as an ordinary name expression before the broken remainder
+     * fragments the tree deeply, unlike char/string literals (which happen to collapse cleanly by
+     * incidence, not by any deliberate matching rule -- see Flix.tokens.txt's own "not fully
+     * modeled in this port" note on LITERAL_STRING). This rule only ever fires as JFlex's
+     * longest-match fallback when the strict rule above already failed to match anything, since a
+     * real closing quote always makes the strict rule's match longer. Matches Lexer.scala folding
+     * every unterminated-literal case into one error token spanning the whole malformed lexeme. */
+    "regex\"" ( {ESCAPE} | [^\"\\] )* { return BAD_CHARACTER; }
+
     /* ---- char literal: content up to an unescaped closing quote. Like acceptRegex (and unlike
      * acceptString), acceptChar never special-cases '\n', so newlines are allowed here too. ---- */
     "'" ( {ESCAPE} | [^'\\] )* "'" { return LITERAL_CHAR; }

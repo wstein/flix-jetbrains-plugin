@@ -133,7 +133,8 @@
     "OPERATOR_ERROR": "OperatorError",
     "IMPLICIT_OPERATOR": "Operator",
     "STATEMENT_OPERAND": "Expr.Binary",
-    "MATCH_RULE_ARROW_ERROR": "ErrorTree"
+    "MATCH_RULE_ARROW_ERROR": "ErrorTree",
+    "JVM_METHOD_NAME_ERROR": "ErrorTree"
   },
   "ignored": [
     "STATEMENT_OPERAND",

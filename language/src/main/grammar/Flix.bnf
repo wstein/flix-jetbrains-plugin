@@ -802,7 +802,31 @@ private newBody ::=
   | argumentList                                                            // new Type(args)   (InvokeConstructor)
 structFieldInit ::= ident EQUAL expr
 private jvmMember ::= jvmConstructor | jvmMethod
-jvmMethod ::= annotationList DEF_KW ident parameterList COLON typeAndEffect EQUAL statement
+
+// A JVM method name that happens to be a reserved keyword (e.g. `def run(): ...` inside an
+// anonymous class -- `run` is RUN_KW, not a name token) is Parser2.nameUnqualified's own
+// keyword-fallback: consume the keyword and produce a bare ErrorTree in place of the name
+// (not an Ident wrapping one, since the ident position itself never matched), then keep parsing
+// the rest of the method signature/body normally. Reference: "If the keyword can start a
+// declaration it's best to leave it be" -- i.e. this only fires for keywords that *aren't*
+// themselves `declarationStart` (see that rule's own comment above `declaration`), since those
+// need to be left alone for `declaration`'s own recovery to find; and never for STATIC_UPPER_KW,
+// which `ident` itself already accepts as a legitimate name token. The list below is every other
+// keyword: all 79, minus declarationStart's 17 (MOD/TRAIT/INSTANCE/DEF/REDEF/LAW/ENUM/STRUCT/
+// TYPE/EFF/RESTRICTABLE/PUB/SEALED/LAWFUL/MUT/USE/IMPORT), minus STATIC_UPPER_KW.
+jvmMethodNameError ::=
+    ALIAS_KW | AND_KW | AS_KW | CASE_KW | CATCH_KW | CHECKED_CAST_KW
+  | CHECKED_ECAST_KW | CHOOSE_KW | CHOOSE_STAR_KW | DISCARD_KW | ELSE_KW | EMATCH_KW
+  | FALSE_KW | FIX_KW | FORA_KW | FORM_KW | FORALL_KW | FORCE_KW
+  | FOREACH_KW | FROM_KW | HANDLER_KW | IF_KW | INJECT_KW | INSTANCEOF_KW
+  | INTO_KW | LAZY_KW | LET_KW | MATCH_KW | NEW_KW | NOT_KW
+  | NULL_KW | OPEN_VARIANT_KW | OPEN_VARIANT_AS_KW | OR_KW | PQUERY_KW | PSOLVE_KW
+  | PAR_KW | PROJECT_KW | QUERY_KW | REGION_KW | RUN_KW | RVADD_KW
+  | RVAND_KW | RVNOT_KW | RVSUB_KW | SELECT_KW | SOLVE_KW | SPAWN_KW
+  | STATIC_KW | SUPER_KW | THROW_KW | TRUE_KW | TRY_KW | UNCHECKED_CAST_KW
+  | UNIV_KW | UNSAFE_KW | WHERE_KW | WITH_KW | XOR_KW | XVAR_KW
+  | YIELD_KW
+jvmMethod ::= annotationList DEF_KW (ident | jvmMethodNameError) parameterList COLON typeAndEffect EQUAL statement
 jvmConstructor ::= DEF_KW NEW_KW PAREN_L PAREN_R COLON typeAndEffect EQUAL statement
 
 staticExpr ::= STATIC_UPPER_KW

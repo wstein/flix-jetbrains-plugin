@@ -354,8 +354,19 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     mechanism for one fixture. Landed anyway since it is a real, independently-verified
          *     correctness improvement to the one thing it's meant to fix, not merely inert.
          *     130/136 agree (unchanged).
+         *   - 10, after teaching `jvmMethod` to accept a reserved keyword as its own name (`def
+         *     run(): ...` inside an anonymous class body -- `run` is RUN_KW, not a name token).
+         *     Mirrors Parser2.nameUnqualified's own keyword-fallback exactly: consume the keyword
+         *     and produce a bare ErrorTree in its place (not an Ident wrapping one, since the ident
+         *     position itself never matched), then keep parsing the rest of the method signature
+         *     and body normally. `jvmMethodNameError` enumerates every keyword except
+         *     `declarationStart`'s 17 (those need to be left alone for `declaration`'s own
+         *     recovery) and STATIC_UPPER_KW (which `ident` already accepts as a legitimate name) --
+         *     61 of the grammar's 79 keyword tokens. Fixed
+         *     expressions__anonymous-class-with-methods-and-a-constructor.flix outright. 131/136
+         *     agree.
          */
-        private const val DIVERGENCE_BASELINE = 12
+        private const val DIVERGENCE_BASELINE = 10
     }
 
     override fun getTestDataPath(): String = ""

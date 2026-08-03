@@ -289,7 +289,18 @@ private aliasedName ::= ident (ARROW_THICK_R ident)?
 // permanent structural gap, not a map bug", and FlixSpecConformanceTest.kt's DIVERGENCE_BASELINE).
 ident ::= NAME_LOWERCASE | NAME_UPPERCASE | NAME_MATH | UNDERSCORE | GENERIC_OPERATOR | STATIC_UPPER_KW
 
-qualifiedName ::= ident (DOT ident)*
+// A trailing `.` with nothing after it lexes as DOT_WHITESPACE, not DOT (see _Flix.flex's
+// `"." / {WHITE_SPACE_CHAR}` rule): the lexer itself disambiguates "dot immediately followed by
+// more qname" (plain DOT, e.g. `Foo.bar`, `Foo.{bar}`) from "dangling dot" (DOT_WHITESPACE) by
+// whether whitespace/EOF follows. Parser2.scala's nameAllowQualified treats DotWhiteSpace as an
+// unconditional dangling-trailing-dot error case -- wrapped in its own TreeKind.TrailingDot node
+// nested inside the QName, regardless of the allowTrailingDot flag that governs plain DOT (used
+// by e.g. `use`/`import` to leave a real continuation dot for their own `.{...}` handling). Safe
+// to fold into the shared rule below: DOT_WHITESPACE cannot appear in any of qualifiedName's
+// other call sites' valid continuations, since none of them tolerate whitespace before the dot.
+trailingDot ::= DOT_WHITESPACE
+
+qualifiedName ::= ident (DOT ident)* trailingDot?
 
 // =================================================================================================
 // DECLARATIONS
@@ -496,6 +507,21 @@ private postfixSuffix ::=
   | arrow NAME_LOWERCASE (EQUAL expr)?                      // e->f  /  e->f = v  (StructGet / StructPut; `arrow` merges tight/whitespace "->", see header note #2)
   | BRACKET_L expr BRACKET_R (EQUAL expr)?                  // e[i]  /  e[i] = v  (Index / IndexMut)
 
+// Tried `{pin=1}` (with and without a matching `recoverWhile`) to match Parser2.scala's
+// `arguments()`, which never requires PAREN_R to succeed -- it closes ArgumentList unconditionally
+// rather than discarding the whole call. Reverted both attempts: a bare pin broke
+// `testUnclosedExtTagArgsRecovers` in FlixRareSyntaxRecoveryTest (a truncated `xvar A(` swallowed
+// the *following* top-level declaration instead of leaving it for `declaration`'s own
+// `declarationRecover`), and adding a matching `argumentListRecover` (stop at COMMA/PAREN_R/
+// declarationStart) was worse -- 14 previously-passing FlixRareSyntaxTest cases started reporting
+// spurious errors on ordinary, well-formed argument lists (e.g. "';' unexpected" on valid fixpoint
+// query syntax), meaning pin's commit semantics broke correct backtracking at one of
+// argumentList's other four call sites (extTagExpr's `argumentList?`, invokeSuperConstructorExpr,
+// the InvokeConstructor alternative, ...) in a way not yet root-caused. `argumentList` itself
+// (used across five different rule shapes, some optional/speculative) is evidently not a safe
+// place for a blanket pin; a fix here would need either a narrower construct-specific rule that
+// only pins in the single-callee `postfixSuffix` position, or a much deeper study of Grammar-Kit's
+// generated pin/recoverWhile interaction across multiple call sites of the same rule.
 argumentList ::= PAREN_L (argument (COMMA argument)* COMMA?)? PAREN_R
 argument ::= expr (EQUAL expr)?
 

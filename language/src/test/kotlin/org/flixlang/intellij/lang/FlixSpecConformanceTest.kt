@@ -181,8 +181,32 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     reference's Expr.Paren is real there. Each verified individually against the full
          *     428-file corpus before moving to the next. 116/136 agree, 1200 nodes compared, depth
          *     94%.
+         *   - 39, entering the *negative*-fixture (malformed-input / error-recovery) divergences
+         *     for the first time -- the first of these ratchets required reading Parser2.scala
+         *     directly rather than inferring shape from fixtures alone, since flix-jetbrains-plugin
+         *     `pin`/`recoverWhile` are the tools for this and using them safely requires knowing
+         *     precisely what the reference recovers to. `qualifiedName` now consumes a genuinely
+         *     dangling trailing `.` (lexed as its own DOT_WHITESPACE token whenever whitespace/EOF
+         *     follows the dot, per `_Flix.flex`'s `"." / {WHITE_SPACE_CHAR}` rule, distinct from
+         *     plain DOT) into a new nested `TrailingDot` node, matching Parser2.scala's
+         *     `nameAllowQualified`: it treats DotWhiteSpace as an unconditional trailing-dot error
+         *     case regardless of the `allowTrailingDot` flag that governs plain DOT for `use`/
+         *     `import`'s own `.{...}` continuation. Safe as a change to the one shared rule since
+         *     DOT_WHITESPACE cannot appear in any of qualifiedName's other call sites' valid
+         *     continuations (none tolerate whitespace before the dot).
+         *     Two further attempts this round were tried and reverted, not landed: adding
+         *     `{pin=1}` to `argumentList` (to match Parser2.scala's `arguments()`, which never
+         *     requires a closing `)` to succeed) broke `testUnclosedExtTagArgsRecovers` in
+         *     FlixRareSyntaxRecoveryTest -- a truncated `xvar A(` swallowed the *following*
+         *     top-level declaration instead of leaving it for `declaration`'s own
+         *     `declarationRecover`. Adding a matching `recoverWhile` (stop at COMMA/PAREN_R/
+         *     declarationStart) was worse: 14 previously-passing FlixRareSyntaxTest cases started
+         *     reporting spurious errors on ordinary, well-formed argument lists. `argumentList` is
+         *     shared across five call-site shapes, some optional/speculative, and is evidently not
+         *     safe to pin as a single shared rule -- unlike `qualifiedName` above, whose fix touched
+         *     only a genuinely unambiguous token. 117/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 40
+        private const val DIVERGENCE_BASELINE = 39
     }
 
     override fun getTestDataPath(): String = ""

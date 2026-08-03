@@ -12,6 +12,7 @@
     "INSTANCE_DECL": "Decl.Instance",
     "TYPE_ALIAS_DECL": "Decl.TypeAlias",
     "QUALIFIED_NAME": "QName",
+    "TRAILING_DOT": "TrailingDot",
     "PARAMETER_LIST": "ParameterList",
     "PARAMETER": "Parameter",
     "ARGUMENT_LIST": "ArgumentList",

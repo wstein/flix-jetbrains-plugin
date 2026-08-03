@@ -687,6 +687,18 @@ unaryLambdaExpr ::= ident arrow expr
 // unit/operator-section/lambda alternatives above, which never reach arity 1 here), but a plain
 // `(u - f)` is exactly arity 1 and the reference's Expr.Paren is a real, mandatory node for it --
 // not in `elide` -- so folding it into the same wrapper meant it was always spliced away too.
+// Tried adding a `malformedParenExpr` last-resort alternative here (a bare `(` that none of the
+// shapes below can make sense of, e.g. `(1, 2` reaching an enclosing `}` with no closing `)`
+// anywhere before it -- Parser2.parenOrTupleOrLambdaExpr's own `Malformed(Tuple)` case) paired
+// with pinning `block` so the rest of that malformed content could still be recovered via
+// `statement`'s own `statementOperand`/`implicitOperator` machinery. Reverted both: pinning
+// `block` broke `blockOrRecordExpr ::= block | recordOperationExpr`'s disambiguation (see
+// `block`'s own comment for the full account -- a record literal like `{ x = 1, y = 2 }` has a
+// prefix that's also a valid partial `statement`, so a pinned `block` never properly fails and
+// backtracks to let `recordOperationExpr` try). `malformedParenExpr` alone, without the pin, is
+// safe (verified against the full corpus) but provides no measurable benefit on its own -- the
+// unpinned `block`'s own closing-`}` requirement still fails just as before, collapsing back to
+// the same full-ErrorTree shape either way. Left out rather than carried as dead weight.
 parenOrTupleOrLambdaExpr ::=
     PAREN_L PAREN_R arrow expr                     // unit lambda: () -> e
   | PAREN_L PAREN_R                                // unit
@@ -716,6 +728,17 @@ letExpr ::= LET_KW pattern (COLON type)? EQUAL statement
 localDefExpr ::= annotationList DEF_KW ident parameterList (COLON typeAndEffect)? EQUAL statement
 
 regionExpr ::= REGION_KW ident block?
+// Tried `{pin=1}` here (via a private `blockWithStatement` sub-rule, since Grammar-Kit's pin is
+// rule-level, not alternative-level -- writing it directly inside this rule's own `A | B` was
+// silently ignored). Reverted: `blockOrRecordExpr ::= block | recordOperationExpr` relies on
+// `block` genuinely failing and backtracking whenever the `{...}` content isn't actually a
+// block, so `recordOperationExpr` gets a turn -- a record literal like `{ x = 1, y = 2 }` has a
+// prefix (`x`) that *is* also a valid (partial) `statement` on its own (the loop just stops
+// before `=`, which isn't a recognized continuation), so once pinned, `block` always "succeeds"
+// on that prefix instead of properly failing, permanently starving `recordOperationExpr` of a
+// turn. Broke a previously-clean corpus fixture (expressions__records.flix) this way. Pinning
+// `block` would need a way to first rule out "this could be a record" before committing, which a
+// static Grammar-Kit rule can't easily express without an external predicate.
 block ::= CURLY_L CURLY_R | CURLY_L statement CURLY_R
 
 // The braced form is tried first: `match node->next { ... }` would otherwise be swallowed by the

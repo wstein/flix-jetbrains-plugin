@@ -757,15 +757,24 @@ typeAndEffect ::= type (BACKSLASH type)?
 type ::= arrowType (COLON kind)?
 
 // ---- precedence chain, loosest to tightest (mirrors Parser2.Type.TYPE_OP_PRECEDENCE exactly) ----
-// All levels are left-associative (the reference algorithm has no isRightAssoc override for
-// types, unlike Expr's `::`/`:::`), so the standard `(OP next)*` chain is faithful here too.
+// Every level except arrow is left-associative (the reference algorithm has no isRightAssoc
+// override for types, unlike Expr's `::`/`:::`), so the standard `(OP next)*` chain is faithful
+// for those. Arrow is the exception -- see below.
 
-// An effect binds to an arrow's *result*, not just to a declaration's return type:
-// `Parser2.Type.ttype` returns `typeAndEffect()` for the right operand of every
-// whitespace-arrow, so `f: a -> b \ ef` is as ordinary as `def f(): b \ ef`. Accepting the
-// suffix only in `typeAndEffect` (the declaration-return position) rejected 103 of the 428
-// corpus files, `List.map`'s signature among them.
-arrowType ::= rvAddSubType (arrow rvAddSubType)* (BACKSLASH type)?
+// Right-associative and recursive through `type`, not a flat `(arrow rvAddSubType)*` loop: an
+// effect binds to an arrow's *result*, not just to a declaration's return type, because
+// `Parser2.Type.ttype` returns `typeAndEffect()` -- not a plain `ttype()` -- for the right operand
+// of every whitespace-arrow. `a -> b -> c` therefore parses as `a -> (b -> c)`, and each arrow's
+// own result can carry its own `\ effect` independently of any other arrow in the chain: `f: a ->
+// b \ eb -> c \ ec` attaches `eb` to `b` and `ec` to the whole `b \ eb -> c`, not both to `c`. An
+// earlier version of this rule accepted the suffix only in `typeAndEffect` (the outermost,
+// declaration-return position) and rejected 103 of the 428 corpus files, `List.map`'s signature
+// among them; a later version widened it to a flat trailing suffix on the *whole* arrow chain
+// instead, which parses every real file but produces the wrong tree shape for a non-arrow type
+// with a bare effect suffix (`Unit \ IO` was wrongly wrapped as Type.Function, since the trailing
+// `(BACKSLASH type)?` gave `arrowType` arity 2 even with no arrow at all). This mirrors the
+// reference's actual recursive structure instead of approximating it either way.
+arrowType ::= rvAddSubType (arrow type (BACKSLASH type)?)?
 rvAddSubType ::= rvAndType ((RVADD_KW | RVSUB_KW) rvAndType)*
 rvAndType ::= addSubType (RVAND_KW addSubType)*
 addSubType ::= ampType ((PLUS | MINUS) ampType)*

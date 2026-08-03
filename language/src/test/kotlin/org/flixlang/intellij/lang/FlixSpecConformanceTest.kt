@@ -71,8 +71,16 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     (flix-spec 0.75.4): the reference wraps literally every operator -- `<+>`, `:::`,
          *     `instanceof`, not just the two positions found first -- as its own `Operator` node.
          *     84/136 agree, 1019 nodes compared. The Operator divergence category is now empty.
+         *   - 96, after making `arrowType`'s effect suffix right-associative and recursive through
+         *     `type` instead of a flat trailing suffix on the whole arrow chain -- see `arrowType`'s
+         *     own comment in Flix.bnf for why the flat version, despite parsing every real corpus
+         *     file, gave a non-arrow type with a bare `\ effect` suffix (`Unit \ IO`) the wrong
+         *     shape (Type.Function instead of two separate Type.Type/Type.Effect siblings).
+         *     Verified against the 428-file corpus test, not just these 136 fixtures, since an
+         *     earlier version of this exact rule broke 103 of those files -- still 100.0% clean
+         *     after this change. 84/136 agree (unchanged), depth 93% (unchanged).
          */
-        private const val DIVERGENCE_BASELINE = 106
+        private const val DIVERGENCE_BASELINE = 96
     }
 
     override fun getTestDataPath(): String = ""

@@ -79,8 +79,14 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     Verified against the 428-file corpus test, not just these 136 fixtures, since an
          *     earlier version of this exact rule broke 103 of those files -- still 100.0% clean
          *     after this change. 84/136 agree (unchanged), depth 93% (unchanged).
+         *   - 91, after un-privating `enumSingletonBody` (covers both the singleton short-hand and
+         *     the regular per-case payload, which share the same reference CaseBody kind) and
+         *     fixing BLOCK's own instance of the ignored-vs-elide bug (flix-spec 0.75.5): `{ ...
+         *     }` always wraps exactly one `statement`, so it was always spliced away, even though
+         *     the reference's Expr.Block is a real node regardless of statement count.
+         *     88/136 agree, 1024 nodes compared.
          */
-        private const val DIVERGENCE_BASELINE = 96
+        private const val DIVERGENCE_BASELINE = 91
     }
 
     override fun getTestDataPath(): String = ""

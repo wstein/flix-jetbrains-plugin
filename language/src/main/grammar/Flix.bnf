@@ -348,7 +348,11 @@ lawDecl ::= LAW_KW ident COLON FORALL_KW typeParameterList? parameterList? typeC
 
 enumDecl ::= RESTRICTABLE_KW? ENUM_KW ident restrictableEnumIndex? typeParameterList? enumSingletonBody? derivationList? (CURLY_L enumCaseList? CURLY_R)?
 private restrictableEnumIndex ::= BRACKET_L parameter BRACKET_R
-private enumSingletonBody ::= PAREN_L (type (COMMA type)* COMMA?)? PAREN_R
+// Not `private`: the reference wraps a case's payload types in their own `CaseBody` node --
+// confirmed for both positions this rule covers, the singleton short-hand (`enum Color(String)`,
+// direct child of Decl.Enum) and the regular per-case form (`case Circle(Float64)`, child of
+// Case), which share the identical `TreeKind.CaseBody` in Parser2.scala's `enumDecl`/`enumCases`.
+enumSingletonBody ::= PAREN_L (type (COMMA type)* COMMA?)? PAREN_R
 // The reference parser allows a mix of leading COMMA and/or repeated CASE_KW between cases, so
 // the separator is optional: every case carries its own optional leading CASE_KW and an optional
 // preceding COMMA. That covers all commonly written forms -- `case A, case B` / `A, B` /

@@ -351,7 +351,16 @@ instanceMember ::= annotationList modifierList (defDecl | redefDecl | associated
 
 signatureDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? (EQUAL statement)?
 
-defDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement
+// `pin=9` commits once `EQUAL` (the 9th element) has matched, so a body that fails to parse at
+// all -- e.g. an unterminated char/string/regex literal, whose lexeme doesn't start any known
+// expr alternative -- doesn't fail `defDecl` as a whole. Without this, `declaration`'s own
+// `pin=3` (see above) doesn't help: it only protects declarationBody's *own* three children from
+// vanishing, not a total failure many levels down inside `statement`'s own descent, which
+// backtracks defDecl -> declarationBody -> declaration in full, producing one bare top-level
+// ErrorTree instead of a Decl.Def with just its body slot broken (confirmed against
+// flix-spec's own reference tree for e.g. lexical__unterminated-char.flix, which keeps every
+// other Decl.Def child intact and only wraps the body's ErrorTree).
+defDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement {pin=9}
 
 redefDecl ::= REDEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement
 

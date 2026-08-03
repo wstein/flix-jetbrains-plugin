@@ -205,8 +205,30 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     shared across five call-site shapes, some optional/speculative, and is evidently not
          *     safe to pin as a single shared rule -- unlike `qualifiedName` above, whose fix touched
          *     only a genuinely unambiguous token. 117/136 agree.
+         *   - 31, after finding the shared root cause behind nearly every remaining "whole
+         *     declaration collapses to a bare ErrorTree" divergence: `defDecl` itself had no pin.
+         *     `declaration`'s own `pin=3` (see its comment above) only protects declarationBody's
+         *     three direct children from vanishing -- it does nothing for a failure many levels
+         *     down inside `statement`'s own descent (e.g. an unterminated char/string/regex/builtin
+         *     literal, whose lexeme starts no known expr alternative), which backtracks
+         *     defDecl -> declarationBody -> declaration in full before the outer pin ever gets a
+         *     chance to matter. Added `{pin=9}` to `defDecl`, committing once `EQUAL` (the 9th
+         *     element in its sequence) has matched, verified against flix-spec's own reference tree
+         *     for lexical__unterminated-char.flix (which keeps every other Decl.Def child intact
+         *     and only wraps the body's ErrorTree). Unlike both argumentList attempts above, this
+         *     one is clean: no new failures across the full 428-file corpus or either rare-syntax
+         *     test suite. Fixed six fixtures outright (unterminated-builtin/char/
+         *     string-is-a-lexer-error, bang-caret-dollar-have-no-standalone-meaning,
+         *     free-dot-and-unexpected-char, static-lowercase-is-reserved-but-unused) and reduced
+         *     several more from a full ErrorTree collapse down to a narrower arity mismatch
+         *     (doc-comment-misplaced-before-paren, trait-and-instance-with-an-operator-signature,
+         *     anonymous-class-with-methods-and-a-constructor, malformed-tuple-reaches-
+         *     enclosing-brace, match-rule-wrong-arrow, missing-semicolon-before-let,
+         *     numeric-literal-errors, unterminated-regex, unterminated-string-interpolation,
+         *     operator-error, effect-annotation-wrong-slash, unclosed-paren) -- real progress on
+         *     each even though they still diverge. 123/136 agree.
          */
-        private const val DIVERGENCE_BASELINE = 39
+        private const val DIVERGENCE_BASELINE = 31
     }
 
     override fun getTestDataPath(): String = ""

@@ -41,6 +41,9 @@ registrations:
     # Backend, not frontend: the diagram is fetched through LSP4IJ, which declares no content
     # modules and therefore runs host-side under split mode -- as must anything calling it.
     com.intellij.toolWindow: dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory
+    # In-place rename. LSP4IJ's own handler has no in-place mode, so this is asked first and
+    # delegates back to it for a symbol used in more than one file.
+    com.intellij.renameHandler: dev.wstein.flixplugin.ui.FlixInplaceRenameHandler
 
   debugger:
     com.intellij.debugger.javaDebugAware: dev.wstein.flixplugin.debugger.FlixJavaDebugAware

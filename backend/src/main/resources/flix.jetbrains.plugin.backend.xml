@@ -105,6 +105,13 @@
          server-side first and only falls back to an IntelliJ action of the same id, so naming this
          `flix.showDiagram` would risk the action invoking the command that invokes the action. -->
     <extensions defaultExtensionNs="com.intellij">
+        <!-- `order="first"` so this is asked before LSP4IJ's own renameHandler, which is registered
+             `first` too and always opens a modal dialog: it has no in-place mode to configure.
+             This one edits every occurrence in the open file at once and hands back to LSP4IJ's
+             dialog for anything it cannot serve, so nothing is lost by being asked first. -->
+        <renameHandler id="FlixInplaceRenameHandler" order="first"
+                       implementation="dev.wstein.flixplugin.ui.FlixInplaceRenameHandler"/>
+
         <toolWindow id="Flix Diagrams"
                     anchor="right"
                     icon="com.intellij.icons.AllIcons.Toolwindows.ToolWindowPalette"

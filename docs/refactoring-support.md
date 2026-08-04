@@ -38,18 +38,22 @@ contributes a handler.
 
 ## What is missing, and what it would take
 
-### In-place rename
+### In-place rename — done
 
 **LSP4IJ has no in-place rename** — no class, no setting. `LSPRenameHandler` always shows a modal
-dialog.
+dialog, and the platform's `VariableInplaceRenameHandler` wants a `PsiNamedElement` and
+`PsiReference`s, which the Flix PSI does not have and deliberately will not (ADR 0001).
 
-The platform's `VariableInplaceRenameHandler` wants a `PsiNamedElement` and `PsiReference`s, and the
-Flix PSI has neither: it is a parse tree with no semantic model, deliberately (ADR 0001 — the
-compiler is the only semantic authority).
+`FlixInplaceRenameHandler` needs neither. It asks the server for the occurrences
+(`textDocument/references`), builds a template whose variable sits at each of them, and typing then
+edits them together. Registered `order="first"`, ahead of LSP4IJ's.
 
-The way through does not need one. The server already knows every occurrence range, so a plugin
-handler can ask for them (`textDocument/references`), start an IntelliJ template over those ranges,
-and apply `textDocument/rename` on commit. Interaction in the IDE, semantics in the compiler.
+**A symbol used in more than one file still gets the dialog, on purpose.** A template edits the open
+document only, and the moment it does the server's analysis of that file is stale, so a follow-up
+`textDocument/rename` for the remaining files would be computed against source that no longer
+exists. Those go to LSP4IJ's handler, which sends one rename and applies the whole edit atomically.
+Locals and parameters — the common case, and where a dialog is most intrusive — are always
+single-file.
 
 ### Extract, inline, change signature
 

@@ -71,6 +71,10 @@ dependencies {
     // supplies the IntelliJ fixtures but not JUnit itself.
     testImplementation("junit:junit:4.13.2")
 
+    // FlixJar, FlixLaunchCommand and FlixTask: the compiler invocation, shared with the modules
+    // that cannot depend on this one. The task run configuration is the third caller of that rule.
+    implementation(project(":shared"))
+
     // Fixtures and inventories are consumed from the published artifact, pinned by version, so the
     // grammar is checked against a known revision of the Flix reference compiler rather than
     // against whichever Flix checkout happens to sit beside this repository.

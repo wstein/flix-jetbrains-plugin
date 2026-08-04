@@ -54,5 +54,29 @@
         <lang.foldingBuilder
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.editor.FlixFoldingBuilder"/>
+
+        <!-- The Flix subcommands as a run configuration type: build, check, test, doc and the rest.
+             Registered from this module, not backend or debugger, and that is the point rather than
+             an accident: running `flix build` needs neither LSP4IJ nor the Java plugin, so it must
+             not live in a module that requires one. This is the only always-loaded module that can
+             register a platform extension at all, since shared carries no platform dependency.
+
+             Distinct from the debugger module's FlixRunConfiguration, which exists to attach a JDWP
+             agent and therefore does need the Java plugin. The two share FlixLaunchCommand, so the
+             invocation rules are stated once. -->
+        <configurationType
+                implementation="org.flixlang.intellij.run.FlixTaskRunConfigurationType"/>
     </extensions>
+
+    <actions>
+        <!-- One item per FlixTask, built in code rather than declared here: a declared list would
+             be a second inventory of subcommands to keep in step with the run configuration's. -->
+        <group id="Flix.Tasks"
+               class="org.flixlang.intellij.run.FlixTaskActionGroup"
+               text="Flix"
+               description="Run a Flix subcommand"
+               popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+    </actions>
 </idea-plugin>

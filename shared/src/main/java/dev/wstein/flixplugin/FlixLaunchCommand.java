@@ -89,18 +89,46 @@ public final class FlixLaunchCommand {
         return JDWP_AGENT.formatted(suspend ? "y" : "n", port);
     }
 
+    /**
+     * {@code java <jvmArgs> -jar <jar> <task> <taskArgs>}.
+     *
+     * <p>The two argument lists are separate because the two positions mean different things, and
+     * the rule is the one stated above: a JVM option after {@code -jar} is the compiler's input, and
+     * a compiler option before its subcommand is treated as global and stops command parsing
+     * altogether. Taking one flat list would let a caller put either in the wrong half and get a
+     * failure that names neither.
+     *
+     * @param task     the subcommand, as {@link FlixTask#command()} spells it
+     * @param jvmArgs  options for the JVM, which go before {@code -jar}
+     * @param taskArgs options for the subcommand, which go after it
+     */
+    public static @NotNull List<String> task(
+            @NotNull Path jar,
+            @NotNull String task,
+            @NotNull List<String> jvmArgs,
+            @NotNull List<String> taskArgs) {
+        List<String> command = new ArrayList<>();
+        command.add("java");
+        command.addAll(jvmArgs);
+        command.add("-jar");
+        command.add(jar.toString());
+        command.add(task);
+        command.addAll(taskArgs);
+        return command;
+    }
+
     private static List<String> build(Path jar, String entryPoint, boolean debug) {
-        List<String> command = new ArrayList<>(List.of("java", "-jar", jar.toString(), "run"));
+        List<String> arguments = new ArrayList<>();
         if (debug) {
-            command.add("--Xdebug");
-            command.add("--yes");
+            arguments.add("--Xdebug");
+            arguments.add("--yes");
         }
         String symbol = normalizeEntryPoint(entryPoint);
         if (symbol != null) {
-            command.add("--entrypoint");
-            command.add(symbol);
+            arguments.add("--entrypoint");
+            arguments.add(symbol);
         }
-        return command;
+        return task(jar, FlixTask.RUN.command(), List.of(), arguments);
     }
 
     /**

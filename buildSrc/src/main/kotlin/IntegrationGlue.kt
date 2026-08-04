@@ -108,11 +108,13 @@ object IntegrationGlue {
         val reused = (lsp4ij["reusedFeatures"] as? Map<String, String>).orEmpty()
         val reusedOwner = (lsp4ij["reusedFeaturesModule"] as? String) ?: "backend"
 
-        // Actions are registered in the backend descriptor with `class=`, which the widened scan
-        // now sees, so their classes are owned like any other registration. verifyIdentity checks
-        // the id and the source file; this is what stops them reading as undeclared drift.
-        (manifest["actions"] as? Map<String, String>).orEmpty().values.forEach { fqcn ->
-            declaredIn.putIfAbsent(fqcn, reusedOwner)
+        // Actions are registered with `class=`, which the widened scan now sees, so their classes
+        // are owned like any other registration. The owning module is found rather than assumed:
+        // the Tools > Flix task group is registered from `language`, because running a subcommand
+        // needs neither LSP4IJ nor the Java plugin. Assuming `backend` here reported that correct
+        // registration as a duplicate.
+        (manifest["actions"] as? Map<String, String>).orEmpty().forEach { (id, fqcn) ->
+            moduleRegisteringAction(root, id)?.let { declaredIn.putIfAbsent(fqcn, it) }
         }
 
         MODULES.forEach { module ->
@@ -184,7 +186,7 @@ object IntegrationGlue {
         }
 
         (manifest["actions"] as? Map<String, String>).orEmpty().forEach { (id, fqcn) ->
-            if (!Regex("""id="$id"""").containsMatchIn(backendXml)) {
+            if (moduleRegisteringAction(root, id) == null) {
                 problems += "action '$id' is declared but not registered"
             }
             if (!sourceExists(root, fqcn)) problems += "action '$id' names $fqcn, which has no source file"
@@ -362,6 +364,19 @@ object IntegrationGlue {
      * Values are required to look like a fully-qualified name, because the widened attribute set
      * would otherwise sweep up things like `language="Flix"`.
      */
+    /**
+     * The module whose descriptor registers the action or group `id`, or `null` if none does.
+     *
+     * Searched rather than assumed. An action's module is a real choice -- the LSP command handlers
+     * must be where LSP4IJ is, the task menu must be where it loads without it -- and hard-coding
+     * one module made the other read as a duplicate registration.
+     */
+    private fun moduleRegisteringAction(root: File, id: String): String? =
+        MODULES.firstOrNull { module ->
+            val xml = descriptorOf(root, module).takeIf { it.exists() }?.readText().orEmpty()
+            Regex("""id="$id"""").containsMatchIn(xml)
+        }
+
     private fun registeredClasses(root: File, module: String): Set<String> {
         val file = descriptorOf(root, module)
         if (!file.exists()) return emptySet()

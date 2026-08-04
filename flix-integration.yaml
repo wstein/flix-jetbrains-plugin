@@ -32,6 +32,10 @@ registrations:
     com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
     com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler
     com.intellij.lang.foldingBuilder: org.flixlang.intellij.lang.editor.FlixFoldingBuilder
+    # The Flix subcommands (build, check, test, doc, ...). Language, not backend or debugger:
+    # running a subcommand needs neither LSP4IJ nor the Java plugin, and this is the only
+    # always-loaded module that can register a platform extension.
+    com.intellij.configurationType: org.flixlang.intellij.run.FlixTaskRunConfigurationType
 
   backend:
     com.redhat.devtools.lsp4ij.server: dev.wstein.flixplugin.FlixLanguageServerFactory
@@ -91,6 +95,9 @@ actions:
   # then looks for an IntelliJ action of the same id, so sharing the name would let the action
   # invoke the command that invokes the action.
   Flix.ShowDiagram: dev.wstein.flixplugin.ui.FlixShowDiagramAction
+  # The Tools > Flix menu. One group; its items are built from FlixTask, so the menu cannot come to
+  # offer a different set of subcommands than the run configuration does.
+  Flix.Tasks: org.flixlang.intellij.run.FlixTaskActionGroup
 
 # Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
 # comes back, because each would reintroduce a defect rather than merely add a feature.

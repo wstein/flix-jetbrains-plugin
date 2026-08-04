@@ -35,6 +35,15 @@ and every other JVM language in the same process.
   stepping in both directions, mixed stack navigation, Java locals and evaluation, and a Step Over
   that stops on the next line of the *same Flix definition* rather than descending into everything
   the line calls.
+- **Project tasks**: `build`, `check`, `test`, `run`, `clean`, `doc`, `build-jar`, `build-fatjar`,
+  `build-pkg`, `outdated` and `init`, under **Tools > Flix** and as a *Flix Task* run configuration.
+  Not terminal wrappers: each runs through the platform's own execution machinery, so Stop kills the
+  compiler, the exit code reaches the Run widget, the task can be re-run and saved, and the line
+  numbers in a diagnostic are links into the source. Registered from the **language** module, so
+  they stay available in an IDE with neither LSP4IJ nor the Java plugin. The subcommand names are
+  checked against `flix --help` by `FlixTaskTest` rather than reviewed — an unknown one is not
+  rejected by the compiler, it is demoted to a file argument and reported as
+  `Unrecognized file extension`.
 - **`flix.runMain` CodeLens**: live-verified. The lens's symbol argument is honoured and passed as
   `--entrypoint`, so the lens above `demo()` runs `demo`, not the project default.
 - **Gutter run arrow beside `def main`**: anchored on the declaration's name leaf, delegating to the

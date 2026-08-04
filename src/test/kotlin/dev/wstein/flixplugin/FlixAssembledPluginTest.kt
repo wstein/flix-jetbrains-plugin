@@ -113,6 +113,17 @@ class FlixAssembledPluginTest : BasePlatformTestCase() {
         )
     }
 
+    fun testTheFlixTaskConfigurationTypeIsAvailable() {
+        // Registered from the language module on purpose: running `flix build` needs neither LSP4IJ
+        // nor the Java plugin, so it must stay available where those are absent. Asserted through
+        // the assembled plugin because that placement is exactly what could regress.
+        val types = extensionClassNames("com.intellij.configurationType")
+        assertTrue(
+            "the Flix task configuration type is not registered. Registered: $types",
+            types.any { it == "org.flixlang.intellij.run.FlixTaskRunConfigurationType" },
+        )
+    }
+
     /**
      * The implementation class names registered at [extensionPointName].
      *

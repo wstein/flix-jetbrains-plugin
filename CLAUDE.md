@@ -204,4 +204,7 @@ gaps here.
   breakpoint does not bind.
 - `docs/phase-8-verification.md` — which verification rows are established and, deliberately, which
   are **not measured**. Read before claiming anything works.
+- `docs/refactoring-support.md` — what refactoring works, what does not, and why. Read before adding
+  one: LSP4IJ shows code actions under Alt+Enter and *never* in the Refactor menu, and it has no
+  in-place rename at all, so three of the four obvious designs do not work.
 - `docs/intellij-flix-parser-evaluation.md` — the corpus gate's evidence.

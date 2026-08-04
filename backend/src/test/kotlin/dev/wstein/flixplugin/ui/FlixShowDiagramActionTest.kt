@@ -2,6 +2,7 @@ package dev.wstein.flixplugin.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -44,6 +45,22 @@ class FlixShowDiagramActionTest {
     fun `finds nothing where there is no identifier`() {
         assertNull(at("    |    "))
         assertNull(at("x + |+ y"))
+    }
+
+    @Test
+    fun `the server it asks is the server this plugin registers`() {
+        // LSP4IJ resolves the server from this id and does not discover it from the file, so a
+        // rename in the descriptor would leave the action asking for a server that no longer
+        // exists -- and the failure reads as "the command is unsupported", which is not the truth.
+        // checkIntegrationGlue keeps the descriptor and the manifest agreeing; this keeps the
+        // constant agreeing with both.
+        val descriptor = javaClass.getResourceAsStream("/flix.jetbrains.plugin.backend.xml")
+            ?.bufferedReader()?.readText()
+            ?: error("backend descriptor is not on the test classpath")
+        assertTrue(
+            "no <server id=\"${FlixShowDiagramAction.SERVER_ID}\"> in the backend descriptor",
+            descriptor.contains("id=\"${FlixShowDiagramAction.SERVER_ID}\""),
+        )
     }
 
     @Test

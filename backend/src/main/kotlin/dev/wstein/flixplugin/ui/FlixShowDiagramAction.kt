@@ -60,16 +60,19 @@ class FlixShowDiagramAction : AnAction() {
         val command = Command("Show Flix Diagram", COMMAND, listOf<Any>(itemName))
         val response = CommandExecutor.executeCommand(
             LSPCommandContext(command, psiFile, LSPCommandContext.ExecutedBy.OTHER, editor, null)
+                // Naming the server is not optional. LSP4IJ resolves one from an explicit
+                // LanguageServerItem or from this id and does not discover it from the file, so
+                // without it the request is never sent and the command merely looks unsupported.
+                .setPreferredLanguageServerId(SERVER_ID)
                 // The server reports "no such item" as a failed request, which is information for
                 // this window rather than something to interrupt the user with.
                 .setShowNotificationError(false),
         )
 
         if (!response.exists()) {
-            // No running server claims the command -- an older compiler, or the server not started.
             view.showMessage(
-                "The Flix language server did not offer '$COMMAND'. " +
-                    "Diagrams need a compiler build that serves them over LSP.",
+                "No '$SERVER_ID' is running, so the diagram could not be requested. " +
+                    "Open a Flix file to start the language server, then try again.",
             )
             return
         }
@@ -119,6 +122,9 @@ class FlixShowDiagramAction : AnAction() {
     internal companion object {
         /** Matches the name the server advertises in `executeCommandProvider`. */
         const val COMMAND = "flix.showDiagram"
+
+        /** The server this command goes to; pinned to `lsp4ij.languageServerId` in the manifest. */
+        const val SERVER_ID = "flixLanguageServer"
 
         /**
          * The identifier surrounding [caret] in [text], or `null` if there is none.

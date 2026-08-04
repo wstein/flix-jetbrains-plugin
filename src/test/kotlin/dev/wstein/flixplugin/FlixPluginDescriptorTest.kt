@@ -113,6 +113,9 @@ class FlixPluginDescriptorTest {
                 // `flix build` needs neither LSP4IJ nor the Java plugin, and this is the only
                 // always-loaded module that can register a platform extension.
                 "configurationType",
+                // Settings > Languages & Frameworks > Flix. Here because the task runner reads the
+                // same service, and tasks have to work without LSP4IJ.
+                "projectConfigurable",
             ),
             extensions.map { it.tagName },
         )
@@ -129,13 +132,18 @@ class FlixPluginDescriptorTest {
             "lang.quoteHandler" to "com.intellij.codeInsight.editorActions.QuoteHandler",
             "lang.foldingBuilder" to "com.intellij.lang.folding.FoldingBuilder",
             "configurationType" to "com.intellij.execution.configurations.ConfigurationType",
+            "projectConfigurable" to "com.intellij.openapi.options.Configurable",
         )
 
         languageExtensions().forEach { extension ->
             // `configurationType` spells the attribute `implementation`; the language extension
             // points spell it `implementationClass`. Reading only one silently skipped the other.
+            // Three spellings across the extension points this module uses: `implementationClass`
+            // for the language ones, `implementation` for configurationType, `instance` for
+            // projectConfigurable. Reading only one silently skipped the others.
             val className = extension.getAttribute("implementationClass")
                 .ifEmpty { extension.getAttribute("implementation") }
+                .ifEmpty { extension.getAttribute("instance") }
             val loaded = runCatching { Class.forName(className) }.getOrNull()
             assertTrue("<${extension.tagName}> names a class that does not exist: $className", loaded != null)
 

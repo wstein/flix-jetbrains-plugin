@@ -26,4 +26,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     implementation(project(":shared"))
+
+    // The language module owns what both halves of the plugin share below the LSP layer: the Flix
+    // settings that the server's command line and every task read, and the Language this module
+    // names by id in its descriptor. The descriptor has always declared this dependency; it is now
+    // a compile-time one too, because a second copy of the settings service is exactly the kind of
+    // duplication that lets the editor and a task disagree about what the user configured.
+    implementation(project(":language"))
 }

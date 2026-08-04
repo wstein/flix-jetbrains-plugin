@@ -18,6 +18,7 @@ import com.intellij.util.execution.ParametersListUtil
 import dev.wstein.flixplugin.FlixJar
 import dev.wstein.flixplugin.FlixLaunchCommand
 import dev.wstein.flixplugin.FlixTask
+import org.flixlang.intellij.settings.FlixSettings
 import java.nio.file.Path
 
 /**
@@ -92,7 +93,25 @@ class FlixTaskRunConfiguration(
         } catch (e: IllegalStateException) {
             throw ExecutionException(e.message, e)
         }
-        return FlixTaskState(environment, jar, task, ParametersListUtil.parse(arguments.orEmpty()), workingDirectory())
+        return FlixTaskState(environment, commandFor(jar), workingDirectory())
+    }
+
+    /**
+     * The command this configuration runs.
+     *
+     * Separated from the launch so the part that can be wrong is testable without starting a
+     * process: which half of the command line each argument lands in, and in what order.
+     * Project-wide arguments come first and the configuration's own after them, so a flag set on
+     * one task overrides the same flag set for every task rather than the other way round.
+     */
+    internal fun commandFor(jar: Path): List<String> {
+        val settings = FlixSettings.getInstance(project)
+        return FlixLaunchCommand.task(
+            jar,
+            task.command(),
+            settings.jvmArguments,
+            settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty()),
+        )
     }
 
     private fun resolveJar(): Path = FlixJar.resolve(project.basePath, System.getenv(FlixJar.JAR_ENV))
@@ -103,9 +122,7 @@ class FlixTaskRunConfiguration(
     /** One task execution: the command line, the process, and the console attached to it. */
     private class FlixTaskState(
         environment: ExecutionEnvironment,
-        private val jar: Path,
-        private val task: FlixTask,
-        private val arguments: List<String>,
+        private val command: List<String>,
         private val workingDirectory: Path,
     ) : CommandLineState(environment) {
 
@@ -117,9 +134,7 @@ class FlixTaskRunConfiguration(
         }
 
         override fun startProcess(): ProcessHandler {
-            val commandLine = GeneralCommandLine(
-                FlixLaunchCommand.task(jar, task.command(), emptyList(), arguments),
-            ).withWorkingDirectory(workingDirectory)
+            val commandLine = GeneralCommandLine(command).withWorkingDirectory(workingDirectory)
 
             // Killable so Stop terminates the compiler rather than detaching from it; coloured so
             // the compiler's own formatting survives, which is most of what makes its errors

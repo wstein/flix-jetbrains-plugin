@@ -66,6 +66,15 @@
              invocation rules are stated once. -->
         <configurationType
                 implementation="org.flixlang.intellij.run.FlixTaskRunConfigurationType"/>
+
+        <!-- Settings > Languages & Frameworks > Flix. Here rather than in backend because the task
+             runner reads them too, and tasks must work without LSP4IJ; backend reads the same
+             service for the language server's command line. -->
+        <projectConfigurable
+                id="flix.settings"
+                parentId="language"
+                displayName="Flix"
+                instance="org.flixlang.intellij.settings.FlixSettingsConfigurable"/>
     </extensions>
 
     <actions>

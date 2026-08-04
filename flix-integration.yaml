@@ -36,6 +36,9 @@ registrations:
     # running a subcommand needs neither LSP4IJ nor the Java plugin, and this is the only
     # always-loaded module that can register a platform extension.
     com.intellij.configurationType: org.flixlang.intellij.run.FlixTaskRunConfigurationType
+    # Extra JVM and Flix arguments, read by the task runner here and by the language server in
+    # backend. One service, so the editor and a task cannot disagree about what the user set.
+    com.intellij.projectConfigurable: org.flixlang.intellij.settings.FlixSettingsConfigurable
 
   backend:
     com.redhat.devtools.lsp4ij.server: dev.wstein.flixplugin.FlixLanguageServerFactory

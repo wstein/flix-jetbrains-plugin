@@ -44,6 +44,12 @@ and every other JVM language in the same process.
   checked against `flix --help` by `FlixTaskTest` rather than reviewed — an unknown one is not
   rejected by the compiler, it is demoted to a file argument and reported as
   `Unrecognized file extension`.
+- **Settings**: *Settings > Languages & Frameworks > Flix* — extra JVM arguments and extra Flix
+  arguments, matching the VS Code extension's `flix.extraJvmArgs` and `flix.extraFlixArgs`. They
+  reach the language server and every task, in the two positions the compiler's argument parser
+  requires. Deliberately **not** the run/debug configuration, which has its own fields: a debug
+  launch already passes `--Xdebug`, and a second occurrence is rejected outright as
+  `Unknown option --Xdebug`.
 - **Code lenses**: both of them. `flix.runMain` above an entry point is live-verified and its symbol
   argument is honoured; `flix.cmdTests` above a test runs the test task. The second one used to
   fail with *"Missing 'flix.cmdTests' command"* because LSP4IJ resolves a server-defined command

@@ -1,8 +1,9 @@
 package dev.wstein.flixplugin.ui
 
+import com.intellij.codeInsight.template.Template
 import com.intellij.codeInsight.template.TemplateManager
 import com.intellij.codeInsight.template.impl.ConstantNode
-import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.ide.TitledHandler
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
@@ -12,7 +13,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.refactoring.rename.RenameHandler
+import com.intellij.refactoring.rename.inplace.VariableInplaceRenameHandler
 import com.redhat.devtools.lsp4ij.LanguageServerManager
 import com.redhat.devtools.lsp4ij.features.rename.LSPRenameHandler
 import org.eclipse.lsp4j.Location
@@ -27,19 +28,28 @@ import org.eclipse.lsp4j.Position as LspPosition
  *
  * ## Why this is not the platform's own in-place rename
  *
- * `VariableInplaceRenameHandler` wants a `PsiNamedElement` and `PsiReference`s to find what to
- * rewrite. The Flix PSI is a parse tree with neither, deliberately: the compiler is the only
- * semantic authority (ADR 0001), and resolving names in the plugin would be a second Flix front end
- * that disagrees with it silently.
+ * [VariableInplaceRenameHandler.isAvailable] wants a `PsiNamedElement` and a
+ * `RefactoringSupportProvider` to find what to rewrite. The Flix PSI is a parse tree with neither,
+ * deliberately: the compiler is the only semantic authority (ADR 0001), and resolving names in the
+ * plugin would be a second Flix front end that disagrees with it silently.
  *
- * It does not need one. The server already knows every occurrence, so the ranges come from
- * `textDocument/references` and the template is built over those. Interaction in the IDE, semantics
- * in the compiler.
+ * This handler does not need one. The server already knows every occurrence, so the ranges come
+ * from `textDocument/references` and the template is built over those. Interaction in the IDE,
+ * semantics in the compiler.
  *
- * ## Why LSP4IJ's handler is not simply configured
+ * ## Why it nevertheless extends [VariableInplaceRenameHandler]
  *
- * It has no in-place mode -- no class, no setting. `LSPRenameHandler` always opens a modal dialog.
- * This handler is registered ahead of it and delegates back for the case it cannot serve.
+ * Not for behaviour -- every inherited step is overridden -- but because that base class is how
+ * LSP4IJ recognises an in-place renamer and stands down. `LSPRenameHandler.isAvailableOnDataContext`
+ * re-enters `RenameHandlerRegistry.getRenameHandlers` and answers `false` when every other available
+ * handler `instanceof VariableInplaceRenameHandler`. Registering an unrelated `RenameHandler`
+ * instead leaves two handlers available, and `RenameHandlerRegistry.getRenameHandler` then asks the
+ * user which one they meant -- a *"What would you like to do?"* chooser in front of every rename.
+ *
+ * [FlixInplaceRenameHandlerTest] pins the base class for that reason.
+ *
+ * The platform's `isAvailableOnDataContext` is `final` and delegates to [isAvailable], which is why
+ * that is the method overridden here.
  *
  * ## Why a symbol used in several files still gets the dialog
  *
@@ -49,12 +59,27 @@ import org.eclipse.lsp4j.Position as LspPosition
  * one `textDocument/rename` and applies the whole edit atomically. Locals and parameters -- the
  * common case, and the one where a dialog is most intrusive -- are always single-file.
  */
-class FlixInplaceRenameHandler : RenameHandler {
+class FlixInplaceRenameHandler : VariableInplaceRenameHandler(), TitledHandler {
 
-    override fun isAvailableOnDataContext(dataContext: DataContext): Boolean {
-        val psiFile = CommonDataKeys.PSI_FILE.getData(dataContext) ?: return false
-        val editor = CommonDataKeys.EDITOR.getData(dataContext) ?: return false
-        if (psiFile.virtualFile?.extension != FLIX_EXTENSION) return false
+    /**
+     * Named for the chooser this handler exists to avoid.
+     *
+     * It is reachable only if some third rename handler is installed alongside this one and LSP4IJ,
+     * and without it the chooser would offer `dev.wstein.flixplugin.ui.FlixInplaceRenameHandler@1f`.
+     */
+    override fun getActionTitle(): String = "Rename Flix symbol"
+
+    /**
+     * The caret sits on a Flix identifier, and the user has not turned in-place rename off.
+     *
+     * [element] is ignored: it is null for Flix, which is the whole reason this class exists.
+     * Honouring the editor setting is not politeness -- returning `false` removes this handler from
+     * the registry, LSP4IJ's stops standing down, and the rename falls back to its dialog, which is
+     * exactly what a user who disabled in-place rename asked for.
+     */
+    override fun isAvailable(element: PsiElement?, editor: Editor, file: PsiFile): Boolean {
+        if (file.virtualFile?.extension != FLIX_EXTENSION) return false
+        if (!editor.settings.isVariableInplaceRenameEnabled) return false
         return FlixShowDiagramAction.identifierAt(editor.document.charsSequence, editor.caretModel.offset) != null
     }
 
@@ -83,7 +108,7 @@ class FlixInplaceRenameHandler : RenameHandler {
                     ApplicationManager.getApplication().invokeLater {
                         val ranges = if (refError != null) null
                         else rangesIn(activeEditor, locations.orEmpty(), path)
-                        if (ranges == null || ranges.isEmpty()) {
+                        if (ranges.isNullOrEmpty()) {
                             delegateToDialog(project, activeEditor, psiFile, dataContext)
                         } else {
                             startTemplate(project, activeEditor, ranges, oldName)
@@ -93,8 +118,13 @@ class FlixInplaceRenameHandler : RenameHandler {
             }
     }
 
-    /** Not reachable from the editor: this handler is offered only where there is a caret. */
-    override fun invoke(project: Project, elements: Array<out PsiElement>, dataContext: DataContext?) = Unit
+    /**
+     * Not reachable from the editor: this handler is offered only where there is a caret.
+     *
+     * The inherited implementation asserts a `PsiElement` it could rename, which Flix never has, so
+     * it must not run.
+     */
+    override fun invoke(project: Project, elements: Array<out PsiElement>, dataContext: DataContext) = Unit
 
     private fun delegateToDialog(project: Project, editor: Editor, file: PsiFile, dataContext: DataContext?) {
         ApplicationManager.getApplication().invokeLater {
@@ -105,10 +135,10 @@ class FlixInplaceRenameHandler : RenameHandler {
     /**
      * Replaces [ranges] with one template variable, so typing edits every occurrence at once.
      *
-     * The template spans from the first occurrence to the last and reproduces the text between
-     * them verbatim; only the occurrences become variable segments. Reformatting and indenting are
-     * off because this rewrites identifiers inside existing code, and a template that reflowed the
-     * span would turn a rename into an unrequested edit.
+     * The template spans from the first occurrence to the last and reproduces the text between them
+     * verbatim; only the occurrences become variable segments. Reformatting and indenting are off
+     * because this rewrites identifiers inside existing code, and a template that reflowed the span
+     * would turn a rename into an unrequested edit.
      */
     private fun startTemplate(project: Project, editor: Editor, ranges: List<TextRange>, oldName: String) {
         val document = editor.document
@@ -118,16 +148,7 @@ class FlixInplaceRenameHandler : RenameHandler {
         val template = TemplateManager.getInstance(project).createTemplate("", "")
         template.isToReformat = false
         template.setToIndent(false)
-        template.addVariable(VARIABLE, ConstantNode(oldName), ConstantNode(oldName), true)
-
-        var cursor = start
-        for (range in ranges) {
-            if (range.startOffset > cursor) {
-                template.addTextSegment(document.getText(TextRange(cursor, range.startOffset)))
-            }
-            template.addVariableSegment(VARIABLE)
-            cursor = range.endOffset
-        }
+        fillTemplate(template, document.charsSequence, ranges, oldName)
 
         WriteCommandAction.runWriteCommandAction(project, RENAME_COMMAND, null, {
             document.deleteString(start, end)
@@ -137,6 +158,17 @@ class FlixInplaceRenameHandler : RenameHandler {
     }
 
     private fun LogicalPosition.toLsp(): LspPosition = LspPosition(line, column)
+
+    /** [locationsIn], converted to offsets in the open document and normalised. */
+    private fun rangesIn(editor: Editor, locations: List<Location>, path: String): List<TextRange>? =
+        locationsIn(locations, path)?.map { location ->
+            TextRange(
+                editor.logicalPositionToOffset(location.range.start.toLogical()),
+                editor.logicalPositionToOffset(location.range.end.toLogical()),
+            )
+        }?.let { normalized(it) }
+
+    private fun LspPosition.toLogical(): LogicalPosition = LogicalPosition(line, character)
 
     companion object {
         private const val FLIX_EXTENSION = "flix"
@@ -159,16 +191,41 @@ class FlixInplaceRenameHandler : RenameHandler {
         /** The filesystem path a `file:` URI names, or the string itself if it is not one. */
         internal fun pathOf(uri: String): String =
             runCatching { URI(uri).path }.getOrNull() ?: uri
+
+        /**
+         * [ranges] sorted, with any that overlaps one already kept dropped.
+         *
+         * A declaration and a reference can name the same span -- the server reports occurrences,
+         * not distinct edits -- and two segments over one span would render the new name twice.
+         */
+        internal fun normalized(ranges: List<TextRange>): List<TextRange> {
+            val kept = mutableListOf<TextRange>()
+            for (range in ranges.sortedBy { it.startOffset }) {
+                if (kept.isEmpty() || range.startOffset >= kept.last().endOffset) kept.add(range)
+            }
+            return kept
+        }
+
+        /**
+         * Fills [template] so that each of [ranges] becomes the same variable and the source
+         * between them is reproduced verbatim. [ranges] must be sorted and disjoint -- see
+         * [normalized] -- and [text] is the whole document, so the offsets are absolute.
+         *
+         * The first occurrence gets **no** [Template.addVariableSegment] call. `addVariable` emits
+         * that segment itself: `TemplateImpl.addVariable` calls `addVariableSegment(name)` whenever
+         * the template has no text to parse, which a template built by
+         * `TemplateManager.createTemplate(key, group)` never has -- that constructor calls
+         * `setToParseSegments(false)`. Adding one as well put two variable segments at the same
+         * offset, so the first occurrence rendered the new name twice.
+         */
+        internal fun fillTemplate(template: Template, text: CharSequence, ranges: List<TextRange>, oldName: String) {
+            template.addVariable(VARIABLE, ConstantNode(oldName), ConstantNode(oldName), true)
+            var cursor = ranges.first().endOffset
+            for (range in ranges.drop(1)) {
+                template.addTextSegment(text.subSequence(cursor, range.startOffset).toString())
+                template.addVariableSegment(VARIABLE)
+                cursor = range.endOffset
+            }
+        }
     }
-
-    /** [locationsIn], converted to offsets in the open document and sorted by position. */
-    private fun rangesIn(editor: Editor, locations: List<Location>, path: String): List<TextRange>? =
-        locationsIn(locations, path)?.map { location ->
-            TextRange(
-                editor.logicalPositionToOffset(location.range.start.toLogical()),
-                editor.logicalPositionToOffset(location.range.end.toLogical()),
-            )
-        }?.sortedBy { it.startOffset }
-
-    private fun LspPosition.toLogical(): LogicalPosition = LogicalPosition(line, character)
 }

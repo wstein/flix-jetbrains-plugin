@@ -48,6 +48,23 @@ dialog, and the platform's `VariableInplaceRenameHandler` wants a `PsiNamedEleme
 (`textDocument/references`), builds a template whose variable sits at each of them, and typing then
 edits them together. Registered `order="first"`, ahead of LSP4IJ's.
 
+Two things about it are not discoverable from the API, and both shipped as visible defects first:
+
+- **Registering a second rename handler produces a chooser, not a winner.**
+  `RenameHandlerRegistry.getRenameHandler` collects every handler whose `isRenaming` is true and, on
+  more than one, asks *"What would you like to do?"* — labelled with `toString()` unless the handler
+  implements `TitledHandler`. `order="first"` does not decide it. LSP4IJ has one way to be told to
+  stand down: `LSPRenameHandler.isAvailableOnDataContext` re-enters the registry and returns `false`
+  when every other available handler is a `VariableInplaceRenameHandler`. **Extending that class is
+  the whole reason this handler does** — no inherited behaviour is used, `isAvailableOnDataContext`
+  is `final` and delegates to the overridable `isAvailable`. It follows for free that turning
+  in-place rename off in the editor settings hands the rename back to LSP4IJ's dialog.
+- **`Template.addVariable` adds a variable segment of its own.** For a template from
+  `TemplateManager.createTemplate(key, group)` — which is `setToParseSegments(false)` —
+  `TemplateImpl.addVariable` calls `addVariableSegment(name)` before registering the variable.
+  Calling `addVariableSegment` for the first occurrence too puts two segments at one offset, and
+  the first occurrence renders the new name twice: `sum` typed over `add` gives `sumsum`.
+
 **A symbol used in more than one file still gets the dialog, on purpose.** A template edits the open
 document only, and the moment it does the server's analysis of that file is stale, so a follow-up
 `textDocument/rename` for the remaining files would be computed against source that no longer

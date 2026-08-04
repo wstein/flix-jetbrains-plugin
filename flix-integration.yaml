@@ -98,6 +98,10 @@ actions:
   # The Tools > Flix menu. One group; its items are built from FlixTask, so the menu cannot come to
   # offer a different set of subcommands than the run configuration does.
   Flix.Tasks: org.flixlang.intellij.run.FlixTaskActionGroup
+  # The server's "Run Tests" code lens. The id is the LSP command's: LSP4IJ resolves a client-side
+  # command through ActionManager under exactly that id, which is why the lens did nothing without
+  # this while the "Run" lens beside it worked.
+  flix.cmdTests: org.flixlang.intellij.run.FlixRunTestsAction
 
 # Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
 # comes back, because each would reintroduce a defect rather than merely add a feature.

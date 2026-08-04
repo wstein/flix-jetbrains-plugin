@@ -44,8 +44,11 @@ and every other JVM language in the same process.
   checked against `flix --help` by `FlixTaskTest` rather than reviewed — an unknown one is not
   rejected by the compiler, it is demoted to a file argument and reported as
   `Unrecognized file extension`.
-- **`flix.runMain` CodeLens**: live-verified. The lens's symbol argument is honoured and passed as
-  `--entrypoint`, so the lens above `demo()` runs `demo`, not the project default.
+- **Code lenses**: both of them. `flix.runMain` above an entry point is live-verified and its symbol
+  argument is honoured; `flix.cmdTests` above a test runs the test task. The second one used to
+  fail with *"Missing 'flix.cmdTests' command"* because LSP4IJ resolves a server-defined command
+  through `ActionManager` and only the first had an action —
+  `FlixAssembledPluginTest` now pins both.
 - **Gutter run arrow beside `def main`**: anchored on the declaration's name leaf, delegating to the
   platform's generic `ExecutorAction`.
 - **Split Mode**: live-verified as an actual frontend+backend process pair

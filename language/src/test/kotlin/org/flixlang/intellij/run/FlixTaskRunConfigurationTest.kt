@@ -68,6 +68,23 @@ class FlixTaskRunConfigurationTest : BasePlatformTestCase() {
         assertTrue("the message must name the override: $message", message.contains("FLIX_JAR"))
     }
 
+    fun testTheRunTestsLensHandlerRunsTheTestTask() {
+        // The lens says "Run Tests"; the action behind it has to be the test task and not, say, the
+        // one that happens to be first in the enum.
+        assertEquals(FlixTask.TEST, FlixRunTestsAction().task)
+    }
+
+    fun testTheMenuOffersEveryTaskAndNothingElse() {
+        // Built from FlixTask rather than declared, so the menu and the run configuration cannot
+        // come to offer different sets of subcommands.
+        val children = FlixTaskActionGroup().getChildren(null)
+        assertEquals(FlixTask.values().size, children.size)
+        assertEquals(
+            FlixTask.values().map { it.title() },
+            children.map { (it as FlixTaskAction).task.title() },
+        )
+    }
+
     private fun <T : Throwable> assertThrows(type: Class<T>, body: () -> Unit): T {
         try {
             body()

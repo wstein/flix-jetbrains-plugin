@@ -35,7 +35,7 @@ class FlixTaskActionGroup : ActionGroup() {
 }
 
 /** Runs one [FlixTask] in the current project. */
-class FlixTaskAction(private val task: FlixTask) : AnAction(task.title(), task.description(), null) {
+open class FlixTaskAction(internal val task: FlixTask) : AnAction(task.title(), task.description(), null) {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
@@ -70,3 +70,23 @@ class FlixTaskAction(private val task: FlixTask) : AnAction(task.title(), task.d
         }
     }
 }
+
+/**
+ * Handles the `flix.cmdTests` command the server attaches to its "▶ Run Tests" code lens.
+ *
+ * LSP4IJ has no generic handler for a server-defined command: `CommandExecutor` looks the command
+ * id up with `ActionManager.getAction(commandId)` and invokes whatever it finds. Without a
+ * registration the lens fails with *"Missing 'flix.cmdTests' command... needs to be contributed by
+ * an IntelliJ plugin"* -- which is what it did, while the "▶ Run" lens beside it worked,
+ * because only that one had an action.
+ *
+ * A plain [AnAction] rather than LSP4IJ's `LSPCommandAction`, which is only a convenience for
+ * reading a command's arguments: this command carries none (`Command("▶ Run Tests",
+ * "flix.cmdTests", Nil)`), and not needing it keeps the handler in the module that can run a task
+ * without LSP4IJ present.
+ *
+ * The command reaches the client at all because the server does not advertise it: `supportsCommand`
+ * is false for anything outside `executeCommandProvider`, so `CommandExecutor` falls through to the
+ * action. `flix.runMain` has always relied on the same path.
+ */
+class FlixRunTestsAction : FlixTaskAction(FlixTask.TEST)

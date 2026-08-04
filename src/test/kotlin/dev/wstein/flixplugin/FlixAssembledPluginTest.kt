@@ -1,6 +1,7 @@
 package dev.wstein.flixplugin
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.lang.Language
 import com.intellij.lang.LanguageParserDefinitions
 import com.intellij.openapi.extensions.ExtensionPointName
@@ -111,6 +112,23 @@ class FlixAssembledPluginTest : BasePlatformTestCase() {
             "the Flix run configuration type is not registered. Registered: $types",
             types.any { it == "dev.wstein.flixplugin.run.FlixRunConfigurationType" },
         )
+    }
+
+    fun testEveryCodeLensCommandHasAnActionToResolveTo() {
+        // LSP4IJ has no generic handler for a server-defined command. CommandExecutor looks the id
+        // up with ActionManager.getAction(commandId) and, finding nothing, reports "Missing '<id>'
+        // command... needs to be contributed by an IntelliJ plugin" -- in the editor, when the lens
+        // is clicked, which is the only place it is visible.
+        //
+        // These are the two CodeLensProvider emits: Command("▶ Run", "flix.runMain", args) above an
+        // entry point and Command("▶ Run Tests", "flix.cmdTests", Nil) above a test. Only the first
+        // had an action, so "Run Tests" failed for every test in every file.
+        listOf("flix.runMain", "flix.cmdTests").forEach { id ->
+            assertNotNull(
+                "no action is registered under '$id', so that code lens fails when clicked",
+                ActionManager.getInstance().getAction(id),
+            )
+        }
     }
 
     fun testTheFlixTaskConfigurationTypeIsAvailable() {

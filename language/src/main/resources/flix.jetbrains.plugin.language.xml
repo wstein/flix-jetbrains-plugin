@@ -78,5 +78,14 @@
                popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </group>
+
+        <!-- The server's "Run Tests" code lens. The id is the LSP command's, because LSP4IJ
+             resolves a client-side command by looking an action up under exactly that id. In no
+             group: it is reached from the lens, and Tools > Flix > Test already offers the same
+             task where a menu is what the user wants. -->
+        <action id="flix.cmdTests"
+                class="org.flixlang.intellij.run.FlixRunTestsAction"
+                text="Run Flix Tests"
+                description="Run the project's tests, as the Run Tests code lens does"/>
     </actions>
 </idea-plugin>

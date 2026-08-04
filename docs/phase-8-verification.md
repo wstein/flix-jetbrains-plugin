@@ -86,6 +86,19 @@ Fixed in `flix-fork` as `acde240`; verified with a JDI probe against a live VM, 
 that should have been run first. `javap` showing a line in the table does not mean a debugger can
 bind to it — only `locationsOfLine` answers that.
 
+Two further compiler defects of the same family were found the same way and fixed since. Both are
+described in full under
+[the native-debugger gate](native-debugger-gate.md#the-first-statement-of-every-function--the-same-defect-one-layer-up):
+
+- **The first statement of every function was unbindable.** A method records its declaration line
+  before any instruction, claiming bytecode offset 0 — where the body's first statement also begins.
+  The declaration won. Declaration entries are now provisional, so the statement takes the offset;
+  the consequence is that a breakpoint on a bare `def` line no longer verifies, which is correct
+  because it never described an instruction of its own.
+- **Single-expression functions were inlined away.** A folded-in function gets no class, and its
+  line does not survive at the call site either, so it existed nowhere in the program. `--Xdebug`
+  now turns the optimizer off.
+
 ### Focused SMAP tests
 
 The plan asks for these specifically. 49 tests in `:debugger` cover most:
@@ -94,10 +107,12 @@ The plan asks for these specifically. 49 tests in `:debugger` cover most:
 | --- | --- |
 | Path normalization | ✅ `FlixSourceLocationsTest` |
 | Duplicate base names | ✅ `FlixForwardResolutionTest` — resolves to **neither**, which is also why gate row 10 is unreachable live |
+| Index-independent source lookup | ✅ `FlixSourceFilesTest` — an absolute source attribute resolves straight from the VFS. It has to: a class-prepare event fires once per class per VM, so a lookup that transiently answered "no" while the project reindexed disabled that breakpoint for the whole session. The Flix compiler writes its output *inside* the project, so a re-index on every run is guaranteed rather than incidental |
 | Absent information | ✅ `FlixSourceLocationsTest` — `AbsentInformationException`, absent line tables, unknown lines |
 | Multiple locations per line | ✅ `FlixSourceLocationsTest`, and the row-9 work above |
 | Class prepare | ✅ `FlixClassSelectionTest` drives `FlixLineOnly.processClassPrepare` directly — only a class holding the line reaches the breakpoint |
-| Stepping-filter wiring | ✅ `FlixSteppingFilterTest` — added after review; mutation-checked (inverting the arrived-check, dropping the budget, or stepping out instead of in all fail it) |
+| Stepping-filter wiring | ✅ `FlixSteppingFilterTest` — added after review; mutation-checked (inverting the arrived-check, dropping the budget, stepping out instead of in, or weakening the return-to-caller depth guard all fail it) |
+| Step Over returning to its caller | ✅ `FlixSteppingFilterTest` — stepping over a function's *last* line used to walk past the caller and run on to the next breakpoint, because the caller is a different definition. The caller and the stack depth are now recorded at step start; both are required, so mutual recursion is stepped over rather than stopped in |
 | **Class redefinition** | ✅ `FlixSourceCacheTest` — a hot swap keeps the same `ReferenceType`, so only invalidation can yield the new sources |
 | **Stale cache invalidation** | ✅ `FlixSourceCacheTest` — cleared on resume, which is when a redefinition can have happened |
 

@@ -29,15 +29,22 @@ parsing commands — `run` is then demoted to a positional argument and rejected
 `Unrecognized file extension: 'run'`. Check with `git -C <flix-lab> diff scripts/flix-fork`.
 
 **2. `--Xdebug` must reach the compiler.** It is not only a JDWP switch: `Let`, `ApplyDef`,
-`ApplyClo`, `IfThenElse` and `Stm` emit line numbers only under it, and it stops the inliner
-discarding programmer-written bindings. Without it, most statements have no breakpointable line.
+`ApplyClo`, `IfThenElse` and `Stm` emit line numbers only under it, and it turns the optimizer off
+so that no function is folded into its caller. Without it, most statements have no breakpointable
+line.
 
-**3. A compiler build with the line-table fix.** Before it, a call site with a same-file function
-inlined into it shared a bytecode offset with the inlined body, and the second `LineNumberTable`
-entry replaced the first -- so the call site's line could not take a breakpoint while its neighbours
-could. `javap` shows the line either way; only `locationsOfLine` distinguishes them. Any row below
-that sets a breakpoint on such a line will fail against an older jar for reasons that have nothing
-to do with the plugin.
+**3. A compiler build with the line-table fixes.** Three are load-bearing, and `javap` shows the
+line whichever is missing -- only `locationsOfLine` distinguishes them, so any row below that sets a
+breakpoint on an affected line will fail against an older jar for reasons that have nothing to do
+with the plugin:
+
+- **One entry per bytecode offset.** A second entry at one offset replaces the first rather than
+  adding to it, so the replaced line stops existing for a debugger.
+- **The declaration line yields that offset to the first statement.** A method records its own
+  declaration before any instruction is written, claiming offset 0 -- where the body's first
+  statement also begins. The declaration used to win, so the first statement of *every* function was
+  absent from the table.
+- **The optimizer is off under `--Xdebug`.** See "Inlining and `--Xdebug`" below.
 
 **4. A fresh plugin build.** The sandbox keeps whatever was installed last; a stale one will not
 have the current registrations.
@@ -136,6 +143,13 @@ have no fixture as things stand**.
 Why the split falls that way: `Smap.build()` emits nothing until a class draws on a second file, and
 `Main.flix` calls into the standard library (`Env.getArgs`, `GetOpt.getOpt`, `List.memberOf`), so
 inlining pulls foreign code in and SMAP always appears.
+
+> **This survey predates the optimizer change and no longer describes a `--Xdebug` build.** With
+> inlining off, no class draws on a second file, so `Smap.build()` emits nothing and *every* class
+> reports the `Java` stratum — the reverse of the split above. Rows 8 and 9 have therefore swapped
+> difficulty: the no-SMAP path is now the ordinary one and needs no special fixture, while a SMAP
+> class cannot be produced under `--Xdebug` at all. Both paths remain implemented and unit-tested;
+> what changed is which of them a live session exercises.
 
 ### Rows 3–7 — the Flix → Java → Flix path
 
@@ -403,6 +417,61 @@ facts that disagreed here. `UNADDRESSABLE` means present but invisible to the de
 compiler problem; `absent` usually means `--Xdebug` did not reach the compiler. It exits non-zero
 on the former, so it can gate a script. Single-file source execution: nothing to build.
 
+### The first statement of every function — the same defect, one layer up
+
+The offset rule above fixed collisions *between two body expressions*. It left a third case, which
+was not noticed because it looks like a deliberate omission rather than a bug: a method opens by
+recording its own **declaration** line, before a single instruction has been written, so that entry
+claims bytecode offset 0 — and the body's first statement begins at offset 0 too. The declaration
+won, and the first statement of every function was absent from the table.
+
+Probed on a two-function fixture, the shape is unmistakable:
+
+| Line | Source | Before | After |
+| --- | --- | --- | --- |
+| 1 | `def main()` | can bind | absent |
+| 2 | `println("alpha")` — first statement | **absent** | **can bind** |
+| 3–5 | rest of `main` | can bind | can bind |
+| 7 | `def helper()` | can bind | absent |
+| 8 | `println("helper-first")` — first statement | **absent** | **can bind** |
+
+Declaration entries are now provisional: written only once it is known the body did not claim their
+offset. Where the body does move first — a method that loads parameters before its first statement —
+the offsets differ, both entries are real, and both bind.
+
+**Breakpoints on a bare `def` line no longer verify.** That is the trade and it is the right way
+round: the declaration describes no instruction the first statement does not already own, and only
+one of the two can exist.
+
+### Inlining and `--Xdebug`
+
+A function whose body is folded into its caller gets no class of its own, so a breakpoint on it has
+nothing to bind to. Its line does not survive at the call site either: the inlined body begins at
+the call site's own bytecode offset, and by the rule above the call site wins. The line then exists
+nowhere in the program.
+
+That is the fate of every single-expression helper, which is most of them — measured on a fixture
+where `@DontInline` was the only thing separating a bindable definition from an unbindable one:
+
+| Definition | Verdict |
+| --- | --- |
+| `pub def maxDemo(): Int32 \ IO = Math.max(10, 20)` | **absent** — `Def$maxDemo` was never generated |
+| `pub def plainDemo(): Int32 = 42` | **absent** — same |
+| the same function with `@DontInline` | can bind |
+
+`--Xdebug` therefore turns the optimizer off. This is the trade every other toolchain makes — a
+debug build is not an optimized one — and `--Xdebug` is set only when launching a debug session, so
+nothing anyone runs or ships is affected.
+
+Two consequences are deliberate and worth stating rather than discovering:
+
+- **Debug sessions run unoptimized.** The throughput cost is real and is *not yet measured*; a
+  Datalog solve is the case to watch, for the same reason it is the case to watch under stepping.
+- **Cross-file line remapping is unreachable in debug builds.** SMAP exists to give inlined foreign
+  code a synthetic line of its own. With no inlining there is no foreign code in a class, so no SMAP
+  is emitted and classes report the `Java` stratum. The position manager already handles no-SMAP
+  classes (row 9), so this changes nothing a user sees.
+
 Reverse mapping — JDI location → `.flix` file and line — is therefore **confirmed working**: rows
 5 and 6 exercise exactly that path, and the stack navigates correctly. What rows 1 and 14 have in
 common is the *forward* direction and stepping policy, neither of which row 5/6 touches.
@@ -576,11 +645,10 @@ One limit, inherent to a source-level notion rather than a defect:
   notion. *Mutual* recursion is distinguished, because returning to the caller is only accepted when
   the stack is shallower than where the step began — a call back into the caller's definition is
   deeper, and is stepped over.
-- **Inlined code is attributed to where it was written.** The fork's inliner keeps the callee's own
-  `SourceLocation` when substituting a body (`Inliner.scala:204` passes the call-site `loc` only for
-  the binding it introduces), so inlined library code still reports its own file and is correctly
-  seen as a different definition. This is the behaviour we want; it is recorded because the opposite
-  would be a silent correctness bug.
+Inlining used to be a second limit here — inlined code kept the callee's own `SourceLocation`, so a
+step saw it as a different definition. That no longer arises: `--Xdebug` disables the optimizer
+outright, so no body is folded into another and every definition a step can reach is one the
+programmer wrote. See "Inlining and `--Xdebug`" below.
 
 **Known cost, not yet measured.** A stretch of runtime work with no intervening Flix line is
 single-stepped rather than run. Between adjacent source lines that is a few frames. A long
@@ -589,49 +657,39 @@ instruction by instruction. It is bounded rather than unbounded, because `DebugP
 applies the configured stepping filters as class exclusions on the step request, so `java.*` and
 friends are not entered. Measure before assuming a Datalog fixture is usable under a step.
 
-### Known open question: `let args` — evidence before any fix
+### Resolved: `let args` was the first-statement defect
 
-A breakpoint on `let args = …` did not verify under the DAP path even though `javap -l` shows the
-line present at bytecode offset 0. It is the only line at offset 0 — the entry of the CPS
+A breakpoint on `let args = …` did not verify under the DAP path even though `javap -l` showed the
+line present at bytecode offset 0. It was the only line at offset 0 — the entry of the CPS
 continuation frame `applyFrame` — and `locationsOfLine("Flix", "Main.flix", 43)` returned nothing
 for it while every other line resolved.
 
-**Narrowed on 2026-07-28, without changing the plan below.** Two facts arrived from the row-14
-survey and the native session:
+Two facts recorded on 2026-07-28 ruled out the obvious explanations, and both still hold: offset 0
+is the ordinary shape of a CPS continuation rather than a marker of a misplaced line (260 of 325
+`Clo$main$*` classes carry exactly one entry there), and reverse resolution of the same construct
+worked natively. What neither could explain was why the forward direction found nothing.
 
-1. *Offset 0 is not anomalous.* 260 of 325 `Clo$main$*` classes carry exactly one line entry in
-   `applyFrame`, at offset 0. This is the ordinary shape of a CPS continuation, not a marker of a
-   line the compiler failed to place. Any hypothesis resting on "offset 0 is suspicious" is out.
-2. *Reverse resolution of this very line works natively.* The session stopped in
-   `applyFrame:53, Clo$main$400067` and navigated to `Main.flix:53` — the same construct, one line
-   later in the fixture, resolving correctly through `FlixPositionManager.getSourcePosition`.
+**It was the declaration line taking offset 0**, which is the defect described under "The first
+statement of every function" above. `let args = …` was the first statement of its function, so its
+entry was the one the declaration displaced — and a line absent from the table resolves to nothing
+in any stratum, which is exactly what was observed.
 
-Together those move the suspicion from the mapping to the DAP adapter's own lookup, which is the
-"no change here" outcome in the table below — but that is an inference, not the measurement. The
-queries still decide it, and the forward direction remains genuinely untested.
+Confirmed by measurement rather than inference, on a fixture placing a `let` first on both codegen
+paths:
 
-**Run these two queries against the live VM before changing anything**, and record both results:
-
-```java
-rt.locationsOfLine("Flix", "Main.flix", 43)                        // preferred stratum
-rt.locationsOfLine(rt.defaultStratum(), "/abs/path/Main.flix", 43) // default stratum
-```
-
-| Outcome | Reading | Action |
+| Line | Position | Verdict |
 | --- | --- | --- |
-| Both empty | The line is not addressable in this class at all; offset 0 is not the issue. | Look elsewhere — likely which class holds the line. |
-| Both return a location | The lookup is fine; the DAP adapter's failure was its own. | No change here. |
-| Default returns, `"Flix"` does not | A stratum-translation edge at offset 0. | *Then*, and only then, add a default-stratum fallback in `FlixPositionManager.locationsOfLine`. |
+| `let args = Ask.ask();` | first statement of a control-impure def (`applyFrame`) | can bind |
+| `let args = List.length(…);` | first statement of a control-pure def (`staticApply`) | can bind |
 
-The `"Flix"` preference is not incidental — it is what makes an inlined frame resolve to the file it
-came from rather than to the wrong line of the enclosing one. Falling back before the evidence
-supports it would trade that precision away to chase a symptom, and the loss would only show up in
-inlined code, which is the hardest place to notice it.
+The stratum-fallback change contemplated here was therefore never needed, and should not be made:
+the `"Flix"` preference is what makes an inlined frame resolve to the file it came from rather than
+to the wrong line of the enclosing one, and nothing has been found that requires trading it away.
 
-Note also that at offset 0 the binding has not executed — `Env.getArgs()` runs after — so stopping
-there would show `args` unbound. "Stop at `let args`" and "stop before the call producing it" are
-the same position in CPS, which may make this a question about what the breakpoint should *mean*
-rather than a defect.
+One observation from the original note survives and is worth keeping. At offset 0 the binding has
+not executed — `Env.getArgs()` runs after — so stopping there shows `args` unbound. "Stop at
+`let args`" and "stop before the call producing it" are the same position in CPS, which makes this
+partly a question about what the breakpoint should *mean* rather than only about where it binds.
 
 ## Verdict
 

@@ -69,9 +69,17 @@ it. This plugin speaks no debug protocol; it decides which port to listen on and
 platform.
 
 `--Xdebug` is not optional, and is not only a JDWP switch. The compiler emits line numbers for
-`let`, calls, `if` and statement sequences **only** under it, and stops the inliner discarding
-programmer-written bindings. Without it most statements have no breakpointable line at all, and a
-breakpoint on one can never verify no matter what the IDE does.
+`let`, calls, `if` and statement sequences **only** under it, and it turns the optimizer off
+entirely. Without it most statements have no breakpointable line at all, and a breakpoint on one can
+never verify no matter what the IDE does.
+
+Turning the optimizer off is what keeps small functions breakpointable. A function whose body is
+folded into its caller gets no class of its own, and its line does not survive at the call site
+either — the inlined body starts at the call site's own bytecode offset, and only one line entry per
+offset reaches the class file. The line then exists nowhere in the program, which is the fate of
+every single-expression helper: `pub def maxDemo(): Int32 \ IO = Math.max(10, 20)` could never take
+a breakpoint while its multi-line neighbours could. The cost is that a debug session runs
+unoptimized, which is the trade every other toolchain makes.
 
 ### Which compiler is used
 
@@ -79,13 +87,15 @@ breakpoint on one can never verify no matter what the IDE does.
 -- the language server and the debuggee -- resolves it the
 same way, so a debug session cannot run a different compiler than the editor was analysed with.
 
-**The build matters, not just the flag.** Two fixes in
+**The build matters, not just the flag.** Four fixes in
 [wstein/flix-fork](https://github.com/wstein/flix-fork) are load-bearing for debugging, and a jar
-predating either behaves as though the plugin is at fault:
+predating any of them behaves as though the plugin is at fault:
 
 | Fix | Without it |
 | --- | --- |
-| One `LineNumberTable` entry per bytecode offset | A line whose call site had a same-file function inlined into it cannot take a breakpoint. Its neighbours can, and `javap` still shows the line, so nothing looks wrong. |
+| One `LineNumberTable` entry per bytecode offset | A line sharing a bytecode offset with another cannot take a breakpoint. Its neighbours can, and `javap` still shows the line, so nothing looks wrong. |
+| The declaration line yields its offset to the first statement | The **first statement of every function** has no line entry at all, so a breakpoint on it never binds — while the `def` line above it and every later line do. |
+| The optimizer is off under `--Xdebug` | A single-expression function is folded into its caller, gets no class of its own, and its line survives nowhere — so `pub def maxDemo(): Int32 \ IO = Math.max(10, 20)` can never take a breakpoint. |
 | Workspace jars loaded from the folder URI | The language server resolves no `[jar-dependencies]`, so every Java import reports *"Undefined Java class"* while the compiler builds the same project without complaint. |
 
 If breakpoints on some lines refuse to bind while adjacent ones work, rebuild the fork before

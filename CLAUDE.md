@@ -153,6 +153,9 @@ Resolved as `$FLIX_JAR`, else `flix.jar` in the project root. Non-obvious
 rules, all encoded in `FlixLaunchCommand` and pinned by tests:
 
 - Options go **after** the subcommand. `flix --Xdebug run` fails with an error naming neither.
+- `--Xdebug` also turns the **optimizer off**. Inlining and debugging cannot both be served by one
+  build: a folded-in function gets no class of its own and its line survives nowhere, so every
+  single-expression helper would be unbreakpointable. Debug sessions therefore run unoptimized.
 - `--Xdebug` is not only a JDWP switch: `Let`, `ApplyDef`, `ApplyClo`, `IfThenElse` and `Stm` emit
   line numbers *only* under it. Without it most statements have no breakpointable line.
 - The JDWP agent goes before `-jar`; everything after it is the compiler's own argument list.

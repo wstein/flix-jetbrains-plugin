@@ -44,9 +44,9 @@ the thing on the other side:
 | --- | --- | --- |
 | `shared` | `FlixJar` (compiler resolution), `FlixLaunchCommand` (the invocation) | **No IntelliJ Platform dependency at all.** Loaded in every process. |
 | `language` | `Language("Flix")`, Grammar-Kit lexer/parser/PSI, editor support | Must load in IDEs with no Java plugin |
-| `backend` | LSP4IJ server registration, `flix.runMain`, the gutter marker | Needs LSP4IJ |
+| `backend` | LSP4IJ server registration, `flix.runMain`, the gutter marker, the diagram tool window | Needs LSP4IJ |
 | `debugger` | Position manager, stepping policy, run/debug configuration | Needs the Java plugin; **not** `loading="required"` |
-| `frontend` | placeholder | — |
+| `frontend` | placeholder | —. UI driven by LSP4IJ belongs in `backend`: LSP4IJ declares no content modules, so it runs host-side under split mode and so must anything calling it |
 
 Two consequences worth knowing before moving code:
 

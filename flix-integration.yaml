@@ -38,10 +38,8 @@ registrations:
     # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor
-
-  frontend:
-    # Placeholder landing spot for upcoming trait hierarchy, module structure, and Datalog
-    # EDB/IDB schema visualizations.
+    # Backend, not frontend: the diagram is fetched through LSP4IJ, which declares no content
+    # modules and therefore runs host-side under split mode -- as must anything calling it.
     com.intellij.toolWindow: dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory
 
   debugger:
@@ -86,6 +84,10 @@ debugger:
 # undeclared registration is a failure by design.
 actions:
   flix.runMain: dev.wstein.flixplugin.FlixRunMainAction
+  # Deliberately not named `flix.showDiagram`: LSP4IJ resolves a command server-side first and only
+  # then looks for an IntelliJ action of the same id, so sharing the name would let the action
+  # invoke the command that invokes the action.
+  Flix.ShowDiagram: dev.wstein.flixplugin.ui.FlixShowDiagramAction
 
 # Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
 # comes back, because each would reintroduce a defect rather than merely add a feature.

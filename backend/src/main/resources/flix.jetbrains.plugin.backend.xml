@@ -93,10 +93,32 @@
          LSP4IJ maps LSP commands to IntelliJ actions 1:1 by id (see
          docs/DeveloperGuide.md#lsp-commands); without this the CodeLens fails with "Missing
          'flix.runMain' command... needs to be contributed by an IntelliJ plugin". Registered here
-         (backend) alongside everything else rather than split into frontend, since LSP4IJ itself
-         is not known to be split-mode-modularized; unverified assumption, revisit if the CodeLens
-         click doesn't dispatch correctly under split mode. -->
+         (backend) alongside everything else rather than split into frontend. That was recorded as
+         an unverified assumption and is now checked: LSP4IJ's plugin.xml declares no content
+         modules, so it is monolithic and runs host-side under split mode, as does anything calling
+         it. -->
+    <!-- The diagram view and the action that fills it. Both are here rather than in frontend for
+         the reason above: the action drives LSP4IJ, so it runs host-side, and a tool window
+         registered beside it is proxied to the client exactly as LSP4IJ's own UI is.
+
+         The action id is deliberately NOT the LSP command name. LSP4IJ resolves a command
+         server-side first and only falls back to an IntelliJ action of the same id, so naming this
+         `flix.showDiagram` would risk the action invoking the command that invokes the action. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Flix Diagrams"
+                    anchor="right"
+                    icon="com.intellij.icons.AllIcons.Toolwindows.ToolWindowPalette"
+                    factoryClass="dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory"/>
+    </extensions>
+
     <actions>
+        <action id="Flix.ShowDiagram"
+                class="dev.wstein.flixplugin.ui.FlixShowDiagramAction"
+                text="Show Flix Diagram"
+                description="Renders the structure of the trait or module at the caret in the Flix Diagrams tool window">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+
         <action id="flix.runMain"
                 class="dev.wstein.flixplugin.FlixRunMainAction"
                 text="Flix: Run Entry Point"

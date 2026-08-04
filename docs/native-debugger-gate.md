@@ -252,14 +252,43 @@ Then reproduce and read `idea.log`. Each line names one step:
 | Line | Meaning |
 | --- | --- |
 | `createPrepareRequests(...): watching prepares outside java.*, …` | the breakpoint asked to be told about future classes |
-| `prepared Clo$main$…: compiled from Main.flix, resolving` | a prepared class was accepted and handed to the breakpoint |
-| `getAllClasses(Main.flix:44): 0 of N loaded classes matched` | no loaded class claims that source — expected before the class loads, a problem afterwards |
-| `locationsOfLine(Clo$main$…): not compiled from Main.flix` | the class was offered but is not this file's — normal and frequent |
+| `prepared Clo$main$…: holds Main.flix:44, resolving` | a prepared class was accepted and handed to the breakpoint |
+| `getAllClasses(Main.flix:44): 0 of N loaded classes hold that line` | no loaded class holds that line — expected before the class loads, a problem afterwards |
+| `locationsOfLine(Clo$main$…): not compiled from Main.flix -- declares no Flix source at all` | the class was offered but is not Flix — normal and frequent |
+| `locationsOfLine(Clo$main$…): not compiled from Main.flix -- declares Main.flix -> unresolved …` | the class **is** Flix but its source did not resolve to a project file — see below |
 | `locationsOfLine(..., names=[...], line=44): 0 location(s)` | the class and file matched, but the line has no code — check `javap -l` |
 | *(nothing at all)* | the manager was never consulted; the breakpoint is not reaching it |
 
 The last row is the important one: it separates "my mapping is wrong" from "I am not being asked",
 and those have entirely different causes.
+
+The two `not compiled from` rows are deliberately distinct, because they are fixed in different
+places and used to print identically. The first is about the *class* and is expected. The second is
+about *resolution*: the class named a `.flix` source and nothing in the project answered to it.
+`-> unresolved` means the file was not found; a path that is printed and still did not match means
+two `VirtualFile` objects exist for one path, which identity comparison rejects.
+
+A library source resolving to nothing is correct — `Prelude.flix` lives inside the compiler jar and
+is not a project file. The same line naming a source that *is* in the project is a defect, and one
+that does not recover on its own: see the next section.
+
+### Why a transient lookup failure used to be permanent
+
+A class-prepare event fires **once per class per VM**. `FlixLineOnly` asks whether the prepared
+class holds the breakpoint's line and drops it when the answer is no, and there is no second event
+to reconsider. So a source lookup that answered "no" for a moment did not delay a breakpoint, it
+disabled that breakpoint for the rest of the session.
+
+`FilenameIndex` answers nothing while the project is reindexing, and the Flix compiler guarantees
+that happens: it writes its class output **inside** the project, so every run triggers a VFS refresh
+and a re-index. A debug session that raced it lost its breakpoints permanently — observed as
+"breakpoints work on the first run and on none after it", and cleared only by restarting the IDE.
+
+`FlixSourceFiles` now resolves an absolute source attribute straight from the VFS and consults the
+index only for bare names. An absolute path needs no index and admits no ambiguity, so the race is
+removed rather than narrowed. Flix records exactly that for project sources
+(`SourceFile: "/Users/…/Hello.flix"`); bare names are library sources, which resolve to nothing
+whatever the index says.
 
 ### If it binds *too much* — stopping in unrelated Java
 

@@ -84,4 +84,46 @@ class FlixSourceFilesTest {
             FlixSourceFiles.choose(candidates, "Main.flix", "other/Main.flix"),
         )
     }
+
+    // --- absolute attributes, which bypass the index entirely --------------------------------
+
+    @Test
+    fun `resolves by an absolute source path without consulting the index`() {
+        // The whole point of the rule: an absolute attribute identifies one file, so the lookup
+        // needs no index and cannot be defeated by one that is momentarily unavailable.
+        assertEquals(
+            "/proj/src/Main.flix",
+            FlixSourceFiles.absolutePathOf("Main.flix", "/proj/src/Main.flix"),
+        )
+    }
+
+    @Test
+    fun `resolves by an absolute source name when there is no source path`() {
+        // A class with no SMAP offers no sourcePath, and Flix records an absolute SourceFile.
+        assertEquals(
+            "/proj/src/Main.flix",
+            FlixSourceFiles.absolutePathOf("/proj/src/Main.flix", null),
+        )
+    }
+
+    @Test
+    fun `prefers the source path when both attributes are absolute`() {
+        assertEquals(
+            "/proj/from-path/Main.flix",
+            FlixSourceFiles.absolutePathOf("/proj/from-name/Main.flix", "/proj/from-path/Main.flix"),
+        )
+    }
+
+    @Test
+    fun `recognises a Windows drive-letter root`() {
+        // The compiler writes whatever path it resolved. Understanding only POSIX roots would send
+        // Windows back to the index and reintroduce the race there.
+        assertEquals("C:\\proj\\Main.flix", FlixSourceFiles.absolutePathOf("C:\\proj\\Main.flix", null))
+    }
+
+    @Test
+    fun `treats relative and bare attributes as not absolute, leaving them to the index`() {
+        assertNull(FlixSourceFiles.absolutePathOf("Main.flix", null))
+        assertNull(FlixSourceFiles.absolutePathOf("src/Main.flix", "src/Main.flix"))
+    }
 }

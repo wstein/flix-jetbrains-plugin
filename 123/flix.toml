@@ -1,0 +1,6 @@
+[package]
+name        = "123"
+description = "test"
+version     = "0.1.0"
+flix        = "0.75.1+fork.wstein.260802.2.16.gd1fde779a"
+authors     = ["John Doe <john@example.com>"]

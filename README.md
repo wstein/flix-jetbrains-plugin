@@ -44,6 +44,15 @@ and every other JVM language in the same process.
   checked against `flix --help` by `FlixTaskTest` rather than reviewed — an unknown one is not
   rejected by the compiler, it is demoted to a file argument and reported as
   `Unrecognized file extension`.
+- **Show AST**: *Tools > Flix > Show AST*. `ShowAstProvider` has been in the compiler all along,
+  reachable only through `lsp/showAst` on Flix's VS Code protocol, which negotiates no capabilities
+  and which no other client speaks — the same shape the diagram was in. The server now serves it as
+  a real `workspace/executeCommand` returning the directory it wrote, and the action opens what is
+  in it.
+- **Live templates**: declaration scaffolding — `def`, `pdef`, `mod`, `enum`, `struct`, `trait`,
+  `instance`, `eff`, `test`. Deliberately *only* declarations: the language server already completes
+  expressions as snippets, `main` among them, and a template for something it already offers would
+  put one construct in the list twice from two inventories that drift.
 - **Settings**: *Settings > Languages & Frameworks > Flix* — extra JVM arguments and extra Flix
   arguments, matching the VS Code extension's `flix.extraJvmArgs` and `flix.extraFlixArgs`. They
   reach the language server and every task, in the two positions the compiler's argument parser

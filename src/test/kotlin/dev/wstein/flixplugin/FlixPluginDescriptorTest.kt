@@ -116,6 +116,10 @@ class FlixPluginDescriptorTest {
                 // Settings > Languages & Frameworks > Flix. Here because the task runner reads the
                 // same service, and tasks have to work without LSP4IJ.
                 "projectConfigurable",
+                // Declaration scaffolding. The server's expression snippets are left to it, so one
+                // construct is never offered from two inventories.
+                "liveTemplateContext",
+                "defaultLiveTemplates",
             ),
             extensions.map { it.tagName },
         )
@@ -133,11 +137,11 @@ class FlixPluginDescriptorTest {
             "lang.foldingBuilder" to "com.intellij.lang.folding.FoldingBuilder",
             "configurationType" to "com.intellij.execution.configurations.ConfigurationType",
             "projectConfigurable" to "com.intellij.openapi.options.Configurable",
+            "liveTemplateContext" to "com.intellij.codeInsight.template.TemplateContextType",
         )
 
-        languageExtensions().forEach { extension ->
-            // `configurationType` spells the attribute `implementation`; the language extension
-            // points spell it `implementationClass`. Reading only one silently skipped the other.
+        // `defaultLiveTemplates` names a resource file, not a class; a separate test checks it.
+        languageExtensions().filterNot { it.tagName == "defaultLiveTemplates" }.forEach { extension ->
             // Three spellings across the extension points this module uses: `implementationClass`
             // for the language ones, `implementation` for configurationType, `instance` for
             // projectConfigurable. Reading only one silently skipped the others.
@@ -154,6 +158,17 @@ class FlixPluginDescriptorTest {
                 supertype.isAssignableFrom(loaded!!),
             )
         }
+    }
+
+    @Test
+    fun `the live template file the descriptor names is on the classpath`() {
+        // `defaultLiveTemplates` names a resource rather than a class, so nothing else would notice
+        // it being moved or renamed -- the templates would simply stop existing, in every project.
+        val declared = languageExtensions().single { it.tagName == "defaultLiveTemplates" }.getAttribute("file")
+        assertTrue(
+            "the descriptor points at $declared, which is not on the classpath",
+            javaClass.getResource("$declared.xml") != null,
+        )
     }
 
     @Test

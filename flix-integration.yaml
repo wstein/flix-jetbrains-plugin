@@ -39,6 +39,9 @@ registrations:
     # Extra JVM and Flix arguments, read by the task runner here and by the language server in
     # backend. One service, so the editor and a task cannot disagree about what the user set.
     com.intellij.projectConfigurable: org.flixlang.intellij.settings.FlixSettingsConfigurable
+    # Live templates for declarations, which the server completes as bare keywords. Its expression
+    # snippets are left to it, so one construct is never offered from two inventories.
+    com.intellij.liveTemplateContext: org.flixlang.intellij.editor.FlixTemplateContextType
 
   backend:
     com.redhat.devtools.lsp4ij.server: dev.wstein.flixplugin.FlixLanguageServerFactory
@@ -105,6 +108,9 @@ actions:
   # command through ActionManager under exactly that id, which is why the lens did nothing without
   # this while the "Run" lens beside it worked.
   flix.cmdTests: org.flixlang.intellij.run.FlixRunTestsAction
+  # Show AST. ShowAstProvider was implemented in the compiler and reachable only through
+  # `lsp/showAst` on Flix's VS Code protocol; the server now serves it as a real LSP command.
+  Flix.ShowAst: dev.wstein.flixplugin.ui.FlixShowAstAction
 
 # Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
 # comes back, because each would reintroduce a defect rather than merely add a feature.

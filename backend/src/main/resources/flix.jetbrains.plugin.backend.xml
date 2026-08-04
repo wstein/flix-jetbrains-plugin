@@ -126,6 +126,16 @@
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
 
+        <!-- Recompiles with phase printing on and opens what the compiler wrote. Backend, because
+             it goes to the language server; in Tools > Flix beside the tasks, because that is where
+             a whole-project action belongs rather than in the editor's context menu. -->
+        <action id="Flix.ShowAst"
+                class="dev.wstein.flixplugin.ui.FlixShowAstAction"
+                text="Show AST"
+                description="Recompile with phase printing on and open the ASTs the compiler writes">
+            <add-to-group group-id="Flix.Tasks" anchor="last"/>
+        </action>
+
         <action id="flix.runMain"
                 class="dev.wstein.flixplugin.FlixRunMainAction"
                 text="Flix: Run Entry Point"

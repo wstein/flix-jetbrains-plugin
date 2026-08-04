@@ -4,10 +4,10 @@ import com.intellij.execution.ProgramRunnerUtil
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.execution.executors.DefaultRunExecutor
-import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.project.Project
 import dev.wstein.flixplugin.FlixTask
 
@@ -22,7 +22,7 @@ import dev.wstein.flixplugin.FlixTask
  * its console and its exit code, and can be saved and edited like any other configuration if the
  * user wants arguments on it.
  */
-class FlixTaskActionGroup : ActionGroup() {
+class FlixTaskActionGroup : DefaultActionGroup() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
@@ -30,8 +30,17 @@ class FlixTaskActionGroup : ActionGroup() {
         e.presentation.isEnabledAndVisible = e.project != null
     }
 
+    /**
+     * The tasks, then whatever else was added to this group.
+     *
+     * A [DefaultActionGroup] rather than a bare `ActionGroup` so another module can contribute to
+     * it: the platform's `<add-to-group>` calls `DefaultActionGroup.add`, and against any other
+     * group type it logs an error and drops the action. Show AST is registered from the backend
+     * module, which is the only one that can talk to the language server, and belongs in this menu
+     * rather than in one of its own.
+     */
     override fun getChildren(e: AnActionEvent?): Array<AnAction> =
-        FlixTask.values().map(::FlixTaskAction).toTypedArray()
+        FlixTask.values().map(::FlixTaskAction).toTypedArray<AnAction>() + super.getChildren(e)
 }
 
 /** Runs one [FlixTask] in the current project. */

@@ -1,0 +1,78 @@
+<templateSet group="Flix">
+    <!-- Declaration scaffolding, and deliberately nothing else.
+         The language server already completes expressions as snippets (18 completions use
+         InsertTextFormat.Snippet), including `main` and a default effect handler. Declarations are
+         the gap: KeywordCompleter offers `def`, `enum`, `trait`, `instance`, `mod`, `struct` and
+         `eff` as bare keywords with no shape after them. Adding a template for anything the server
+         already snippets would put the same construct in the completion list twice, from two
+         inventories that drift. -->
+
+    <template name="def" value="def $NAME$($PARAMS$): $TYPE$ = $END$"
+              description="Flix function declaration" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;f&quot;" alwaysStopAt="true"/>
+        <variable name="PARAMS" expression="" defaultValue="" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Unit&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="pdef" value="pub def $NAME$($PARAMS$): $TYPE$ = $END$"
+              description="Flix public function declaration" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;f&quot;" alwaysStopAt="true"/>
+        <variable name="PARAMS" expression="" defaultValue="" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Unit&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="mod" value="mod $NAME$ {&#10;    $END$&#10;}"
+              description="Flix module" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;M&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="enum" value="enum $NAME$ {&#10;    case $CASE$&#10;}$END$"
+              description="Flix enum" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;E&quot;" alwaysStopAt="true"/>
+        <variable name="CASE" expression="" defaultValue="&quot;C&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="struct" value="struct $NAME$[$REGION$] {&#10;    $FIELD$: $TYPE$&#10;}$END$"
+              description="Flix struct" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;S&quot;" alwaysStopAt="true"/>
+        <variable name="REGION" expression="" defaultValue="&quot;r&quot;" alwaysStopAt="true"/>
+        <variable name="FIELD" expression="" defaultValue="&quot;x&quot;" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Int32&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="trait" value="trait $NAME$[$TV$] {&#10;    pub def $OP$(x: $TV$): $TYPE$&#10;}$END$"
+              description="Flix trait" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;T&quot;" alwaysStopAt="true"/>
+        <variable name="TV" expression="" defaultValue="&quot;a&quot;" alwaysStopAt="true"/>
+        <variable name="OP" expression="" defaultValue="&quot;op&quot;" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Unit&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="instance" value="instance $TRAIT$[$TYPE$] {&#10;    $END$&#10;}"
+              description="Flix trait instance" toReformat="false" toShortenFQNames="false">
+        <variable name="TRAIT" expression="" defaultValue="&quot;T&quot;" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Int32&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="eff" value="eff $NAME$ {&#10;    def $OP$($PARAMS$): $TYPE$&#10;}$END$"
+              description="Flix effect" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;E&quot;" alwaysStopAt="true"/>
+        <variable name="OP" expression="" defaultValue="&quot;op&quot;" alwaysStopAt="true"/>
+        <variable name="PARAMS" expression="" defaultValue="" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Unit&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="test" value="@Test&#10;def $NAME$(): Bool = $END$"
+              description="Flix test" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;test01&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+</templateSet>

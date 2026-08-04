@@ -74,15 +74,12 @@ class FlixTaskRunConfigurationTest : BasePlatformTestCase() {
         assertEquals(FlixTask.TEST, FlixRunTestsAction().task)
     }
 
-    fun testTheMenuOffersEveryTaskAndNothingElse() {
+    fun testTheMenuOffersEveryTaskInOrder() {
         // Built from FlixTask rather than declared, so the menu and the run configuration cannot
-        // come to offer different sets of subcommands.
-        val children = FlixTaskActionGroup().getChildren(null)
-        assertEquals(FlixTask.values().size, children.size)
-        assertEquals(
-            FlixTask.values().map { it.title() },
-            children.map { (it as FlixTaskAction).task.title() },
-        )
+        // come to offer different sets of subcommands. Filtered rather than counted, because other
+        // modules add to this group -- Show AST comes from backend.
+        val tasks = FlixTaskActionGroup().getChildren(null).filterIsInstance<FlixTaskAction>()
+        assertEquals(FlixTask.values().map { it.title() }, tasks.map { it.task.title() })
     }
 
     private fun <T : Throwable> assertThrows(type: Class<T>, body: () -> Unit): T {

@@ -1,6 +1,7 @@
 package dev.wstein.flixplugin
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
+import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.lang.Language
 import com.intellij.lang.LanguageParserDefinitions
@@ -129,6 +130,19 @@ class FlixAssembledPluginTest : BasePlatformTestCase() {
                 ActionManager.getInstance().getAction(id),
             )
         }
+    }
+
+    fun testShowAstIsInTheFlixMenu() {
+        // The group is registered from `language` and this action from `backend`, which is the only
+        // module that can talk to the language server. The platform's <add-to-group> calls
+        // DefaultActionGroup.add and, against any other group type, logs an error and drops the
+        // action -- so the menu would look right in the descriptor and be missing an item.
+        val action = ActionManager.getInstance().getAction("Flix.ShowAst")
+        assertNotNull("Show AST is not registered", action)
+
+        val group = ActionManager.getInstance().getAction("Flix.Tasks") as ActionGroup
+        val children = group.getChildren(null).map { ActionManager.getInstance().getId(it) }
+        assertTrue("Show AST is registered but not in the Flix menu: $children", children.contains("Flix.ShowAst"))
     }
 
     fun testTheFlixTaskConfigurationTypeIsAvailable() {

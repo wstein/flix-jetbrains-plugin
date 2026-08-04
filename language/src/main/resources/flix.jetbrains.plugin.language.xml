@@ -75,6 +75,17 @@
                 parentId="language"
                 displayName="Flix"
                 instance="org.flixlang.intellij.settings.FlixSettingsConfigurable"/>
+
+        <!-- Declaration scaffolding only. The language server already completes expressions as
+             snippets, `main` and a default effect handler among them; declarations it offers as
+             bare keywords. A template for something the server already snippets would show the same
+             construct twice, from two inventories that drift.
+
+             The contextId here is the string the template file's <option name="..."> refers to:
+             they are matched by text, so a rename in one place disables every template silently. -->
+        <liveTemplateContext contextId="Flix"
+                             implementation="org.flixlang.intellij.editor.FlixTemplateContextType"/>
+        <defaultLiveTemplates file="/liveTemplates/Flix"/>
     </extensions>
 
     <actions>

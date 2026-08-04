@@ -6,9 +6,8 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Editor
-import com.redhat.devtools.lsp4ij.commands.CommandExecutor
-import com.redhat.devtools.lsp4ij.commands.LSPCommandContext
-import org.eclipse.lsp4j.Command
+import com.redhat.devtools.lsp4ij.LanguageServerManager
+import org.eclipse.lsp4j.ExecuteCommandParams
 
 /**
  * Shows the structural diagram of the trait or module at the caret.
@@ -24,6 +23,16 @@ import org.eclipse.lsp4j.Command
  * That is not something the client can be wired around: the handler is LSP4IJ's, and a link it
  * declines never reaches any code of ours. The server therefore withholds the link from clients
  * that cannot follow it, and the same diagram is reached here instead.
+ *
+ * ## Why the server is called directly rather than through `CommandExecutor`
+ *
+ * `CommandExecutor` resolves a server from an explicit `LanguageServerItem` or from a preferred id,
+ * but its failure path dereferences the *item* unconditionally:
+ * `exceptionally(error -> showMessage(languageServer.getServerDefinition()...))`. Reached by id
+ * alone that item is `null`, so any command the server rejects -- asking about a name that is not a
+ * trait or module, the common case -- turns into a `NullPointerException` inside LSP4IJ instead of
+ * a message. Going straight to the server sidesteps that, and keeps the server's own explanation
+ * where it belongs: in this window, rather than in a notification popup.
  *
  * ## How the name is chosen
  *
@@ -50,50 +59,43 @@ class FlixShowDiagramAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val psiFile = e.getData(CommonDataKeys.PSI_FILE) ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
         val itemName = identifierAt(editor) ?: return
 
         val view = FlixDiagramView.getInstance(project)
         view.activate()
 
-        val command = Command("Show Flix Diagram", COMMAND, listOf<Any>(itemName))
-        val response = CommandExecutor.executeCommand(
-            LSPCommandContext(command, psiFile, LSPCommandContext.ExecutedBy.OTHER, editor, null)
-                // Naming the server is not optional. LSP4IJ resolves one from an explicit
-                // LanguageServerItem or from this id and does not discover it from the file, so
-                // without it the request is never sent and the command merely looks unsupported.
-                .setPreferredLanguageServerId(SERVER_ID)
-                // The server reports "no such item" as a failed request, which is information for
-                // this window rather than something to interrupt the user with.
-                .setShowNotificationError(false),
-        )
-
-        if (!response.exists()) {
-            view.showMessage(
-                "No '$SERVER_ID' is running, so the diagram could not be requested. " +
-                    "Open a Flix file to start the language server, then try again.",
-            )
-            return
-        }
-
-        val pending = response.response()
-        if (pending == null) {
-            view.showMessage("The Flix language server accepted '$COMMAND' but returned nothing.")
-            return
-        }
-
-        pending.whenComplete { result, error ->
-            ApplicationManager.getApplication().invokeLater {
+        val params = ExecuteCommandParams(COMMAND, listOf<Any>(itemName))
+        LanguageServerManager.getInstance(project).getLanguageServer(SERVER_ID)
+            .whenComplete { item, lookupError ->
                 when {
-                    error != null -> view.showMessage(rootCauseMessage(error))
-                    result is String && result.contains("<svg") -> view.showDiagram(result)
-                    // An item that exists but has nothing to draw comes back as the explanation.
-                    result is String -> view.showMessage(result)
-                    else -> view.showMessage("No diagram for '$itemName'.")
+                    lookupError != null -> show(view) { view.showMessage(rootCauseMessage(lookupError)) }
+                    item == null -> show(view) {
+                        view.showMessage(
+                            "No '$SERVER_ID' is running, so the diagram could not be requested. " +
+                                "Open a Flix file to start the language server, then try again.",
+                        )
+                    }
+                    else -> item.server.workspaceService.executeCommand(params)
+                        .whenComplete { result, error ->
+                            show(view) {
+                                when {
+                                    error != null -> view.showMessage(rootCauseMessage(error))
+                                    result is String && result.contains("<svg") -> view.showDiagram(result)
+                                    // An item that exists but has nothing to draw comes back as
+                                    // the explanation rather than as a failure.
+                                    result is String -> view.showMessage(result)
+                                    else -> view.showMessage("No diagram for '$itemName'.")
+                                }
+                            }
+                        }
                 }
             }
-        }
+    }
+
+    /** Runs [body] on the EDT; these callbacks complete on whichever thread the server replied on. */
+    private fun show(view: FlixDiagramView, body: () -> Unit) {
+        ApplicationManager.getApplication().invokeLater(body)
     }
 
     /**

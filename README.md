@@ -1,5 +1,10 @@
 # Flix (IntelliJ Plugin)
 
+[![Build](https://github.com/wstein/flix-jetbrains-plugin/actions/workflows/build.yml/badge.svg)](https://github.com/wstein/flix-jetbrains-plugin/actions/workflows/build.yml)
+[![Code Inspection](https://github.com/wstein/flix-jetbrains-plugin/actions/workflows/code-inspection.yml/badge.svg)](https://github.com/wstein/flix-jetbrains-plugin/actions/workflows/code-inspection.yml)
+[![IntelliJ Platform](https://img.shields.io/badge/IntelliJ%20Platform-2026.1.3-000000?logo=intellijidea&logoColor=white)](https://plugins.jetbrains.com/docs/intellij/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Flix language support and breakpoint debugging for the
 [wstein/flix-fork](https://github.com/wstein/flix-fork) Flix compiler build, for IntelliJ-based
 IDEs.

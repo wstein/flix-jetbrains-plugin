@@ -112,6 +112,12 @@ class FlixLiveTemplateSyntaxTest : ParsingTestCase("", "flix", FlixParserDefinit
             "instance" to TOP_LEVEL,
             "eff" to TOP_LEVEL,
             "test" to TOP_LEVEL,
+            "region" to IN_A_FUNCTION,
+            "try" to IN_A_FUNCTION,
+            "run" to IN_A_FUNCTION,
+            "foreach" to IN_A_FUNCTION,
+            "rules" to IN_A_FUNCTION,
+            "query" to IN_A_FUNCTION,
         )
     }
 }

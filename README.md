@@ -49,10 +49,14 @@ and every other JVM language in the same process.
   and which no other client speaks — the same shape the diagram was in. The server now serves it as
   a real `workspace/executeCommand` returning the directory it wrote, and the action opens what is
   in it.
-- **Live templates**: declaration scaffolding — `def`, `pdef`, `mod`, `enum`, `struct`, `trait`,
-  `instance`, `eff`, `test`. Deliberately *only* declarations: the language server already completes
-  expressions as snippets, `main` among them, and a template for something it already offers would
-  put one construct in the list twice from two inventories that drift.
+- **Live templates**: fifteen — declarations (`def`, `pdef`, `mod`, `enum`, `struct`, `trait`,
+  `instance`, `eff`, `test`) and expression scaffolding (`region`, `try`, `run`, `foreach`, `rules`,
+  `query`). Deliberately *not* anything the server derives from a symbol: its two hand-written
+  snippets are `main` and a default effect handler, and `MagicMatchCompleter` expands `x.match` into
+  one case per constructor of `x`'s enum, which no template could do. Every expansion is **parsed by
+  this plugin's own parser** in `FlixLiveTemplateSyntaxTest` rather than reviewed — which caught the
+  `def` template expanding to `def f(): Unit =`, leaving the buffer unparseable until the body was
+  typed, and the language server reporting that as errors.
 - **Settings**: *Settings > Languages & Frameworks > Flix* — extra JVM arguments and extra Flix
   arguments, matching the VS Code extension's `flix.extraJvmArgs` and `flix.extraFlixArgs`. They
   reach the language server and every task, in the two positions the compiler's argument parser

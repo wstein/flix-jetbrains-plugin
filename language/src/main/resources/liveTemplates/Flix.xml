@@ -89,4 +89,57 @@
         <variable name="BODY" expression="" defaultValue="&quot;true&quot;" alwaysStopAt="true"/>
         <context><option name="Flix" value="true"/></context>
     </template>
+    <!-- Expression scaffolding. The server's two hand-written snippets are `main` and a default
+         effect handler; everything else it snippets is derived from a symbol, which is what a
+         template cannot do and does not try to. What is left is the shape of a construct, and these
+         are the ones with enough punctuation to be worth not typing. -->
+
+    <template name="region" value="region $NAME$ {&#10;    $BODY$&#10;}"
+              description="Flix region" toReformat="false" toShortenFQNames="false">
+        <variable name="NAME" expression="" defaultValue="&quot;rc&quot;" alwaysStopAt="true"/>
+        <variable name="BODY" expression="" defaultValue="&quot;???&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="try" value="try {&#10;    $BODY$&#10;} catch {&#10;    case $NAME$: $TYPE$ =&gt; $HANDLER$&#10;}"
+              description="Flix try/catch" toReformat="false" toShortenFQNames="false">
+        <variable name="BODY" expression="" defaultValue="&quot;???&quot;" alwaysStopAt="true"/>
+        <variable name="NAME" expression="" defaultValue="&quot;e&quot;" alwaysStopAt="true"/>
+        <variable name="TYPE" expression="" defaultValue="&quot;Exception&quot;" alwaysStopAt="true"/>
+        <variable name="HANDLER" expression="" defaultValue="&quot;???&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="run" value="run {&#10;    $BODY$&#10;} with handler $EFFECT$ {&#10;    def $OP$($PARAMS$, _k) = $HANDLER$&#10;}"
+              description="Flix effect handler" toReformat="false" toShortenFQNames="false">
+        <variable name="BODY" expression="" defaultValue="&quot;???&quot;" alwaysStopAt="true"/>
+        <variable name="EFFECT" expression="" defaultValue="&quot;E&quot;" alwaysStopAt="true"/>
+        <variable name="OP" expression="" defaultValue="&quot;op&quot;" alwaysStopAt="true"/>
+        <variable name="PARAMS" expression="" defaultValue="&quot;x&quot;" alwaysStopAt="true"/>
+        <variable name="HANDLER" expression="" defaultValue="&quot;???&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="foreach" value="foreach ($BINDER$ &lt;- $SOURCE$) {&#10;    $BODY$&#10;}"
+              description="Flix foreach loop" toReformat="false" toShortenFQNames="false">
+        <variable name="BINDER" expression="" defaultValue="&quot;x&quot;" alwaysStopAt="true"/>
+        <variable name="SOURCE" expression="" defaultValue="&quot;xs&quot;" alwaysStopAt="true"/>
+        <variable name="BODY" expression="" defaultValue="&quot;???&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="rules" value="#{&#10;    $HEAD$ :- $BODY$.&#10;}"
+              description="Flix Datalog constraints" toReformat="false" toShortenFQNames="false">
+        <variable name="HEAD" expression="" defaultValue="&quot;Path(x, y)&quot;" alwaysStopAt="true"/>
+        <variable name="BODY" expression="" defaultValue="&quot;Edge(x, y)&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
+
+    <template name="query" value="query $FACTS$&#10;    select $RESULT$&#10;    from $PREDICATE$"
+              description="Flix Datalog query" toReformat="false" toShortenFQNames="false">
+        <variable name="FACTS" expression="" defaultValue="&quot;edges&quot;" alwaysStopAt="true"/>
+        <variable name="RESULT" expression="" defaultValue="&quot;(x, y)&quot;" alwaysStopAt="true"/>
+        <variable name="PREDICATE" expression="" defaultValue="&quot;Path(x, y)&quot;" alwaysStopAt="true"/>
+        <context><option name="Flix" value="true"/></context>
+    </template>
 </templateSet>

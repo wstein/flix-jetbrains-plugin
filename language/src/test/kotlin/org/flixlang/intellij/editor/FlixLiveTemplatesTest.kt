@@ -56,13 +56,15 @@ class FlixLiveTemplatesTest {
     }
 
     @Test
-    fun `every template describes itself and has somewhere to leave the caret`() {
+    fun `every template describes itself and stops somewhere for the user to type`() {
         templates.forEach { template ->
             val name = template.getAttribute("name")
             assertFalse("$name has no description", template.getAttribute("description").isBlank())
-            // Without $END$ the caret lands after the whole expansion, outside the block a
-            // declaration template just opened.
-            assertTrue("$name does not say where the caret goes", template.getAttribute("value").contains("\$END\$"))
+            // A template with no stop expands and hands the caret back at the end, which for a
+            // declaration means outside the block it just opened. Whether the expansion is *valid*
+            // is FlixLiveTemplateSyntaxTest's question, not this one.
+            val stops = template.getElementsByTagName("variable").length
+            assertTrue("$name has nothing for the user to fill in", stops > 0)
         }
     }
 

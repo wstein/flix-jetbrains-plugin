@@ -35,10 +35,13 @@ public class FlixTaskTest {
     /** `flix --help` prints one `Command: <name>` line per subcommand. */
     private static final Pattern COMMAND_LINE = Pattern.compile("^Command: (\\S+)", Pattern.MULTILINE);
 
+    /** `Main.scala` declares each subcommand as `cmd("<name>")`. */
+    private static final Pattern COMMAND_DECLARATION = Pattern.compile("cmd\\(\"([^\"]+)\"\\)");
+
     @Test
     public void everyTaskNamesACommandTheCompilerAccepts() throws IOException, InterruptedException {
         List<String> offered = commandNames();
-        Set<String> accepted = commandsFromCompilerHelp();
+        Set<String> accepted = commandsTheCompilerDefines();
 
         List<String> unknown = new ArrayList<>(offered);
         unknown.removeAll(accepted);
@@ -117,20 +120,63 @@ public class FlixTaskTest {
     }
 
     /**
-     * The subcommands the resolved compiler advertises.
+     * The subcommands the compiler defines, from whichever of its two forms is present.
      *
-     * <p>Skipped without a jar, which is how this repository treats every gate that needs a
-     * compiler — and failed rather than skipped under {@code CI}, where a skip is indistinguishable
-     * from a pass.
+     * <p>A Flix source checkout first, because that is what CI has: the workflow clones
+     * {@code flix/flix} at {@code flixCorpusCommit} for the parser corpus gate and passes it as
+     * {@code -PflixCorpusDir}. {@code Main.scala} is where the subcommands are declared, so reading
+     * it is reading the same line the argument parser is built from.
+     *
+     * <p>A built jar otherwise, since {@code flix --help} prints one {@code Command:} line per
+     * subcommand and a developer working against a jar may have no checkout.
+     *
+     * <p>Skipped when neither exists — and failed rather than skipped under {@code CI}, where a
+     * skip is indistinguishable from a pass. An earlier version of this asserted that under CI a
+     * *jar* must exist, which was simply wrong: CI provides a source checkout and has never built
+     * a compiler, so the gate failed the build on every run.
      */
+    private static Set<String> commandsTheCompilerDefines() throws IOException, InterruptedException {
+        Set<String> fromSource = commandsFromMainScala();
+        if (fromSource != null) {
+            return fromSource;
+        }
+        Set<String> fromJar = commandsFromCompilerHelp();
+        if (fromJar != null) {
+            return fromJar;
+        }
+        assertFalse(
+                "CI must run this gate. It needs either the Flix checkout the corpus gate already "
+                        + "clones (-PflixCorpusDir) or a compiler jar (FLIX_JAR).",
+                System.getenv("CI") != null);
+        assumeTrue("no Flix checkout and no compiler jar; set FLIX_DIR or FLIX_JAR to run this", false);
+        return Set.of();
+    }
+
+    /** Every {@code cmd("…")} in the checkout's {@code Main.scala}, or {@code null} if absent. */
+    private static Set<String> commandsFromMainScala() throws IOException {
+        Path checkout = locateCheckout();
+        if (checkout == null) {
+            return null;
+        }
+        Path main = checkout.resolve("main/src/ca/uwaterloo/flix/Main.scala");
+        if (!Files.isRegularFile(main)) {
+            return null;
+        }
+        Set<String> commands = new HashSet<>();
+        Matcher matcher = COMMAND_DECLARATION.matcher(Files.readString(main));
+        while (matcher.find()) {
+            commands.add(matcher.group(1));
+        }
+        assertFalse("no cmd(\"…\") declarations in " + main, commands.isEmpty());
+        return commands;
+    }
+
+    /** Every {@code Command:} line of {@code flix --help}, or {@code null} without a jar. */
     private static Set<String> commandsFromCompilerHelp() throws IOException, InterruptedException {
         Path jar = locateJar();
-        boolean ci = System.getenv("CI") != null;
         if (jar == null) {
-            assertFalse("CI must run this gate: set FLIX_JAR or place flix.jar in the repository root", ci);
-            assumeTrue("no Flix compiler jar; set FLIX_JAR to run this", false);
+            return null;
         }
-
         Process process = new ProcessBuilder("java", "-jar", jar.toString(), "--help")
                 .redirectErrorStream(true)
                 .start();
@@ -144,6 +190,20 @@ public class FlixTaskTest {
         }
         assertFalse("`flix --help` listed no commands; output was:\n" + help, commands.isEmpty());
         return commands;
+    }
+
+    /**
+     * The Flix source checkout, located the way the corpus gate locates it.
+     *
+     * <p>The same two knobs, so one setting serves both gates rather than each having its own.
+     */
+    private static Path locateCheckout() {
+        for (String candidate : new String[]{System.getProperty("flixCorpusDir"), System.getenv("FLIX_DIR")}) {
+            if (candidate != null && !candidate.isBlank() && new File(candidate.trim()).isDirectory()) {
+                return Path.of(candidate.trim());
+            }
+        }
+        return null;
     }
 
     /** {@code $FLIX_JAR}, else {@code flix.jar} beside the repository, else {@code null}. */

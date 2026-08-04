@@ -5,7 +5,7 @@ language layer instead of hand-porting the Flix compiler's `Lexer.scala` and `Pa
 
 - **Adopted revision:** `intellij-flix` @ `b0f93e3ccd94c7583f8bd85961cd2b3bf581d028`
   (imported tree `375dcc6`, plus the grammar fixes below)
-- **Corpus revision:** `flix/flix` @ `cc7c54950c4de214aa5777fd23ba53a59781c608` (`flixCorpusCommit`)
+- **Corpus revision:** `flix/flix` @ `318bb51a953c58a8785251a80fad8aea005f729f` (`flixCorpusCommit`)
 - **Harness:** `FlixCorpusTest`, which also writes `build/reports/flix-parser-corpus.json`
 
 ## Result

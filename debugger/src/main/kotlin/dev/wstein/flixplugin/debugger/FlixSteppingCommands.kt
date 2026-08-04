@@ -62,10 +62,49 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
         }.getOrNull()
 
         val key = FlixDefinitionScope.keyOf(position)
-        process.putUserData(STEP_OVER_SCOPE, key?.let(::StepOverScope))
-        LOG.debug(if (key == null) "step over from outside a Flix def" else "step over within $key")
+        val scope = key?.let { StepOverScope(it, callerKeyOf(process, context), depthOf(context)) }
+        process.putUserData(STEP_OVER_SCOPE, scope)
+        LOG.debug(
+            when {
+                key == null -> "step over from outside a Flix def"
+                scope?.caller == null -> "step over within $key, no Flix caller to return to"
+                else -> "step over within $key, returning to ${scope.caller} above depth ${scope.depth}"
+            },
+        )
         return null
     }
+
+    /**
+     * The Flix definition of the frame that called the one being stepped, or `null` if there is
+     * none.
+     *
+     * Recorded so the step can stop when the stepped function *returns*. Stepping over the last
+     * line of a function has nowhere to go inside that function, and the destination the user
+     * expects is the line that called it -- which is a different definition, and so was passed
+     * through by the scope rule alone. The step then ran on until a breakpoint caught it.
+     *
+     * `null` for a continuation reached through the trampoline, whose JVM caller is
+     * `dev.flix.runtime`, not Flix source. That is the conservative answer: with no caller recorded
+     * the return rule never fires and CPS stepping behaves exactly as before.
+     */
+    private fun callerKeyOf(process: DebugProcessImpl, context: SuspendContextImpl): String? {
+        val caller = runCatching { context.thread?.frame(1) }.getOrNull() ?: return null
+        val position = runCatching {
+            caller.location()?.let { process.positionManager.getSourcePosition(it) }
+        }.getOrNull()
+        return FlixDefinitionScope.keyOf(position)
+    }
+
+    /**
+     * How deep the stack is where the step begins, or [UNKNOWN_DEPTH] if the VM will not say.
+     *
+     * Paired with the caller so that arriving in the caller's definition is only accepted as a
+     * return when the stack is actually shallower. Without it, a call *into* the caller's
+     * definition -- mutual recursion -- would read as a return and stop a Step Over inside a nested
+     * call, which is the one thing it must not do.
+     */
+    private fun depthOf(context: SuspendContextImpl): Int =
+        runCatching { context.thread?.frameCount() }.getOrNull() ?: UNKNOWN_DEPTH
 
     /**
      * Step Into records no scope, so the filter stops at the first Flix line it reaches.
@@ -104,7 +143,11 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
      * Mutable without synchronization on purpose: every access happens on the debugger manager
      * thread, which is single-threaded, and the platform asserts as much.
      */
-    internal class StepOverScope(val key: String) {
+    internal class StepOverScope(
+        val key: String,
+        val caller: String? = null,
+        val depth: Int = UNKNOWN_DEPTH,
+    ) {
         private var remaining = MAX_INTERMEDIATE_STOPS
 
         /** Spends one unit of budget; `false` once it is gone. */
@@ -113,6 +156,25 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
             remaining--
             return true
         }
+
+        /**
+         * Whether being at [here] with the stack [currentDepth] frames deep means the stepped
+         * function has returned.
+         *
+         * Both halves are required. The definition alone cannot tell a return from a call into the
+         * same definition; the depth alone cannot be trusted, because CPS puts successive Flix
+         * lines at the same JVM depth and the trampoline moves it for reasons that have nothing to
+         * do with the source. Together they identify a return and nothing else.
+         *
+         * An unknown depth on either side declines rather than guesses -- the step then behaves as
+         * it did before this rule existed.
+         */
+        fun hasReturnedTo(here: String?, currentDepth: Int): Boolean =
+            here != null &&
+                here == caller &&
+                depth != UNKNOWN_DEPTH &&
+                currentDepth != UNKNOWN_DEPTH &&
+                currentDepth < depth
     }
 
     internal companion object {
@@ -124,6 +186,9 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
          * policy knob.
          */
         private const val MAX_INTERMEDIATE_STOPS = 5_000
+
+        /** Stands for a stack depth the VM would not report; see [StepOverScope.hasReturnedTo]. */
+        internal const val UNKNOWN_DEPTH = -1
 
         /** Internal rather than private so a test can set up the state the platform would. */
         internal val STEP_OVER_SCOPE = Key.create<StepOverScope?>("flix.stepOverScope")

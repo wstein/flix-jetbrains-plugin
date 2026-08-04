@@ -79,6 +79,56 @@ class FlixSteppingFilterTest {
         )
     }
 
+    // --- returning to the caller -----------------------------------------------------------------
+    //
+    // Stepping over the *last* line of a function has nowhere to go inside that function, so the
+    // destination is the line that called it. That is a different definition, which the scope rule
+    // alone passed through -- the step then ran on to the next breakpoint. Observed live: a Step
+    // Over at `getSystemTime` was logged as `passing through Hello.flix#328` (`main`, the caller)
+    // and stopped only at an unrelated breakpoint.
+    //
+    // The rule is driven directly because deciding it through isApplicable needs a resolved
+    // definition on both sides, which needs PSI; FlixDefinitionScopeTest covers that half.
+
+    private val steppedIn = FlixSteppingCommands.StepOverScope("Hello.flix#1870", "Hello.flix#328", depth = 12)
+
+    @Test
+    fun `stops in the caller once the stepped function has returned`() {
+        assertTrue(steppedIn.hasReturnedTo("Hello.flix#328", currentDepth = 11))
+    }
+
+    @Test
+    fun `does not mistake a call into the caller's definition for a return`() {
+        // Mutual recursion: the caller's definition is reached again, but deeper. Stopping here
+        // would halt a Step Over inside a nested call.
+        assertFalse(steppedIn.hasReturnedTo("Hello.flix#328", currentDepth = 13))
+        assertFalse(steppedIn.hasReturnedTo("Hello.flix#328", currentDepth = 12))
+    }
+
+    @Test
+    fun `only the recorded caller counts as a return`() {
+        assertFalse(steppedIn.hasReturnedTo("Hello.flix#999", currentDepth = 11))
+        assertFalse(steppedIn.hasReturnedTo(null, currentDepth = 11))
+    }
+
+    @Test
+    fun `never fires when there was no Flix caller to return to`() {
+        // A continuation reached through the trampoline: its JVM caller is dev.flix.runtime, not
+        // Flix source. With no caller recorded, CPS stepping behaves exactly as it did before.
+        val trampolined = FlixSteppingCommands.StepOverScope("Hello.flix#1870", caller = null, depth = 12)
+        assertFalse(trampolined.hasReturnedTo("Hello.flix#328", currentDepth = 11))
+        assertFalse(trampolined.hasReturnedTo(null, currentDepth = 11))
+    }
+
+    @Test
+    fun `declines rather than guesses when a stack depth is unknown`() {
+        val noDepth = FlixSteppingCommands.StepOverScope("Hello.flix#1870", "Hello.flix#328")
+        assertFalse(noDepth.hasReturnedTo("Hello.flix#328", currentDepth = 11))
+        assertFalse(
+            steppedIn.hasReturnedTo("Hello.flix#328", FlixSteppingCommands.UNKNOWN_DEPTH),
+        )
+    }
+
     // --- the step it asks for ------------------------------------------------------------------
 
     @Test

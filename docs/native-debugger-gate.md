@@ -565,14 +565,17 @@ Three pieces, all on public extension points:
 
 | Piece | Role |
 | --- | --- |
-| `FlixSteppingListener` (`debugger.steppingListener`) | `beforeSteppingStarted` is the one point that knows both the chosen action and the position it was chosen from. On Step Over it records the enclosing definition; every other action clears it. |
+| `FlixSteppingCommands` (`debugger.jvmSteppingCommandProvider`) | `getStepOverCommand` is the one point that knows both the chosen action and the position it was chosen from. On Step Over it records the enclosing definition, the caller's definition and the stack depth; every other action clears it. |
 | `FlixDefinitionScope` | Answers which `def` a position sits in, from the PSI. Identity is file + declaration start offset, not name — two `def`s in different `mod`s can share a name. |
-| `FlixSteppingFilter` | Resumes the step whenever it surfaces in a *different* definition. Step Into records no scope, so it still stops at the first Flix line, unchanged. |
+| `FlixSteppingFilter` | Resumes the step whenever it surfaces in a *different* definition, except the recorded caller once the stack is shallower than where the step began. Step Into records no scope, so it still stops at the first Flix line, unchanged. |
 
-Two limits, both inherent to a source-level notion rather than defects:
+One limit, inherent to a source-level notion rather than a defect:
 
-- **Recursion is not distinguished.** A recursive call re-enters the same definition, so a step over
-  one stops inside it. Separating those needs a per-activation identity, which is a runtime notion.
+- **Self-recursion is not distinguished.** A recursive call re-enters the same definition, so a step
+  over one stops inside it. Separating those needs a per-activation identity, which is a runtime
+  notion. *Mutual* recursion is distinguished, because returning to the caller is only accepted when
+  the stack is shallower than where the step began — a call back into the caller's definition is
+  deeper, and is stepped over.
 - **Inlined code is attributed to where it was written.** The fork's inliner keeps the callee's own
   `SourceLocation` when substituting a body (`Inliner.scala:204` passes the call-site `loc` only for
   the binding it introduces), so inlined library code still reports its own file and is correctly

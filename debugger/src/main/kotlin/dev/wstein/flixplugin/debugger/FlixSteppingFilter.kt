@@ -113,11 +113,21 @@ class FlixSteppingFilter : ExtraSteppingFilter {
      * and clears it for every other action -- so Step Into keeps stopping at the first Flix line it
      * reaches, which is what it should do.
      *
-     * The destination is stated positively: **stop only in the stepped definition.** Anywhere else
-     * is somewhere the step is passing through, and that includes frames with no Flix definition at
-     * all. Reading "no Flix definition here" as "stop" was the first version of this, and it halted
-     * a Step Over inside `Greeter.java` the moment the stepped line called into Java -- the one
-     * thing Step Over most obviously must not do.
+     * The destination is stated positively: **stop in the stepped definition, or in the caller once
+     * the stepped function has returned.** Anywhere else is somewhere the step is passing through,
+     * and that includes frames with no Flix definition at all. Reading "no Flix definition here" as
+     * "stop" was the first version of this, and it halted a Step Over inside `Greeter.java` the
+     * moment the stepped line called into Java -- the one thing Step Over most obviously must not
+     * do.
+     *
+     * The caller half is not symmetry for its own sake. Stepping over the *last* line of a function
+     * has nowhere to go inside that function, so the only destination left is the line that called
+     * it -- and that is a different definition, which the scope rule alone passed through. The step
+     * then ran on until the budget expired or a breakpoint caught it, which is what a user sees as
+     * "F8 ignored my function and jumped to the next breakpoint".
+     *
+     * A return is only accepted when the stack is genuinely shallower than where the step began;
+     * see [FlixSteppingCommands.StepOverScope.hasReturnedTo] for why both halves are needed.
      *
      * Frames belonging to other languages are only skipped *while a Flix Step Over is running*,
      * which the user started from a Flix line. Their breakpoints are untouched: this decides where
@@ -131,6 +141,14 @@ class FlixSteppingFilter : ExtraSteppingFilter {
         val here = FlixDefinitionScope.keyOf(position)
         if (here == scope.key) {
             if (LOG.isDebugEnabled) LOG.debug("arrived back in ${scope.key}, stopping")
+            return false
+        }
+
+        // Checked only once the definition already matches the caller, because reading the stack
+        // depth costs a JDWP round trip and this runs at every intermediate stop.
+        if (here == scope.caller && scope.hasReturnedTo(here, depthOf(context))) {
+            if (LOG.isDebugEnabled) LOG.debug("${scope.key} returned to $here, stopping")
+            FlixSteppingCommands.clearScope(process)
             return false
         }
 
@@ -153,6 +171,11 @@ class FlixSteppingFilter : ExtraSteppingFilter {
 
     private fun locationOf(context: SuspendContext?): Location? =
         runCatching { context?.frameProxy?.location() }.getOrNull()
+
+    /** The current stack depth, or [FlixSteppingCommands.UNKNOWN_DEPTH] if the VM will not say. */
+    private fun depthOf(context: SuspendContext?): Int =
+        runCatching { context?.thread?.frameCount() }.getOrNull()
+            ?: FlixSteppingCommands.UNKNOWN_DEPTH
 
     private companion object {
         /** See [FlixPositionManager]; the same `#dev.wstein.flixplugin.debugger` category. */

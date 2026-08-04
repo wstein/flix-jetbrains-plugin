@@ -88,10 +88,13 @@ counterintuitive and were each learned from a failure:
    classes each covering part of it. A class lacking the line reports "no executable code", and
    `RequestManagerImpl.setInvalid` makes that stick if it lands first.
 
-`FlixSteppingListener` + `FlixSteppingFilter` implement Step Over. CPS invokes every continuation
+`FlixSteppingCommands` + `FlixSteppingFilter` implement Step Over. CPS invokes every continuation
 from one trampoline loop, so successive Flix lines sit at the same JVM depth — JDI's depth-based
 Step Over cannot express "stay in this function", so the definition is captured at step start and
-carried.
+carried. The **caller's** definition and the stack depth are captured with it: stepping over a
+function's *last* line has nowhere to go inside that function, so the only destination left is the
+line that called it, and the step stops there once the stack is genuinely shallower. Without that,
+Step Over ran past the caller to the next breakpoint.
 
 The run configuration must satisfy **two** `GenericDebuggerRunner` gates on **different objects**:
 `ModuleRunProfile` on the configuration (`canRun`) and `RemoteConnectionCreator` on the *state*

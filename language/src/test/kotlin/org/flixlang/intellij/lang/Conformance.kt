@@ -40,58 +40,67 @@ object Conformance {
     data class Divergence(val path: String, val expected: String, val actual: String, val reason: String)
 
     /**
-     * Splices a grouping node's children into its parent, at any arity -- stronger than elision,
-     * which only fires at arity <= 1. Opt-in per node name; see the projection map's own `flatten`
-     * entries for what qualifies and why.
+     * Removes transparent nodes from a whole tree, bottom-up, as a single fixed point.
+     *
+     * Two rules, applied together rather than in sequence:
+     *  - `splice` -- the node's children replace it in its parent, at any arity. Stronger than
+     *    elision, so it is opt-in per node name and belongs only on pure grouping constructs.
+     *  - `elide` -- dropped when it has no children, replaced by its child when it has one, and
+     *    kept at two or more, since splicing a branching node would discard real structure.
+     *
+     * **Bottom-up, and that is not a detail.** This used to apply the two rules once per level, in
+     * sequence, and a node promoted into a level from below never met the other rule. The canonical
+     * trees contain exactly that shape -- `Type.Type` wrapping an empty `ErrorTree` -- where
+     * splicing the marker leaves the wrapper childless and therefore elidable, which a single pass
+     * cannot see. flix-spec carried the same defect and fixed it by feeding `fixtures/raw` back
+     * through its own comparison; this is the same fix, so the two agree again.
      */
-    private fun applyFlatten(children: List<KTree>, flatten: Set<String>, stats: Stats): List<KTree> =
-        children.flatMap { c ->
-            if (flatten.contains(c.kind)) {
-                stats.inc("flattened")
-                applyFlatten(c.children, flatten, stats)
-            } else {
-                listOf(c)
+    private fun transparent(
+        node: KTree,
+        splice: Set<String>,
+        elide: Set<String>,
+        stats: Stats,
+        spliceCounter: String,
+        elideCounter: String,
+    ): List<KTree> {
+        val kids = node.children.flatMap { transparent(it, splice, elide, stats, spliceCounter, elideCounter) }
+        return when {
+            splice.contains(node.kind) -> {
+                stats.inc(spliceCounter)
+                kids
             }
-        }
-
-    /**
-     * Removes transparent nodes from a child list, used on both sides: `elide` names canonical
-     * wrappers the consumer does not produce, `ignored` names the consumer's own wrappers with no
-     * counterpart in the reference. A transparent node is dropped when empty and replaced by its
-     * child when it has exactly one; two or more children are kept, since splicing them into the
-     * parent would discard real structure. A name belongs in `ignored` only when its canonical
-     * target is also `elide`d -- see `docs/CONFORMANCE.md`'s "`ignored` is not a synonym for
-     * unimportant" for what goes wrong otherwise.
-     */
-    private fun applyElision(children: List<KTree>, elide: Set<String>, stats: Stats, counter: String): List<KTree> {
-        val out = mutableListOf<KTree>()
-        for (start in children) {
-            var current: KTree? = start
-            while (true) {
-                val node = current
-                if (node != null && elide.contains(node.kind) && node.children.size <= 1) {
-                    stats.inc(counter)
-                    current = node.children.firstOrNull()
-                    if (current == null) break
-                } else {
-                    break
-                }
+            elide.contains(node.kind) && kids.size <= 1 -> {
+                stats.inc(elideCounter)
+                kids
             }
-            current?.let { out += it }
+            else -> listOf(KTree(node.kind, kids))
         }
-        return out
     }
+
+    /** Applies transparency while leaving the root alone: it has no parent to be spliced into. */
+    private fun transparentTree(
+        root: KTree,
+        splice: Set<String>,
+        elide: Set<String>,
+        stats: Stats,
+        spliceCounter: String,
+        elideCounter: String,
+    ): KTree =
+        KTree(root.kind, root.children.flatMap { transparent(it, splice, elide, stats, spliceCounter, elideCounter) })
 
     private const val MAX_DIVERGENCES_PER_FIXTURE = 20
 
-    /** Walks both trees in lockstep, appending divergences to `out`. */
+    /**
+     * Walks both trees in lockstep, appending divergences to `out`.
+     *
+     * Both trees arrive with transparency already applied, so this does one job: match kinds and
+     * arity, position by position. Doing the two in one pass is what let the rules interact with
+     * the walk's own recursion and hid the fixed-point defect described on [transparent].
+     */
     private fun compare(
         expected: KTree,
         actual: KTree,
         mapping: Map<String, String>?,
-        ignored: Set<String>,
-        elide: Set<String>,
-        flatten: Set<String>,
         path: String,
         out: MutableList<Divergence>,
         stats: Stats,
@@ -113,21 +122,18 @@ object Conformance {
                 }
             }
 
-        val expChildren = applyElision(expected.children, elide, stats, "elided")
-        val actChildren = applyElision(applyFlatten(actual.children, flatten, stats), ignored, stats, "ignored")
-
         stats.inc("compared")
         if (expected.kind != actKind) {
             out += Divergence(path, expected.kind, actKind, "kind")
             return // subtree shape is meaningless once the kinds disagree
         }
 
-        if (expChildren.size != actChildren.size) {
-            out += Divergence(path, "${expChildren.size} children", "${actChildren.size} children", "arity")
+        if (expected.children.size != actual.children.size) {
+            out += Divergence(path, "${expected.children.size} children", "${actual.children.size} children", "arity")
         }
 
-        expChildren.zip(actChildren).forEachIndexed { i, (e, a) ->
-            compare(e, a, mapping, ignored, elide, flatten, "$path.${expected.kind}[$i]", out, stats)
+        expected.children.zip(actual.children).forEachIndexed { i, (e, a) ->
+            compare(e, a, mapping, "$path.${expected.kind}[$i]", out, stats)
         }
     }
 
@@ -137,7 +143,18 @@ object Conformance {
         val ignored: Set<String>,
         val elide: Set<String>,
         val flatten: Set<String>,
-    )
+        /**
+         * Our own nodes that mark error recovery rather than syntax -- `PsiErrorElement` and the
+         * named `*_ERROR` elements. flix-spec normalises the reference's error vocabulary out of
+         * `fixtures/expected`, so ours has to come out of our side too or every negative fixture
+         * reports a disagreement that is really a modelling difference. Transparency has to be
+         * symmetric; that argument was always true of wrappers and is no different here.
+         */
+        val recoveryMarkers: Set<String>,
+    ) {
+        /** The vocabulary the structural comparison uses: our recovery markers spliced out. */
+        val spliceStructural: Set<String> get() = flatten + recoveryMarkers
+    }
 
     fun loadProjectionMap(json: Json): ProjectionMap =
         ProjectionMap(
@@ -146,6 +163,8 @@ object Conformance {
             ignored = (json.get("ignored")?.asArray() ?: emptyList()).map { it.asString() }.toSet(),
             elide = (json.get("elide")?.asArray() ?: emptyList()).map { it.asString() }.toSet(),
             flatten = (json.get("flatten")?.asArray() ?: emptyList()).map { it.asString() }.toSet(),
+            recoveryMarkers =
+                (json.get("recoveryMarkers")?.asArray() ?: emptyList()).map { it.asString() }.toSet(),
         )
 
     data class Result(
@@ -197,7 +216,11 @@ object Conformance {
                 continue
             }
             val found = mutableListOf<Divergence>()
-            compare(expTree, actTree, map.mappings, map.ignored, map.elide, map.flatten, source, found, stats)
+            // Transparency is applied to whole trees first, as one bottom-up fixed point per side,
+            // and only then compared. flix-spec does exactly this, and the two must agree.
+            val expT = transparentTree(expTree, emptySet(), map.elide, stats, "flattenedCanonical", "elided")
+            val actT = transparentTree(actTree, map.spliceStructural, map.ignored, stats, "flattened", "ignored")
+            compare(expT, actT, map.mappings, source, found, stats)
             if (found.isNotEmpty()) divergences += found.map { source to it } else agreeing++
         }
 

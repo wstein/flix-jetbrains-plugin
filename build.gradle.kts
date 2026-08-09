@@ -99,7 +99,7 @@ dependencies {
     // Gradle needs the launcher on the *runtime* classpath to start a JUnit 5 task at all; without
     // it the task fails before loading a single test, with a message about the platform rather than
     // about the missing artifact.
-    "integrationTestRuntimeOnly"("org.junit.platform:junit-platform-launcher:1.11.4")
+    "integrationTestRuntimeOnly"("org.junit.platform:junit-platform-launcher:6.1.2")
 
     lsp4ijDistribution("com.jetbrains.plugins:com.redhat.devtools.lsp4ij:0.20.1@zip")
 

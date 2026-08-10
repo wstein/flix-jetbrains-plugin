@@ -448,8 +448,15 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     unterminated-string-interpolation.flix's only remaining gap is a bare synthetic Err
          *     token the reference's own lexer emits on EOF-with-open-interpolation-depth, which
          *     this lexer has no equivalent state for.
+         *   - 3, after flix-spec 0.75.2 moved canonical transparency upstream and this map was
+         *     migrated to match. Seven `elide` entries became dead weight, seven `mappings` became
+         *     unreachable -- and an unreachable mapping is not inert, since our node keeps standing
+         *     where the canonical tree now has none -- and our thirteen error elements are declared
+         *     in `recoveryMarkers` instead of merely mapped. 133/136 agree, 1258 nodes compared,
+         *     depth 93%. The port and flix-spec's own comparison now report the same figures on the
+         *     same inputs, which is the check that this file has not drifted again.
          */
-        private const val DIVERGENCE_BASELINE = 7
+        private const val DIVERGENCE_BASELINE = 3
     }
 
     override fun getTestDataPath(): String = ""

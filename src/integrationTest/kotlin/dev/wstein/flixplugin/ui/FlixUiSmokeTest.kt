@@ -56,8 +56,17 @@ class FlixUiSmokeTest {
      * matched a different line would report success for the wrong thing, which is the failure mode
      * this suite has a history of.
      */
-    private val defMainLine = 5
-    private val printlnLine = 7
+    private val defMainLine = 26
+
+    /**
+     * A `println` on the path the fixture actually takes.
+     *
+     * The first `println` in `main` is the "no connections found" branch, which this fixture's
+     * database never reaches -- a breakpoint there binds and is never hit, which the debugger
+     * tests below would report as a session that failed to suspend rather than as a line that
+     * cannot run.
+     */
+    private val printlnLine = 44
 
     @Test
     fun `exactly one run marker sits beside def main`() {

@@ -105,6 +105,10 @@ class FlixPluginDescriptorTest {
                 "fileType",
                 "lang.parserDefinition",
                 "lang.syntaxHighlighterFactory",
+                // Settings > Editor > Color Scheme > Flix. Every colour key falls back to a
+                // platform default, so a key changes nothing on screen until someone picks
+                // one -- and without this page there is nowhere to pick.
+                "colorSettingsPage",
                 "lang.braceMatcher",
                 "lang.commenter",
                 "lang.quoteHandler",
@@ -131,6 +135,7 @@ class FlixPluginDescriptorTest {
             "fileType" to "com.intellij.openapi.fileTypes.LanguageFileType",
             "lang.parserDefinition" to "com.intellij.lang.ParserDefinition",
             "lang.syntaxHighlighterFactory" to "com.intellij.openapi.fileTypes.SyntaxHighlighterFactory",
+            "colorSettingsPage" to "com.intellij.openapi.options.colors.ColorSettingsPage",
             "lang.braceMatcher" to "com.intellij.lang.PairedBraceMatcher",
             "lang.commenter" to "com.intellij.lang.Commenter",
             "lang.quoteHandler" to "com.intellij.codeInsight.editorActions.QuoteHandler",

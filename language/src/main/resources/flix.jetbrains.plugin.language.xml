@@ -39,6 +39,13 @@
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.highlighting.FlixSyntaxHighlighterFactory"/>
 
+        <!-- Settings > Editor > Color Scheme > Flix. Not optional decoration: every key the
+             highlighter defines falls back to a platform default, which is what makes adding one a
+             visual no-op – and also what makes it unreachable without a page. This is what turns
+             a defined key into one a user can actually change. -->
+        <colorSettingsPage
+                implementation="org.flixlang.intellij.lang.highlighting.FlixColorSettingsPage"/>
+
         <lang.braceMatcher
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.editor.FlixBraceMatcher"/>

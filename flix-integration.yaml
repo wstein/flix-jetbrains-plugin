@@ -28,6 +28,10 @@ registrations:
     com.intellij.fileType: org.flixlang.intellij.lang.FlixFileType
     com.intellij.lang.parserDefinition: org.flixlang.intellij.lang.FlixParserDefinition
     com.intellij.lang.syntaxHighlighterFactory: org.flixlang.intellij.lang.highlighting.FlixSyntaxHighlighterFactory
+    # Every colour key falls back to a platform default, so adding one changes nothing on screen.
+    # That is also what makes a key unreachable without this page, which is why the two ship
+    # together rather than the page being a follow-up.
+    com.intellij.colorSettingsPage: org.flixlang.intellij.lang.highlighting.FlixColorSettingsPage
     com.intellij.lang.braceMatcher: org.flixlang.intellij.lang.editor.FlixBraceMatcher
     com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
     com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler

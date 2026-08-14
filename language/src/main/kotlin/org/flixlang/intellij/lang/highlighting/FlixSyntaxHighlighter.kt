@@ -49,6 +49,7 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
             name == "LITERAL_STRING" || name == "LITERAL_CHAR" || name == "LITERAL_REGEX" ||
                 name.startsWith("LITERAL_STRING_INTERPOLATION") -> STRING
             name.startsWith("LITERAL_") -> NUMBER
+            name in CONTROL_FLOW_KEYWORDS -> CONTROL_FLOW_KEYWORD
             name.endsWith("_KW") -> KEYWORD
             name == "ANNOTATION" -> ANNOTATION
             else -> return EMPTY_KEYS
@@ -70,8 +71,48 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
                 .filter { IElementType::class.java.isAssignableFrom(it.type) }
                 .associate { (it.get(null) as IElementType) to it.name }
 
+        /**
+         * The keywords that direct where execution goes next.
+         *
+         * Checked before the general `_KW` rule, so these get their own key while everything else
+         * stays a plain keyword.
+         *
+         * Two deliberate omissions, both because a lexer cannot tell the cases apart and colouring
+         * them here would be confidently wrong:
+         *
+         * - `CASE_KW` introduces a `match` arm (`Flix.bnf:825`), a `catch` arm (`:882`) and a
+         *   `select` arm (`:933`) — but also an `enum` case (`:449`), which is a declaration and
+         *   not control flow at all. One token, and only the PSI knows which.
+         * - `SELECT_KW` is the channel select, and also the projection in `query … select`, which
+         *   is a query clause rather than a branch.
+         *
+         * `IF_KW` is in the set even though it has four grammatical roles of its own, because all
+         * four are conditional: a conditional expression (`:790`), a match guard (`:825`), a
+         * comprehension guard (`:845`) and a Datalog constraint (`:1024`). Telling *those* apart is
+         * a different job from telling control flow from declarations, and it needs the PSI too.
+         */
+        private val CONTROL_FLOW_KEYWORDS = setOf(
+            "IF_KW", "ELSE_KW",
+            "MATCH_KW", "EMATCH_KW", "CHOOSE_KW",
+            "TRY_KW", "CATCH_KW", "THROW_KW",
+            "FOREACH_KW", "YIELD_KW",
+        )
+
         val KEYWORD: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_KEYWORD", DefaultLanguageHighlighterColors.KEYWORD)
+
+        /**
+         * Control flow, falling back to [KEYWORD].
+         *
+         * The fallback is the feature's off switch, and it is off by default on purpose. With no
+         * attributes of its own the key renders exactly as a keyword — identical to what a user
+         * with a correctly working highlighter would already see — while still appearing in the
+         * colour scheme for anyone who wants `if` to read differently from `def`. Shipping a
+         * distinct colour by default would be a change of appearance nobody asked for; shipping the
+         * key costs nothing and makes the choice available.
+         */
+        val CONTROL_FLOW_KEYWORD: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_CONTROL_FLOW_KEYWORD", KEYWORD)
 
         val STRING: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_STRING", DefaultLanguageHighlighterColors.STRING)

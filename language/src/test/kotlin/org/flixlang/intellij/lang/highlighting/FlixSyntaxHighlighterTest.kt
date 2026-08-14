@@ -81,4 +81,61 @@ class FlixSyntaxHighlighterTest : BasePlatformTestCase() {
         assertNull(keyOf("def f(): Unit = ()", "("))
         assertNull(keyOf("def f(): Unit = ()", "="))
     }
+
+    fun testControlFlowKeywordsGetTheirOwnKey() {
+        val source = "def f(x: Int32): String = if (x <= 9) \"small\" else \"large\""
+
+        assertEquals("FLIX_CONTROL_FLOW_KEYWORD", keyOf(source, "if"))
+        assertEquals("FLIX_CONTROL_FLOW_KEYWORD", keyOf(source, "else"))
+    }
+
+    /** A keyword that declares rather than branches stays an ordinary keyword. */
+    fun testDeclarationKeywordsAreNotControlFlow() {
+        val source = "def f(): Unit = ()\nenum E { case A }\ntype alias T = String"
+
+        assertEquals("FLIX_KEYWORD", keyOf(source, "def"))
+        assertEquals("FLIX_KEYWORD", keyOf(source, "enum"))
+    }
+
+    /**
+     * `case` is not control flow, because it is not only a match arm.
+     *
+     * It introduces an `enum` member too (`Flix.bnf:449`), and the lexer cannot tell that from a
+     * `match` arm (`:825`). Colouring it here would light up every enum declaration in the file as
+     * control flow -- confidently, and wrongly.
+     */
+    fun testCaseIsLeftToThePsi() {
+        assertEquals("FLIX_KEYWORD", keyOf("enum E { case A, case B }", "case"))
+        assertEquals("FLIX_KEYWORD", keyOf("match x { case y => y }", "case"))
+    }
+
+    /**
+     * All four `if`s are coloured alike, and that is the intended limit of a lexer.
+     *
+     * `IF_KW` is a conditional expression, a match guard, a comprehension guard and a Datalog
+     * constraint (`Flix.bnf:790`, `:825`, `:845`, `:1024`). They are all conditional, so one key
+     * for the four is right here; telling them apart needs the PSI.
+     */
+    fun testEveryIfIsColouredTheSame() {
+        val conditional = keyOf("def f(): Int32 = if (a) 1 else 2", "if")
+        val matchGuard = keyOf("def f(): Int32 = match x { case y if y > 0 => 1 }", "if")
+        val datalogGuard = keyOf("def f(): Unit = #{ P(x) :- Q(x), if (x > 0). }", "if")
+
+        assertEquals("FLIX_CONTROL_FLOW_KEYWORD", conditional)
+        assertEquals(conditional, matchGuard)
+        assertEquals(conditional, datalogGuard)
+    }
+
+    /**
+     * The control-flow key inherits the keyword key, which is what makes it off by default.
+     *
+     * If it ever gains attributes of its own, every user's `if` changes colour without anyone
+     * choosing that. The fallback is the design, so it is asserted rather than assumed.
+     */
+    fun testControlFlowInheritsKeywordSoItIsInvisibleUntilChosen() {
+        assertEquals(
+            FlixSyntaxHighlighter.KEYWORD,
+            FlixSyntaxHighlighter.CONTROL_FLOW_KEYWORD.fallbackAttributeKey,
+        )
+    }
 }

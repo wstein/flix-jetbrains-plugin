@@ -71,8 +71,13 @@ class FlixSettingsTest : BasePlatformTestCase() {
         configuration.task = FlixTask.TEST
         configuration.arguments = "--github-token thisTask"
 
+        // `--events-json` last, after both: it is not a preference competing with them but the
+        // format the test console reads, so nothing a user sets may displace it.
         assertEquals(
-            listOf("java", "-jar", "/flix.jar", "test", "--github-token", "project", "--github-token", "thisTask"),
+            listOf(
+                "java", "-jar", "/flix.jar", "test",
+                "--github-token", "project", "--github-token", "thisTask", "--events-json",
+            ),
             configuration.commandFor(Path.of("/flix.jar")),
         )
     }

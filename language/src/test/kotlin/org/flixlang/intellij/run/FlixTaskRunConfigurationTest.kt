@@ -68,6 +68,39 @@ class FlixTaskRunConfigurationTest : BasePlatformTestCase() {
         assertTrue("the message must name the override: $message", message.contains("FLIX_JAR"))
     }
 
+    fun testTheTestTaskAsksTheCompilerForEvents() {
+        // Without the flag `flix test` renders a terminal, and the test tree -- which reads JSON --
+        // shows nothing while the console fills with the rendering it cannot parse.
+        val configuration = configuration()
+        configuration.task = FlixTask.TEST
+
+        val command = configuration.commandFor(java.nio.file.Path.of("/tmp/flix.jar"))
+        assertTrue(
+            "the test task must ask for events: $command",
+            command.contains(FlixTaskRunConfiguration.EVENTS_JSON),
+        )
+        // After the subcommand, like every other option: before it, the compiler treats an option as
+        // global and stops parsing the command altogether.
+        assertTrue(
+            "the flag must follow the subcommand: $command",
+            command.indexOf(FlixTaskRunConfiguration.EVENTS_JSON) > command.indexOf(FlixTask.TEST.command()),
+        )
+    }
+
+    fun testNoOtherTaskIsGivenTheEventsFlag() {
+        // `flix build --events-json` is not a command. The flag describes how the *test* runner
+        // reports, so a task that reports nothing must not carry it.
+        val configuration = configuration()
+        for (task in FlixTask.values().filter { it != FlixTask.TEST }) {
+            configuration.task = task
+            val command = configuration.commandFor(java.nio.file.Path.of("/tmp/flix.jar"))
+            assertFalse(
+                "${task.command()} was given the test runner's flag: $command",
+                command.contains(FlixTaskRunConfiguration.EVENTS_JSON),
+            )
+        }
+    }
+
     fun testTheRunTestsLensHandlerRunsTheTestTask() {
         // The lens says "Run Tests"; the action behind it has to be the test task and not, say, the
         // one that happens to be first in the enum.

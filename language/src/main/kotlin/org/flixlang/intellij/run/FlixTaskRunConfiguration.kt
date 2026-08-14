@@ -12,6 +12,8 @@ import com.intellij.execution.process.KillableColoredProcessHandler
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessTerminatedListener
 import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.execution.testframework.sm.SMTestRunnerConnectionUtil
+import com.intellij.execution.ui.ConsoleView
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.util.execution.ParametersListUtil
@@ -93,7 +95,7 @@ class FlixTaskRunConfiguration(
         } catch (e: IllegalStateException) {
             throw ExecutionException(e.message, e)
         }
-        return FlixTaskState(environment, commandFor(jar), workingDirectory())
+        return FlixTaskState(environment, commandFor(jar), workingDirectory(), this)
     }
 
     /**
@@ -113,9 +115,23 @@ class FlixTaskRunConfiguration(
             jar,
             task.command(),
             settings.jvmArguments,
-            settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty()),
+            settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty()) + eventsFlag(),
         )
     }
+
+    /**
+     * `--events-json` for the test task, nothing for any other.
+     *
+     * Added here rather than offered in the arguments field, because it is not a preference: it is
+     * how the console and the process agree to talk. A user who cleared the field would get a run
+     * whose output the test tree cannot read, and the symptom -- an empty tree beside a console
+     * full of JSON -- says nothing about what was removed.
+     *
+     * Last in the list so that it survives whatever the settings or the configuration put before
+     * it. The flag takes no value, so there is nothing for a stray argument to bind to.
+     */
+    private fun eventsFlag(): List<String> =
+        if (task == FlixTask.TEST) listOf(EVENTS_JSON) else emptyList()
 
     private fun resolveJar(): Path = FlixJar.resolve(project.basePath, System.getenv(FlixJar.JAR_ENV))
 
@@ -127,6 +143,7 @@ class FlixTaskRunConfiguration(
         environment: ExecutionEnvironment,
         private val command: List<String>,
         private val workingDirectory: Path,
+        private val configuration: FlixTaskRunConfiguration,
     ) : CommandLineState(environment) {
 
         init {
@@ -134,6 +151,26 @@ class FlixTaskRunConfiguration(
             // console builder rather than added afterwards, because the console is built by the
             // platform and there is no later moment that reliably has it.
             consoleBuilder.addFilter(FlixCompilerOutputFilter(environment.project, workingDirectory))
+        }
+
+        /**
+         * A test tree for `test`, and the ordinary console for everything else.
+         *
+         * `build` and `doc` produce compiler output that [FlixCompilerOutputFilter] makes navigable
+         * and a test tree would have nowhere to put; `test` produces events that the plain console
+         * would show as raw JSON. The two are different renderings because the two commands emit
+         * different things, not because one is nicer.
+         */
+        override fun createConsole(executor: Executor): ConsoleView? {
+            if (configuration.task != FlixTask.TEST) {
+                return super.createConsole(executor)
+            }
+            val properties = FlixTestConsoleProperties(configuration, executor, workingDirectory)
+            // The same link the plain console has. A test's captured output is compiler output too
+            // when the failure is a stack trace, and losing the link inside the tree would make the
+            // tree worse than the console it replaces.
+            properties.addStackTraceFilter(FlixCompilerOutputFilter(environment.project, workingDirectory))
+            return SMTestRunnerConnectionUtil.createConsole(properties)
         }
 
         override fun startProcess(): ProcessHandler {
@@ -146,5 +183,15 @@ class FlixTaskRunConfiguration(
             ProcessTerminatedListener.attach(handler)
             return handler
         }
+    }
+
+    companion object {
+        /**
+         * Makes `flix test` report each test as a line of JSON instead of rendering a terminal.
+         *
+         * Named here rather than spelled inline so the flag the command carries and the flag the
+         * tests assert are one string.
+         */
+        internal const val EVENTS_JSON: String = "--events-json"
     }
 }

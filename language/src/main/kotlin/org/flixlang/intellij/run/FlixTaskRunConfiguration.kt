@@ -107,6 +107,9 @@ class FlixTaskRunConfiguration(
     internal fun commandFor(jar: Path): List<String> {
         val settings = FlixSettings.getInstance(project)
         return FlixLaunchCommand.task(
+            // The JDK a flixw wrapper pinned, else the one on PATH. A pinned compiler on an
+            // unpinned runtime is the half-reproducible state the wrapper exists to prevent.
+            FlixJar.javaExecutable(project.basePath),
             jar,
             task.command(),
             settings.jvmArguments,

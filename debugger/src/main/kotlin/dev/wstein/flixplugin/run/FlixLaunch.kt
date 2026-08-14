@@ -22,16 +22,13 @@ import java.nio.file.Path
  * @param debugPort the JDWP port, or `null` for a plain Run
  */
 internal class FlixLaunch(
+    private val javaExecutable: String,
     private val jar: Path,
     private val entryPoint: String?,
     vmOptions: String? = null,
     programParameters: String? = null,
     val debugPort: Int?,
 ) {
-
-    /** Kept for callers that only need the compiler's default JVM and program arguments. */
-    constructor(jar: Path, entryPoint: String?, debugPort: Int?) :
-        this(jar, entryPoint, null, null, debugPort)
 
     /**
      * The full command, including the JDWP agent when debugging.
@@ -40,8 +37,8 @@ internal class FlixLaunch(
      * attached, or a breakpoint on the first line never gets the chance to bind.
      */
     val command: List<String> = when (debugPort) {
-        null -> FlixLaunchCommand.run(jar, entryPoint)
-        else -> FlixLaunchCommand.debug(jar, entryPoint, debugPort, true)
+        null -> FlixLaunchCommand.run(javaExecutable, jar, entryPoint)
+        else -> FlixLaunchCommand.debug(javaExecutable, jar, entryPoint, debugPort, true)
     }.toMutableList().apply {
         // JVM options must precede `-jar`; the JVM treats everything after it as Flix CLI input.
         addAll(1, ParametersListUtil.parse(vmOptions.orEmpty()))
@@ -72,6 +69,7 @@ internal class FlixLaunch(
          * would hand out two different ports.
          */
         fun of(
+            javaExecutable: String,
             jar: Path,
             entryPoint: String?,
             vmOptions: String? = null,
@@ -97,11 +95,7 @@ internal class FlixLaunch(
                     throw ExecutionException("Could not allocate a port for the debugger", e)
                 }
             }
-            return FlixLaunch(jar, entryPoint, vmOptions, programParameters, port)
+            return FlixLaunch(javaExecutable, jar, entryPoint, vmOptions, programParameters, port)
         }
-
-        /** Kept for callers that only need the compiler's default JVM and program arguments. */
-        fun of(jar: Path, entryPoint: String?, debug: Boolean): FlixLaunch =
-            of(jar, entryPoint, null, null, debug)
     }
 }

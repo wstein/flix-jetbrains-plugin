@@ -145,6 +145,7 @@ class FlixRunConfiguration(
         FlixCommandLineState(
             environment,
             FlixLaunch.of(
+                FlixJar.javaExecutable(project.basePath),
                 resolveJar(),
                 entryPoint,
                 vmOptions,

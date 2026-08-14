@@ -24,12 +24,15 @@ public class FlixLaunchCommandTest {
 
     private static final Path JAR = Path.of("/opt/flix/flix-vendor.jar");
 
+    /** What every launch used before a project could pin one; see {@link FlixJar#javaExecutable}. */
+    private static final String JAVA = FlixJar.DEFAULT_JAVA;
+
     @Test
     public void runIsTheSubcommandAndComesBeforeAnyOption() {
         // The rule that matters most. An option seen before the subcommand is parsed as global and
         // stops command parsing, so `flix --Xdebug run` reports `Unrecognized file extension:
         // 'run'` -- an error that names neither the flag nor the real problem.
-        List<String> command = FlixLaunchCommand.debug(JAR, null);
+        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, null);
         assertEquals("run", command.get(3));
         assertTrue(
                 "every option must follow the subcommand",
@@ -40,13 +43,13 @@ public class FlixLaunchCommandTest {
     public void debugPassesXdebugExactlyOnce() {
         // A second --Xdebug after the subcommand is rejected as `Unknown option --Xdebug`, so a
         // wrapper that injects one and a caller that also passes one combine into a failure.
-        List<String> command = FlixLaunchCommand.debug(JAR, "Main.main");
+        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, "Main.main");
         assertEquals(1, command.stream().filter("--Xdebug"::equals).count());
     }
 
     @Test
     public void runDoesNotPassXdebug() {
-        List<String> command = FlixLaunchCommand.run(JAR, "Main.main");
+        List<String> command = FlixLaunchCommand.run(JAVA, JAR, "Main.main");
         assertTrue("a plain run must not request debug information", !command.contains("--Xdebug"));
         assertTrue(!command.contains("--yes"));
     }
@@ -55,7 +58,7 @@ public class FlixLaunchCommandTest {
     public void theJdwpAgentGoesBeforeTheJarNotAfterIt() {
         // Everything after -jar is the Flix compiler's own argument list, where a JVM option is
         // ignored or rejected. Only the JVM sees arguments placed before it.
-        List<String> command = FlixLaunchCommand.debug(JAR, "Main.main", 5005, true);
+        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, "Main.main", 5005, true);
         int agent = indexOfPrefix(command, "-agentlib:jdwp");
         assertTrue("the agent must be present", agent > 0);
         assertTrue("the agent must precede -jar", agent < command.indexOf("-jar"));
@@ -64,9 +67,9 @@ public class FlixLaunchCommandTest {
 
     @Test
     public void theJdwpArgumentCarriesThePortAndSuspendPolicy() {
-        assertTrue(FlixLaunchCommand.debug(JAR, null, 5005, true).contains(
+        assertTrue(FlixLaunchCommand.debug(JAVA, JAR, null, 5005, true).contains(
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"));
-        assertTrue(FlixLaunchCommand.debug(JAR, null, 6006, false).contains(
+        assertTrue(FlixLaunchCommand.debug(JAVA, JAR, null, 6006, false).contains(
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:6006"));
     }
 
@@ -74,7 +77,7 @@ public class FlixLaunchCommandTest {
     public void theAgentOverloadKeepsEveryRuleOfThePlainDebugCommand() {
         // It delegates rather than rebuilding, so subcommand ordering, a single --Xdebug, --yes and
         // the entry point must all survive -- the rules a second construction path would drift from.
-        List<String> command = FlixLaunchCommand.debug(JAR, "Foo.Bar.demo", 5005, true);
+        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, "Foo.Bar.demo", 5005, true);
         assertEquals(1, command.stream().filter("--Xdebug"::equals).count());
         assertTrue(command.indexOf("--Xdebug") > command.indexOf("run"));
         assertTrue(command.contains("--yes"));
@@ -101,12 +104,12 @@ public class FlixLaunchCommandTest {
     @Test
     public void debugAnswersTheDependencyPrompt() {
         // Nobody is watching a terminal for a launch started from the IDE.
-        assertTrue(FlixLaunchCommand.debug(JAR, null).contains("--yes"));
+        assertTrue(FlixLaunchCommand.debug(JAVA, JAR, null).contains("--yes"));
     }
 
     @Test
     public void passesTheEntryPointWhenGiven() {
-        List<String> command = FlixLaunchCommand.run(JAR, "Foo.Bar.demo");
+        List<String> command = FlixLaunchCommand.run(JAVA, JAR, "Foo.Bar.demo");
         int flag = command.indexOf("--entrypoint");
         assertTrue(flag > 0);
         assertEquals("Foo.Bar.demo", command.get(flag + 1));
@@ -119,7 +122,7 @@ public class FlixLaunchCommandTest {
         for (String blank : new String[]{null, "", "   "}) {
             assertTrue(
                     "blank entry point " + (blank == null ? "null" : "'" + blank + "'"),
-                    !FlixLaunchCommand.run(JAR, blank).contains("--entrypoint"));
+                    !FlixLaunchCommand.run(JAVA, JAR, blank).contains("--entrypoint"));
         }
     }
 

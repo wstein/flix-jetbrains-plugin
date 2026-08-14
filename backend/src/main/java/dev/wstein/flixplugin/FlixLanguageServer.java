@@ -26,10 +26,17 @@ final class FlixLanguageServer extends OSProcessStreamConnectionProvider {
     FlixLanguageServer(Project project) {
         Path jar = FlixFork.resolveJar(project);
         FlixSettings settings = FlixSettings.Companion.getInstance(project);
-        List<String> command =
-                FlixLaunchCommand.task(jar, "lsp", settings.getJvmArguments(), settings.getFlixArguments());
-        GeneralCommandLine commandLine = new GeneralCommandLine(command);
         String basePath = project.getBasePath();
+        // The same JDK the tasks and the debug configuration use. The server analyses the buffers
+        // the editor shows; running it on a different runtime than `flix build` uses is the
+        // editor-versus-terminal disagreement this resolution exists to close.
+        List<String> command = FlixLaunchCommand.task(
+                FlixJar.javaExecutable(basePath),
+                jar,
+                "lsp",
+                settings.getJvmArguments(),
+                settings.getFlixArguments());
+        GeneralCommandLine commandLine = new GeneralCommandLine(command);
         if (basePath != null) {
             commandLine.setWorkDirectory(basePath);
         }

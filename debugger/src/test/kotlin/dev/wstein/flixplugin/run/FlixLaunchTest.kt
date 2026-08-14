@@ -1,5 +1,6 @@
 package dev.wstein.flixplugin.run
 
+import dev.wstein.flixplugin.FlixJar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -21,7 +22,7 @@ class FlixLaunchTest {
 
     @Test
     fun `the connection port is the port on the command line`() {
-        val launch = FlixLaunch(jar, "Main.main", debugPort = 5005)
+        val launch = FlixLaunch(FlixJar.DEFAULT_JAVA, jar, "Main.main", debugPort = 5005)
 
         val onCommandLine = launch.command.single { it.startsWith("-agentlib:jdwp") }
         assertTrue(
@@ -35,12 +36,12 @@ class FlixLaunchTest {
     fun `a debug launch asks the compiler for debug information`() {
         // --Xdebug is not merely a JDWP switch: without it the compiler emits no line numbers for
         // let, calls, if or statement sequences, so breakpoints on those lines can never bind.
-        assertTrue(FlixLaunch(jar, null, debugPort = 5005).command.contains("--Xdebug"))
+        assertTrue(FlixLaunch(FlixJar.DEFAULT_JAVA, jar, null, debugPort = 5005).command.contains("--Xdebug"))
     }
 
     @Test
     fun `a plain run has no agent, no connection and no debug flag`() {
-        val launch = FlixLaunch(jar, "Main.main", debugPort = null)
+        val launch = FlixLaunch(FlixJar.DEFAULT_JAVA, jar, "Main.main", debugPort = null)
 
         assertNull("a Run must not offer the debugger anywhere to attach", launch.remoteConnection)
         assertTrue(launch.command.none { it.startsWith("-agentlib:jdwp") })
@@ -51,7 +52,7 @@ class FlixLaunchTest {
     fun `the debuggee listens and the IDE connects, not the other way round`() {
         // RemoteConnection's `server` flag describes the IDE's role. Reversing it makes the IDE
         // listen while the debuggee also listens, and nothing ever connects to anything.
-        val connection = FlixLaunch(jar, null, debugPort = 5005).remoteConnection!!
+        val connection = FlixLaunch(FlixJar.DEFAULT_JAVA, jar, null, debugPort = 5005).remoteConnection!!
         assertTrue("the IDE must not be the server", !connection.isServerMode)
         assertEquals(FlixLaunch.LOCALHOST, connection.debuggerHostName)
     }
@@ -61,8 +62,12 @@ class FlixLaunchTest {
         // The platform reads the port through two separate callbacks; anything that re-derived it
         // rather than storing it would hand out two different numbers. Two launches must also not
         // collide, since two debug sessions can run at once.
-        val first = FlixLaunch.of(jar, null, null, null, debug = true, inheritedJavaToolOptions = null)
-        val second = FlixLaunch.of(jar, null, null, null, debug = true, inheritedJavaToolOptions = null)
+        val first = FlixLaunch.of(
+            FlixJar.DEFAULT_JAVA, jar, null, null, null, debug = true, inheritedJavaToolOptions = null,
+        )
+        val second = FlixLaunch.of(
+            FlixJar.DEFAULT_JAVA, jar, null, null, null, debug = true, inheritedJavaToolOptions = null,
+        )
 
         assertTrue("a debug launch must allocate a port", first.debugPort != null)
         assertTrue("two concurrent sessions must not share a port", first.debugPort != second.debugPort)
@@ -73,12 +78,16 @@ class FlixLaunchTest {
 
     @Test
     fun `a non-debug launch allocates no port at all`() {
-        assertNull(FlixLaunch.of(jar, null, null, null, debug = false, inheritedJavaToolOptions = null).debugPort)
+        val launch = FlixLaunch.of(
+            FlixJar.DEFAULT_JAVA, jar, null, null, null, debug = false, inheritedJavaToolOptions = null,
+        )
+        assertNull(launch.debugPort)
     }
 
     @Test
     fun `VM and program options are placed on their respective sides of the jar`() {
         val launch = FlixLaunch(
+            FlixJar.DEFAULT_JAVA,
             jar,
             "Main.main",
             vmOptions = "-Xmx2g -Dflix.mode=test",

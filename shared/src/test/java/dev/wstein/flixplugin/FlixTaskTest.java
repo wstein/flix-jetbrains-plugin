@@ -90,7 +90,7 @@ public class FlixTaskTest {
         // input; a compiler option before the subcommand is treated as global and stops command
         // parsing, so `flix --Xdebug run` runs nothing.
         List<String> command = FlixLaunchCommand.task(
-                Path.of("/flix.jar"), "build", List.of("-Xmx2g"), List.of("--github-token", "t"));
+                FlixJar.DEFAULT_JAVA, Path.of("/flix.jar"), "build", List.of("-Xmx2g"), List.of("--github-token", "t"));
 
         assertEquals(
                 List.of("java", "-Xmx2g", "-jar", "/flix.jar", "build", "--github-token", "t"),
@@ -101,7 +101,7 @@ public class FlixTaskTest {
     public void aTaskWithNoExtraArgumentsIsJustTheSubcommand() {
         assertEquals(
                 List.of("java", "-jar", "/flix.jar", "test"),
-                FlixLaunchCommand.task(Path.of("/flix.jar"), "test", List.of(), List.of()));
+                FlixLaunchCommand.task(FlixJar.DEFAULT_JAVA, Path.of("/flix.jar"), "test", List.of(), List.of()));
     }
 
     @Test
@@ -111,7 +111,7 @@ public class FlixTaskTest {
         // through `task` did not move anything.
         assertEquals(
                 List.of("java", "-jar", "/flix.jar", "run", "--entrypoint", "Main.main"),
-                FlixLaunchCommand.run(Path.of("/flix.jar"), "Main.main"));
+                FlixLaunchCommand.run(FlixJar.DEFAULT_JAVA, Path.of("/flix.jar"), "Main.main"));
     }
 
     /** Every subcommand this plugin offers. */

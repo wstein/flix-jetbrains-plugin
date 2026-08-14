@@ -42,22 +42,25 @@ public final class FlixLaunchCommand {
     }
 
     /**
-     * {@code java -jar <jar> run [--entrypoint <symbol>]}.
+     * {@code <java> -jar <jar> run [--entrypoint <symbol>]}.
      *
-     * @param entryPoint the entry point to run, or {@code null} for the project default
+     * @param javaExecutable the {@code java} to launch, from {@link FlixJar#javaExecutable}
+     * @param entryPoint     the entry point to run, or {@code null} for the project default
      */
-    public static @NotNull List<String> run(@NotNull Path jar, @Nullable String entryPoint) {
-        return build(jar, entryPoint, false);
+    public static @NotNull List<String> run(
+            @NotNull String javaExecutable, @NotNull Path jar, @Nullable String entryPoint) {
+        return build(javaExecutable, jar, entryPoint, false);
     }
 
     /**
-     * {@code java -jar <jar> run --Xdebug --yes [--entrypoint <symbol>]}.
+     * {@code <java> -jar <jar> run --Xdebug --yes [--entrypoint <symbol>]}.
      *
      * <p>{@code --yes} answers the dependency-resolution prompt, which would otherwise block a
      * launch nobody is watching a terminal for.
      */
-    public static @NotNull List<String> debug(@NotNull Path jar, @Nullable String entryPoint) {
-        return build(jar, entryPoint, true);
+    public static @NotNull List<String> debug(
+            @NotNull String javaExecutable, @NotNull Path jar, @Nullable String entryPoint) {
+        return build(javaExecutable, jar, entryPoint, true);
     }
 
     /**
@@ -78,8 +81,12 @@ public final class FlixLaunchCommand {
      * @param suspend whether the debuggee waits for the debugger before running any user code
      */
     public static @NotNull List<String> debug(
-            @NotNull Path jar, @Nullable String entryPoint, int jdwpPort, boolean suspend) {
-        List<String> command = new ArrayList<>(build(jar, entryPoint, true));
+            @NotNull String javaExecutable,
+            @NotNull Path jar,
+            @Nullable String entryPoint,
+            int jdwpPort,
+            boolean suspend) {
+        List<String> command = new ArrayList<>(build(javaExecutable, jar, entryPoint, true));
         command.add(1, jdwpAgent(jdwpPort, suspend));
         return command;
     }
@@ -90,7 +97,7 @@ public final class FlixLaunchCommand {
     }
 
     /**
-     * {@code java <jvmArgs> -jar <jar> <task> <taskArgs>}.
+     * {@code <java> <jvmArgs> -jar <jar> <task> <taskArgs>}.
      *
      * <p>The two argument lists are separate because the two positions mean different things, and
      * the rule is the one stated above: a JVM option after {@code -jar} is the compiler's input, and
@@ -98,17 +105,26 @@ public final class FlixLaunchCommand {
      * altogether. Taking one flat list would let a caller put either in the wrong half and get a
      * failure that names neither.
      *
-     * @param task     the subcommand, as {@link FlixTask#command()} spells it
-     * @param jvmArgs  options for the JVM, which go before {@code -jar}
-     * @param taskArgs options for the subcommand, which go after it
+     * <p>Every builder here takes the {@code java} to launch rather than defaulting to {@code PATH},
+     * and takes it in the same first position. There was briefly an overload that supplied
+     * {@code "java"} for callers that had not been updated, and the result was that only the task
+     * runner honoured a project's pinned JDK: the language server, run and debug kept the default
+     * and analysed the editor on a different runtime than the one the tasks used. Making the
+     * parameter mandatory is what stops that being possible to reintroduce quietly.
+     *
+     * @param javaExecutable the {@code java} to launch, from {@link FlixJar#javaExecutable}
+     * @param task           the subcommand, as {@link FlixTask#command()} spells it
+     * @param jvmArgs        options for the JVM, which go before {@code -jar}
+     * @param taskArgs       options for the subcommand, which go after it
      */
     public static @NotNull List<String> task(
+            @NotNull String javaExecutable,
             @NotNull Path jar,
             @NotNull String task,
             @NotNull List<String> jvmArgs,
             @NotNull List<String> taskArgs) {
         List<String> command = new ArrayList<>();
-        command.add("java");
+        command.add(javaExecutable);
         command.addAll(jvmArgs);
         command.add("-jar");
         command.add(jar.toString());
@@ -117,7 +133,7 @@ public final class FlixLaunchCommand {
         return command;
     }
 
-    private static List<String> build(Path jar, String entryPoint, boolean debug) {
+    private static List<String> build(String javaExecutable, Path jar, String entryPoint, boolean debug) {
         List<String> arguments = new ArrayList<>();
         if (debug) {
             arguments.add("--Xdebug");
@@ -128,7 +144,7 @@ public final class FlixLaunchCommand {
             arguments.add("--entrypoint");
             arguments.add(symbol);
         }
-        return task(jar, FlixTask.RUN.command(), List.of(), arguments);
+        return task(javaExecutable, jar, FlixTask.RUN.command(), List.of(), arguments);
     }
 
     /**

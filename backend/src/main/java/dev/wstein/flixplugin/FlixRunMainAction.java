@@ -48,8 +48,9 @@ public class FlixRunMainAction extends LSPCommandAction {
         Path jar = FlixFork.resolveJar(project);
         String entryPoint = entryPointOf(command.getArguments());
 
-        GeneralCommandLine commandLine = new GeneralCommandLine(FlixLaunchCommand.run(jar, entryPoint));
         String basePath = project.getBasePath();
+        GeneralCommandLine commandLine = new GeneralCommandLine(
+                FlixLaunchCommand.run(FlixJar.javaExecutable(basePath), jar, entryPoint));
         if (basePath != null) {
             commandLine.setWorkDirectory(basePath);
         }

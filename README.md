@@ -119,9 +119,22 @@ unoptimized, which is the trade every other toolchain makes.
 
 ### Which compiler is used
 
-`$FLIX_JAR` if set, otherwise `flix.jar` in the project root. Every process the plugin starts
--- the language server and the debuggee -- resolves it the
-same way, so a debug session cannot run a different compiler than the editor was analysed with.
+In order: `FLIX_JAR` in the project's `.envrc`, then the `$FLIX_JAR` environment variable, then the
+compiler a [flixw](https://github.com/wstein/flixw) wrapper has pinned, then `flix.jar` in the
+project root. Every process the plugin starts -- the language server, a `flix` subcommand and the
+debuggee -- resolves it the same way, so a debug session cannot run a different compiler than the
+editor was analysed with.
+
+The `.envrc` is **parsed, never executed**. direnv requires an explicit `direnv allow` before it
+will evaluate one, and opening a project in an editor is not that consent; the understood subset is
+`export NAME=VALUE`, and a value produced by a command substitution or guarded by a conditional is
+simply not seen. A flixw wrapper is read the same way -- its `.flixw/lock.toml` and cache layout,
+not `./flixw info` -- so cloning a repository never runs a script it ships.
+
+A wrapper also pins a JDK, and the plugin honours `FLIX_JAVA_HOME` and the JDK flixw installed
+before falling back to `java` on `PATH`. It deliberately does *not* reproduce flixw's full search:
+one of flixw's steps is "the JVM flixw is running on", and the JVM the IDE runs on is not the
+terminal's.
 
 **The build matters, not just the flag.** Four fixes in
 [wstein/flix-fork](https://github.com/wstein/flix-fork) are load-bearing for debugging, and a jar

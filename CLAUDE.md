@@ -42,7 +42,7 @@ the thing on the other side:
 
 | Module | Holds | Constraint |
 | --- | --- | --- |
-| `shared` | `FlixJar` (compiler resolution), `FlixLaunchCommand` (the invocation) | **No IntelliJ Platform dependency at all.** Loaded in every process. |
+| `shared` | `FlixJar` (compiler and JDK resolution), `FlixLaunchCommand` (the invocation), `FlixEnvrc` (the `.envrc` subset), `FlixwProject` (a flixw pin) | **No IntelliJ Platform dependency at all.** Loaded in every process. |
 | `language` | `Language("Flix")`, Grammar-Kit lexer/parser/PSI, editor support | Must load in IDEs with no Java plugin |
 | `backend` | LSP4IJ server registration, `flix.runMain`, the gutter marker, the diagram tool window | Needs LSP4IJ |
 | `debugger` | Position manager, stepping policy, run/debug configuration | Needs the Java plugin; **not** `loading="required"` |
@@ -149,8 +149,25 @@ and which evaluator the IDE picks per frame. Keep that boundary explicit when re
 
 ## The Flix compiler
 
-Resolved as `$FLIX_JAR`, else `flix.jar` in the project root. Non-obvious
-rules, all encoded in `FlixLaunchCommand` and pinned by tests:
+Resolved in order: `FLIX_JAR` in the project's `.envrc`, `$FLIX_JAR`, a flixw pin, then `flix.jar`
+in the project root. Two rules about that resolution are load-bearing and were each a defect:
+
+- **Nothing a project ships is executed.** `.envrc` is parsed, not sourced, and a flixw wrapper is
+  read through `.flixw/lock.toml` plus its cache layout rather than by running `./flixw info`.
+  Resolution is reached from the language server's startup, so running either would have meant
+  arbitrary code execution on project open. `FlixwProject` transcribes the layout from the
+  wrapper's own vendored `flixw.java` and cites the line numbers; the digest and version are
+  validated before they become part of a file name.
+- **The JDK is not derivable.** flixw picks one by search, and its second step is *the JVM flixw is
+  running on* — which cannot be reproduced from inside the IDE. `FlixJar.javaExecutable` implements
+  a deliberately narrower rule and says so.
+
+`FlixLaunchCommand` takes that JDK in first position on every builder, with **no overload that
+supplies a default**. A version with one had only the task runner honouring a pin while the
+language server ran on `PATH`.
+
+Non-obvious rules about the invocation itself, all encoded in `FlixLaunchCommand` and pinned by
+tests:
 
 - Options go **after** the subcommand. `flix --Xdebug run` fails with an error naming neither.
 - `--Xdebug` also turns the **optimizer off**. Inlining and debugging cannot both be served by one
@@ -188,7 +205,10 @@ because the platform merges markers at one offset.
 ## Testing
 
 - `debugger` and `shared` use JDI/plain stubs — no platform fixture, so they run fast.
-- `language` uses `ParsingTestCase` against real parsed PSI.
+- `language` uses `ParsingTestCase` against real parsed PSI. A `BasePlatformTestCase` there must
+  register the parser itself — `LanguageParserDefinitions.INSTANCE.addExplicitExtension(...)` — or
+  a `.flix` document comes back as **plain text with no PSI**, and every assertion passes or fails
+  for a reason unrelated to the test.
 - The **corpus gate** (`FlixCorpusTest`) parses the upstream Flix corpus and is a ratchet at 427/427.
   It skips when no checkout is found locally, but **fails when `CI` is set**, because CI clones the
   pinned revision and JUnit 3 has no skip state to distinguish a skip from a pass.
@@ -204,6 +224,9 @@ gaps here.
   breakpoint does not bind.
 - `docs/phase-8-verification.md` — which verification rows are established and, deliberately, which
   are **not measured**. Read before claiming anything works.
+- `docs/syntax-highlighting.md` — the two layers that colour a buffer, the four productions `if`
+  appears in, and why every key ships without a colour. Read before adding a key: the highlighter
+  once coloured *nothing* while looking healthy, because LSP semantic tokens paint over it.
 - `docs/refactoring-support.md` — what refactoring works, what does not, and why. Read before adding
   one: LSP4IJ shows code actions under Alt+Enter and *never* in the Refactor menu, and it has no
   in-place rename at all, so three of the four obvious designs do not work.

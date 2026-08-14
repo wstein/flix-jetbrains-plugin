@@ -13,11 +13,16 @@ import javax.swing.Icon
  *
  * ## Why this exists at all
  *
- * Because without it the plugin's colour keys are unreachable. Every key
- * [FlixSyntaxHighlighter] defines falls back to a platform default, which is what makes adding one
- * a visual no-op — but a key with no page is also a key no user can ever change. This page is what
- * turns "we defined a key" into "you can decide what it looks like", and it is therefore a
- * prerequisite for the control-flow key rather than a nicety alongside it.
+ * Because without it the plugin's colour keys are unreachable. A key renders through its fallback,
+ * or through the default [FlixControlFlowAnnotator] applies, without anything being stored in the
+ * scheme — which is what makes adding one a visual no-op, and equally what makes it something no
+ * user can ever change. This page is what turns "we defined a key" into "you can decide what it
+ * looks like".
+ *
+ * The corresponding limitation is worth stating: the preview renders from what the *scheme* holds,
+ * so a default the annotator computes at paint time -- the bold on a guard keyword, the band behind
+ * a condition -- does not appear here until someone stores a value. The tags below still show
+ * *which* ranges each key governs, which is the part a reader needs in order to choose.
  *
  * ## Why the demo text is what it is
  *
@@ -62,7 +67,7 @@ class FlixColorSettingsPage : ColorSettingsPage {
         mapOf(
             "guard" to FlixSyntaxHighlighter.GUARD_KEYWORD,
             "datalogGuard" to FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD,
-            "conditionParens" to FlixSyntaxHighlighter.CONDITION_PARENTHESES,
+            "condition" to FlixSyntaxHighlighter.CONDITION,
         )
 
     private companion object {
@@ -75,7 +80,7 @@ class FlixColorSettingsPage : ColorSettingsPage {
                 "Control flow//Datalog constraint keyword",
                 FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD,
             ),
-            AttributesDescriptor("Control flow//Condition parentheses", FlixSyntaxHighlighter.CONDITION_PARENTHESES),
+            AttributesDescriptor("Control flow//Condition", FlixSyntaxHighlighter.CONDITION),
             AttributesDescriptor("String", FlixSyntaxHighlighter.STRING),
             AttributesDescriptor("Number", FlixSyntaxHighlighter.NUMBER),
             AttributesDescriptor("Comment", FlixSyntaxHighlighter.COMMENT),
@@ -102,12 +107,12 @@ class FlixColorSettingsPage : ColorSettingsPage {
                 def label(t: Int32): String =
                     // A conditional expression. The parentheses are required by the grammar,
                     // not chosen by the author.
-                    if <conditionParens>(</conditionParens>t <= 9<conditionParens>)</conditionParens> "0${'$'}{t}" else "${'$'}{t}"
+                    if <condition>(t <= 9)</condition> "0${'$'}{t}" else "${'$'}{t}"
 
                 def describe(leg: Leg): String =
                     match leg {
                         // A match guard. Same `if`, no parentheses this time.
-                        case Change(_, _, wait) <guard>if</guard> wait > 30 => "a long change"
+                        case Change(_, _, wait) <guard>if</guard> <condition>wait > 30</condition> => "a long change"
                         case Change(_, _, _)                 => "a change"
                         case Direct(from, to)                => "${'$'}{from} to ${'$'}{to}"
                     }
@@ -115,13 +120,13 @@ class FlixColorSettingsPage : ColorSettingsPage {
                 def reachable(): #{ Edge(Station, Station), Path(Station, Station) } = #{
                     // A Datalog constraint. Spelled exactly like a conditional and not one:
                     // it filters the rule's solutions rather than choosing a branch.
-                    Path(x, z) :- Path(x, y), Edge(y, z), <datalogGuard>if</datalogGuard> <conditionParens>(</conditionParens>x != z<conditionParens>)</conditionParens>.
+                    Path(x, z) :- Path(x, y), Edge(y, z), <datalogGuard>if</datalogGuard> <condition>(x != z)</condition>.
                 }
 
                 def report(legs: List[Leg]): Unit \ IO =
                     foreach (leg <- legs)
                         // A comprehension guard -- the fourth `if`, and the fourth meaning.
-                        <guard>if</guard> (describe(leg) != "")
+                        <guard>if</guard> <condition>describe(leg) != ""</condition>
                             println(describe(leg))
 
                 def safely(): Unit \ IO =

@@ -4,11 +4,13 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.colors.EditorColorsScheme
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.tree.IElementType
+import com.intellij.ui.ColorUtil
 import java.awt.Font
 import org.flixlang.intellij.lang.psi.FlixGuard
 import org.flixlang.intellij.lang.psi.FlixGuardFragment
@@ -37,33 +39,39 @@ import org.flixlang.intellij.lang.psi.FlixTypes
  *
  * ## What it does and does not colour
  *
- * The keyword, and -- for the two roles that have them -- the condition's own parentheses. Not the
- * branches. A branch is an arbitrary expression that can be pages long and can nest, so tinting one
- * turns into a wash across most of a file rather than a cue.
+ * The keyword, and the **whole condition** as one span: parentheses included where the grammar has
+ * them, and the guard expression alone where it does not, since a match guard and a comprehension
+ * guard take none.
  *
- * The parentheses are worth their own key because in `ifExpr` they are *required by the grammar*
- * rather than chosen by the author, which makes them the one part of the construct that carries no
- * information. `Main.flix:88` is the case that prompted this:
+ * `Main.flix:88` is the case that prompted this:
  * `if (m2 > m1) (h2 - h1, m2 - m1) else ((h2 - h1) - 1, (60 + m2) - m1)` -- three parenthesised
- * groups on one line, of which exactly one is a condition. Giving that one its own key lets a
- * reader dim it and let the condition itself stand out; leaving it alone costs nothing.
+ * groups on one line, of which exactly one is a condition. Banding that one says which.
  *
- * ## Why the default emphasis is bold rather than a colour
+ * Not the branches. A branch is an arbitrary expression that can be pages long and can nest, so
+ * banding one turns into a wash across most of a file rather than a cue -- and a nested `if` would
+ * sit inside its own parent's band.
  *
- * Because bold is the one emphasis that survives every theme. A colour that reads well in Darcula
- * can vanish in the high-contrast scheme, and shipping per-theme attribute files means shipping
- * contrast nobody has looked at; weight is orthogonal to the palette, so one rule works in light,
- * dark and high contrast alike.
+ * ## Two different defaults, for two different shapes
  *
- * It is applied here rather than through `additionalTextAttributes`, and that is not a style
+ * A **keyword** is one token, so it is emphasised in bold. Bold is the one emphasis that survives
+ * every theme: a colour that reads well in Darcula can vanish in the high-contrast scheme, and
+ * shipping per-theme attribute files means shipping contrast nobody has looked at.
+ *
+ * A **span** covers many tokens that are already coloured, so it gets a background band and
+ * nothing else. Bolding a whole condition would be heavy, and any foreground would flatten the
+ * string, number and operator inside it to one colour. The band's colour is mixed from the active
+ * scheme's own default background and foreground, so it is subtle in a light scheme and subtle in
+ * a dark one with no file per theme -- and it still works in a scheme nobody has written yet.
+ *
+ * Both are applied here rather than through `additionalTextAttributes`, and that is not a style
  * preference. A scheme entry *replaces* a key's attributes instead of adding to them, so the
- * fallback stops applying and the guard would lose its inherited keyword colour — bold, and the
- * colour of ordinary text. Reading the resolved attributes and setting one bit keeps the colour
- * whatever the active scheme says it should be.
+ * fallback stops applying and a guard keyword would lose its inherited colour -- bold, in the
+ * colour of ordinary text.
  *
- * A user who gives one of these keys attributes of their own gets exactly those, bold or not: an
- * explicit choice in the colour scheme outranks this default, which is what makes the emphasis a
- * default rather than a decree.
+ * A user who gives one of these keys attributes of their own gets exactly those: an explicit choice
+ * in the colour scheme outranks the default, which is what makes it a default rather than a decree.
+ * The one cost is that the Color Settings preview cannot show a default nothing has stored -- see
+ * `docs/syntax-highlighting.md`.
  *
  * ## Incomplete code
  *
@@ -89,49 +97,67 @@ class FlixControlFlowAnnotator : Annotator {
      * has its own test.
      */
     internal fun rolesOf(element: PsiElement): List<Role> = when (element) {
-        // A conditional expression: the keyword, `else`, and the mandatory parentheses.
+        // A conditional expression: the keyword, `else`, and the parenthesised condition.
         is FlixIfExpr -> listOfNotNull(
             role(element, FlixTypes.IF_KW, FlixSyntaxHighlighter.CONTROL_FLOW_KEYWORD),
             role(element, FlixTypes.ELSE_KW, FlixSyntaxHighlighter.CONTROL_FLOW_KEYWORD),
-            role(element, FlixTypes.PAREN_L, FlixSyntaxHighlighter.CONDITION_PARENTHESES),
-            role(element, FlixTypes.PAREN_R, FlixSyntaxHighlighter.CONDITION_PARENTHESES),
+            parenthesisedCondition(element),
         )
 
-        // `case pat if expr =>`. No parentheses in this one -- the grammar does not take them.
-        is FlixMatchRule ->
-            listOfNotNull(role(element, FlixTypes.IF_KW, FlixSyntaxHighlighter.GUARD_KEYWORD))
+        // `case pat if expr =>`. The grammar takes no parentheses here, so the condition is the
+        // guard expression itself. `getExpr` is null when the arm has no guard at all.
+        is FlixMatchRule -> listOfNotNull(
+            role(element, FlixTypes.IF_KW, FlixSyntaxHighlighter.GUARD_KEYWORD),
+            element.expr?.let { Role(it.textRange, FlixSyntaxHighlighter.CONDITION) },
+        )
 
         // A `forA`/`forM` fragment. No parentheses here either.
-        is FlixGuardFragment ->
-            listOfNotNull(role(element, FlixTypes.IF_KW, FlixSyntaxHighlighter.GUARD_KEYWORD))
+        is FlixGuardFragment -> listOfNotNull(
+            role(element, FlixTypes.IF_KW, FlixSyntaxHighlighter.GUARD_KEYWORD),
+            Role(element.expr.textRange, FlixSyntaxHighlighter.CONDITION),
+        )
 
         // A Datalog constraint. Parenthesised like a conditional, and not one.
         is FlixGuard -> listOfNotNull(
             role(element, FlixTypes.IF_KW, FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD),
-            role(element, FlixTypes.PAREN_L, FlixSyntaxHighlighter.CONDITION_PARENTHESES),
-            role(element, FlixTypes.PAREN_R, FlixSyntaxHighlighter.CONDITION_PARENTHESES),
+            parenthesisedCondition(element),
         )
 
         else -> emptyList()
     }
 
     /**
-     * [element]'s own [token] child paired with [key], or `null` if it has no such child.
+     * The span from [element]'s own `(` through its own `)`, or `null` if either is missing.
      *
-     * `findChildByType` looks only at direct children, which is what makes the parentheses safe to
-     * ask for: a nested `(` inside the condition belongs to the condition's node, not to this one.
-     * It is also the whole of the incomplete-code handling -- a `(` the user has not typed yet is
-     * simply absent.
+     * `findChildByType` looks only at direct children, and that is what makes this safe rather
+     * than merely convenient: in `if (m2 > m1) (h2 - h1, m2 - m1) else (...)` the branches are
+     * parenthesised too, but their parentheses belong to the branch expressions' own nodes. A
+     * subtree search would take the first `(` and the last `)` and band the entire line.
+     *
+     * A missing `)` means the user is still typing, and the whole of the incomplete-code handling
+     * is that the span is then not drawn at all rather than run to the end of the file.
+     */
+    private fun parenthesisedCondition(element: PsiElement): Role? {
+        val open = element.node.findChildByType(FlixTypes.PAREN_L) ?: return null
+        val close = element.node.findChildByType(FlixTypes.PAREN_R) ?: return null
+        return Role(
+            TextRange(open.textRange.startOffset, close.textRange.endOffset),
+            FlixSyntaxHighlighter.CONDITION,
+        )
+    }
+
+    /**
+     * [element]'s own [token] child paired with [key], or `null` if it has no such child.
      */
     private fun role(element: PsiElement, token: IElementType, key: TextAttributesKey): Role? =
         element.node.findChildByType(token)?.let { Role(it.textRange, key) }
 
     /**
-     * Draws [range] with [key], emphasising it unless the scheme has an opinion of its own.
+     * Draws [range] with [key], falling back to this class's own default styling.
      *
      * `getAttributes(key, false)` asks what the scheme states *for this key*, without walking the
-     * fallback chain, so it distinguishes "the user set this" from "this inherits". Only the second
-     * gets the default emphasis.
+     * fallback chain, so it distinguishes "the user set this" from "this inherits". Only the
+     * second gets a default.
      */
     private fun apply(range: TextRange, key: TextAttributesKey, holder: AnnotationHolder) {
         val scheme = EditorColorsManager.getInstance().globalScheme
@@ -141,17 +167,48 @@ class FlixControlFlowAnnotator : Annotator {
             builder.textAttributes(key).create()
             return
         }
-        builder.enforcedTextAttributes(emphasised(scheme.getAttributes(key))).create()
+        val default = if (key == FlixSyntaxHighlighter.CONDITION) {
+            band(scheme)
+        } else {
+            emphasised(scheme.getAttributes(key))
+        }
+        builder.enforcedTextAttributes(default).create()
     }
 
     internal companion object {
+
+        /** How far the band is mixed from the editor's background towards its foreground. */
+        private const val BAND_STRENGTH = 0.07
+
+        /**
+         * A subtle background for the condition span, and **nothing else**.
+         *
+         * Every other field is left null on purpose. A span covers many tokens, each already
+         * coloured by [FlixSyntaxHighlighter], and the editor composes highlighter layers by
+         * field: a null foreground here lets each token keep its own. Setting a foreground -- or
+         * cloning some inherited attributes the way [emphasised] does -- would flatten a string,
+         * a number and an operator inside the condition to one colour.
+         *
+         * The colour is mixed from the scheme's own defaults rather than shipped per theme, so it
+         * is subtle in a light scheme and subtle in a dark one without a file per theme, and it
+         * still works in a scheme nobody has written yet.
+         */
+        internal fun band(scheme: EditorColorsScheme): TextAttributes =
+            TextAttributes().apply {
+                backgroundColor = ColorUtil.mix(
+                    scheme.defaultBackground,
+                    scheme.defaultForeground,
+                    BAND_STRENGTH,
+                )
+            }
 
         /**
          * [base] in bold, keeping every colour it already has.
          *
          * Bold rather than a colour because weight is orthogonal to the palette: it reads the same
          * in the light, dark and high-contrast schemes, where a chosen colour would have to be
-         * checked against each.
+         * checked against each. Used for the keywords, which are single tokens -- see [band] for
+         * why a span cannot be styled this way.
          */
         internal fun emphasised(base: TextAttributes?): TextAttributes =
             (base?.clone() ?: TextAttributes()).apply { fontType = fontType or Font.BOLD }

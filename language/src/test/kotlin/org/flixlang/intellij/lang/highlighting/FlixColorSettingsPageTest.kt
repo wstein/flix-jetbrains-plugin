@@ -13,8 +13,8 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
     /**
      * Every key the highlighter can assign is offered.
      *
-     * A key with no descriptor is unreachable: it has a fallback, so it renders, and there is
-     * nowhere to change it. Comparing against the highlighter's own set rather than a copied list
+     * A key with no descriptor is unreachable: it still renders, via its fallback or via the
+     * annotator's own default, and there is nowhere to change it. Comparing against the highlighter's own set rather than a copied list
      * means adding a key to one and not the other fails here.
      */
     fun testEveryHighlighterKeyIsOffered() {
@@ -24,7 +24,7 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
             FlixSyntaxHighlighter.CONTROL_FLOW_KEYWORD,
             FlixSyntaxHighlighter.GUARD_KEYWORD,
             FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD,
-            FlixSyntaxHighlighter.CONDITION_PARENTHESES,
+            FlixSyntaxHighlighter.CONDITION,
             FlixSyntaxHighlighter.STRING,
             FlixSyntaxHighlighter.NUMBER,
             FlixSyntaxHighlighter.COMMENT,
@@ -66,8 +66,8 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
     fun testTheDemoShowsEveryRoleTheKeyCovers() {
         val demo = page.demoText
 
-        assertTrue("no conditional expression", demo.contains("if <conditionParens>(</conditionParens>t <= 9"))
-        assertTrue("no match guard", demo.contains("<guard>if</guard> wait > 30"))
+        assertTrue("no conditional expression", demo.contains("if <condition>(t <= 9)</condition>"))
+        assertTrue("no match guard", demo.contains("<guard>if</guard> <condition>wait > 30</condition>"))
         assertTrue("no Datalog constraint", demo.contains("<datalogGuard>if</datalogGuard>"))
         assertTrue("no comprehension guard", demo.contains("foreach (leg <- legs)"))
         assertTrue("no enum case, which is the counter-example", demo.contains("case Direct(Station, Station)"))

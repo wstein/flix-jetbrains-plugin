@@ -41,8 +41,23 @@ must run the real lexer and read the key back — asserting on `toString()` is w
 The last is the one that matters: it is spelled identically to a conditional and is not one. Both
 appear in the UI fixture, at `Main.flix:25` and `:88`.
 
-Note the second and third take **no parentheses**. A design that keys on "emphasise the condition
-delimiters" only reaches half the roles.
+Note that the second and third take **no parentheses**. Any design keyed on "the condition's
+delimiters" reaches only half the roles, which is why the span below is defined on the *expression*
+and merely widened to the parentheses where they exist.
+
+### The condition span
+
+The condition gets `FLIX_CONDITION` as **one span**: parentheses included where the grammar has
+them, and the guard expression alone where it does not.
+
+Where there are parentheses the span runs from the element's own `(` to its own `)`, found with
+`findChildByType`, which looks at *direct children only*. That is load-bearing rather than
+incidental. On `Main.flix:88` --
+`if (m2 > m1) (h2 - h1, m2 - m1) else ((h2 - h1) - 1, (60 + m2) - m1)` -- the branches are
+parenthesised too, and a subtree search taking the first `(` and the last `)` bands the entire
+line. `testTheBandStopsAtTheConditionAndDoesNotSwallowTheBranches` is that fault, injected.
+
+A `matchRule` with no guard has no condition to band, and `getExpr()` is null for it.
 
 ### What the lexer deliberately does not colour
 
@@ -54,23 +69,39 @@ Both need the PSI. This is the boundary between the two layers, not an oversight
 
 ## Defaults
 
-Every key falls back to one that already exists, so **no key ships a colour**. A colour that reads
-well in Darcula can vanish in the high-contrast scheme, and shipping per-theme attribute files means
-shipping contrast nobody has looked at.
+**No key ships a colour.** A colour that reads well in Darcula can vanish in the high-contrast
+scheme, and shipping per-theme attribute files means shipping contrast nobody has looked at. The
+defaults are instead computed by the annotator at paint time, and they differ by shape:
 
-The three annotator-driven roles are instead emphasised in **bold**, because weight is orthogonal to
-the palette and reads the same in every scheme.
+| Shape | Default | Why |
+| --- | --- | --- |
+| a **keyword** (one token) | bold, over the inherited colour | weight is orthogonal to the palette, so one rule works in every scheme |
+| a **condition** (many tokens) | a background band, and nothing else | see below |
 
-That bold is applied in the annotator, not through `additionalTextAttributes`, and the reason is
-not stylistic: **a scheme entry replaces a key's attributes rather than adding to them**, so the
-fallback would stop applying and a guard would render bold in the colour of ordinary text. The
-annotator reads the resolved attributes and sets one bit, keeping whatever colour the active scheme
-gives it.
+The band sets `backgroundColor` and leaves every other field null. A condition contains a string, a
+number, an operator and a name, each already coloured by the highlighter, and the editor composes
+highlighter layers *field by field* — so a null foreground lets each token keep its own. Setting a
+foreground, or cloning inherited attributes the way the keyword default does, flattens the whole
+condition to one colour. `testTheBandSetsOnlyABackground` pins this.
 
-An explicit value for a key in the colour scheme wins outright, including over the bold. That is
-what makes the emphasis a default rather than a decree — and it is how to get the opposite
-treatment of the condition parentheses: set `FLIX_CONDITION_PARENTHESES` to a dimmer foreground and
-the required syntax recedes instead of standing out.
+The band's colour is mixed from the active scheme's own `defaultBackground` and `defaultForeground`,
+so it is subtle in a light scheme and subtle in a dark one with no per-theme file, and it still
+works in a scheme nobody has written yet.
+
+Both defaults are applied in the annotator rather than through `additionalTextAttributes`, and that
+is not stylistic: **a scheme entry replaces a key's attributes rather than adding to them**, so the
+fallback would stop applying and a guard keyword would render bold in the colour of ordinary text.
+
+An explicit value for a key in the colour scheme wins outright, including over these defaults. That
+is what makes them defaults rather than decrees — and it is how to get the opposite treatment: set
+`FLIX_CONDITION` to a dim foreground and the condition recedes instead of standing out.
+
+### The preview cannot show a computed default
+
+`FlixColorSettingsPage` renders from what the *scheme* holds, so a default the annotator computes at
+paint time does not appear in the preview until someone stores a value. The demo tags still show
+*which* ranges each key governs, which is the part a reader needs in order to choose. Fixing this
+properly means shipping `additionalTextAttributes` per theme, which is the contrast problem above.
 
 ## What is not coloured, and why
 
@@ -81,9 +112,10 @@ not have.
 
 ## Adding a key
 
-1. Define it in `FlixSyntaxHighlighter` with a fallback to an existing key.
+1. Define it in `FlixSyntaxHighlighter`, with a fallback to an existing key unless the annotator
+   computes the whole appearance itself — `FLIX_CONDITION` has none for that reason.
 2. Add an `AttributesDescriptor` in `FlixColorSettingsPage` — a key with no descriptor is
-   unreachable, since it renders via its fallback and has nowhere to be changed.
+   unreachable, since it still renders and has nowhere to be changed.
 3. If the annotator assigns it, add a demo tag *and* the matching entry in
    `getAdditionalHighlightingTagToDescriptorMap`. The preview is lexed, not parsed, so an
    annotator-driven role is invisible there without a tag — and a tag with no entry breaks the whole

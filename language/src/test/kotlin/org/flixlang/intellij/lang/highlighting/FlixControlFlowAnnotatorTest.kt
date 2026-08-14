@@ -1,6 +1,7 @@
 package org.flixlang.intellij.lang.highlighting
 
 import com.intellij.lang.LanguageParserDefinitions
+import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiRecursiveElementVisitor
@@ -73,13 +74,13 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
         assertTrue("the `else` was not marked control flow: $roles", "FLIX_CONTROL_FLOW_KEYWORD" to "else" in roles)
     }
 
-    fun testTheConditionParenthesesAreTheirOwnRole() {
+    /** The span is the whole parenthesised condition, not the two glyphs around it. */
+    fun testTheConditionIsBandedAsOneSpan() {
         val roles = rolesIn("def f(): Int32 = if (x > 0) 1 else 2")
 
         assertEquals(
-            "exactly the two condition parentheses, and no others",
-            2,
-            roles.count { it.first == "FLIX_CONDITION_PARENTHESES" },
+            listOf("FLIX_CONDITION" to "(x > 0)"),
+            roles.filter { it.first == "FLIX_CONDITION" },
         )
     }
 
@@ -90,10 +91,15 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
      * which one is a condition. `findChildByType` looks only at direct children, which is what
      * keeps the other two out -- and a whole-subtree search would sweep them in.
      */
-    fun testBranchParenthesesAreLeftAlone() {
+    fun testTheBandStopsAtTheConditionAndDoesNotSwallowTheBranches() {
         val source = "def d(): Time = if (m2 > m1) (h2 - h1, m2 - m1) else ((h2 - h1) - 1, (60 + m2) - m1)"
 
-        assertEquals(2, rolesIn(source).count { it.first == "FLIX_CONDITION_PARENTHESES" })
+        // The failure this guards against is not a missing colour but a band across the whole
+        // line: taking the first `(` and the last `)` of the subtree would do exactly that.
+        assertEquals(
+            listOf("FLIX_CONDITION" to "(m2 > m1)"),
+            rolesIn(source).filter { it.first == "FLIX_CONDITION" },
+        )
     }
 
     /** `case p if e =>` -- a guard, and the grammar takes no parentheses here (`Flix.bnf:825`). */
@@ -101,7 +107,19 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
         val roles = rolesIn("def f(): Int32 = match x { case y if y > 0 => 1 }")
 
         assertTrue("the guard was not distinguished: $roles", "FLIX_GUARD_KEYWORD" to "if" in roles)
-        assertEquals("a match guard has no parentheses to colour", 0, roles.count { it.first == "FLIX_CONDITION_PARENTHESES" })
+        // No parentheses in this production, so the condition is the guard expression itself --
+        // which is why the span is defined on the expression rather than on the parentheses.
+        assertEquals(
+            listOf("FLIX_CONDITION" to "y > 0"),
+            roles.filter { it.first == "FLIX_CONDITION" },
+        )
+    }
+
+    /** A match arm with no guard at all contributes no condition, and does not throw. */
+    fun testAMatchArmWithoutAGuardHasNoCondition() {
+        val roles = rolesIn("def f(): Int32 = match x { case y => 1 }")
+
+        assertEquals(emptyList<Pair<String, String>>(), roles.filter { it.first == "FLIX_CONDITION" })
     }
 
     /**
@@ -144,6 +162,36 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
         assertEquals(emptyList<Pair<String, String>>(), rolesIn("def f(): Int32 = if ("))
         assertEquals(emptyList<Pair<String, String>>(), rolesIn("def f(): Int32 = if"))
         assertEquals(emptyList<Pair<String, String>>(), rolesIn("def f(): Int32 = "))
+    }
+
+    /**
+     * The band sets a background and nothing else.
+     *
+     * This is the requirement that makes a multi-token span workable at all. A condition contains
+     * a string, a number, an operator and a name, each already coloured by the highlighter; the
+     * editor composes highlighter layers field by field, so a null foreground here lets every one
+     * of them keep its own. Setting a foreground -- or cloning inherited attributes the way the
+     * keyword default does -- would flatten the whole condition to one colour.
+     */
+    fun testTheBandSetsOnlyABackground() {
+        val scheme = EditorColorsManager.getInstance().globalScheme
+
+        val band = FlixControlFlowAnnotator.band(scheme)
+
+        assertNotNull("the band has no background, so nothing would be drawn", band.backgroundColor)
+        assertNull("a foreground would flatten every token in the condition", band.foregroundColor)
+        assertEquals("a span must not be given weight as well", Font.PLAIN, band.fontType)
+        assertNull(band.effectColor)
+    }
+
+    /** The band is mixed from the scheme, so it lands between its background and its foreground. */
+    fun testTheBandIsDerivedFromTheActiveScheme() {
+        val scheme = EditorColorsManager.getInstance().globalScheme
+
+        val band = FlixControlFlowAnnotator.band(scheme).backgroundColor
+
+        assertFalse("an invisible band is the same as no band", band == scheme.defaultBackground)
+        assertFalse("the band must stay subtle", band == scheme.defaultForeground)
     }
 
     /**

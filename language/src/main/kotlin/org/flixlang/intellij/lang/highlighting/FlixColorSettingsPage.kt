@@ -21,14 +21,15 @@ import javax.swing.Icon
  *
  * ## Why the demo text is what it is
  *
- * The preview renders with whatever the scheme currently says, so with neutral defaults it cannot
- * demonstrate a colour nobody has chosen yet. What it *can* demonstrate is the thing the key is
- * for: the demo below puts all four grammatical roles of `if` in one screen — a conditional
- * expression, a `match` guard, a comprehension guard and a Datalog constraint — so that anyone
- * picking a colour can see at once what does and does not get it.
+ * The demo puts all four grammatical roles of `if` on one screen — a conditional expression, a
+ * `match` guard, a comprehension guard and a Datalog constraint — beside the `case` that declares
+ * an `enum` member and is not control flow at all. That set is not decoration: `IF_KW` really does
+ * appear in four separate productions (`Flix.bnf:790`, `:825`, `:845`, `:1024`), and the Datalog
+ * one is not a conditional.
  *
- * That set is not decoration. `IF_KW` really does appear in four separate productions
- * (`Flix.bnf:790`, `:825`, `:845`, `:1024`), and the Datalog one is not a conditional at all.
+ * Three of those roles exist only in the PSI, and this preview is lexed rather than parsed, so they
+ * are marked up with the tags in [getAdditionalHighlightingTagToDescriptorMap]. Without that the
+ * preview would render every `if` identically — the exact confusion the page is here to undo.
  */
 class FlixColorSettingsPage : ColorSettingsPage {
 
@@ -50,14 +51,31 @@ class FlixColorSettingsPage : ColorSettingsPage {
      */
     override fun getDemoText(): String = DEMO_TEXT
 
-    /** No annotator-driven keys yet, so the demo needs no `<tag>` markup. */
-    override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey>? = null
+    /**
+     * The keys [FlixControlFlowAnnotator] assigns, which the preview's own lexer cannot produce.
+     *
+     * The page renders the demo with the syntax highlighter alone -- no parser, so no annotator --
+     * and these three roles exist only in the PSI. Without the tags the preview would show all four
+     * `if`s identically, which is the opposite of what the page is for.
+     */
+    override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey> =
+        mapOf(
+            "guard" to FlixSyntaxHighlighter.GUARD_KEYWORD,
+            "datalogGuard" to FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD,
+            "conditionParens" to FlixSyntaxHighlighter.CONDITION_PARENTHESES,
+        )
 
     private companion object {
 
         val DESCRIPTORS = arrayOf(
             AttributesDescriptor("Keyword", FlixSyntaxHighlighter.KEYWORD),
             AttributesDescriptor("Control flow keyword", FlixSyntaxHighlighter.CONTROL_FLOW_KEYWORD),
+            AttributesDescriptor("Control flow//Guard keyword", FlixSyntaxHighlighter.GUARD_KEYWORD),
+            AttributesDescriptor(
+                "Control flow//Datalog constraint keyword",
+                FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD,
+            ),
+            AttributesDescriptor("Control flow//Condition parentheses", FlixSyntaxHighlighter.CONDITION_PARENTHESES),
             AttributesDescriptor("String", FlixSyntaxHighlighter.STRING),
             AttributesDescriptor("Number", FlixSyntaxHighlighter.NUMBER),
             AttributesDescriptor("Comment", FlixSyntaxHighlighter.COMMENT),
@@ -84,12 +102,12 @@ class FlixColorSettingsPage : ColorSettingsPage {
                 def label(t: Int32): String =
                     // A conditional expression. The parentheses are required by the grammar,
                     // not chosen by the author.
-                    if (t <= 9) "0${'$'}{t}" else "${'$'}{t}"
+                    if <conditionParens>(</conditionParens>t <= 9<conditionParens>)</conditionParens> "0${'$'}{t}" else "${'$'}{t}"
 
                 def describe(leg: Leg): String =
                     match leg {
                         // A match guard. Same `if`, no parentheses this time.
-                        case Change(_, _, wait) if wait > 30 => "a long change"
+                        case Change(_, _, wait) <guard>if</guard> wait > 30 => "a long change"
                         case Change(_, _, _)                 => "a change"
                         case Direct(from, to)                => "${'$'}{from} to ${'$'}{to}"
                     }
@@ -97,13 +115,13 @@ class FlixColorSettingsPage : ColorSettingsPage {
                 def reachable(): #{ Edge(Station, Station), Path(Station, Station) } = #{
                     // A Datalog constraint. Spelled exactly like a conditional and not one:
                     // it filters the rule's solutions rather than choosing a branch.
-                    Path(x, z) :- Path(x, y), Edge(y, z), if (x != z).
+                    Path(x, z) :- Path(x, y), Edge(y, z), <datalogGuard>if</datalogGuard> <conditionParens>(</conditionParens>x != z<conditionParens>)</conditionParens>.
                 }
 
                 def report(legs: List[Leg]): Unit \ IO =
                     foreach (leg <- legs)
                         // A comprehension guard -- the fourth `if`, and the fourth meaning.
-                        if (describe(leg) != "")
+                        <guard>if</guard> (describe(leg) != "")
                             println(describe(leg))
 
                 def safely(): Unit \ IO =

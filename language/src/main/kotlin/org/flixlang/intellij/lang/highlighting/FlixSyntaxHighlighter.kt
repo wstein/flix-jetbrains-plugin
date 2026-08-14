@@ -114,6 +114,46 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
         val CONTROL_FLOW_KEYWORD: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_CONTROL_FLOW_KEYWORD", KEYWORD)
 
+        /**
+         * A guard: `case p if e =>`, or the `if e` of a comprehension.
+         *
+         * Assigned by [FlixControlFlowAnnotator], not here, because the token is the same `if` a
+         * conditional uses and only the parser knows which is which. Falls back to
+         * [CONTROL_FLOW_KEYWORD], so it reads as control flow until someone separates them.
+         */
+        val GUARD_KEYWORD: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_GUARD_KEYWORD", CONTROL_FLOW_KEYWORD)
+
+        /**
+         * The `if` of a Datalog constraint, which is not a conditional at all.
+         *
+         * It filters the solutions of a rule rather than choosing a branch, and it is spelled
+         * identically to one — keyword, parentheses, boolean expression. This is the distinction
+         * the annotator exists for; see [FlixControlFlowAnnotator].
+         */
+        val DATALOG_GUARD_KEYWORD: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_DATALOG_GUARD_KEYWORD", CONTROL_FLOW_KEYWORD)
+
+        /**
+         * The parentheses around a condition, which the grammar requires rather than the author
+         * choosing them.
+         *
+         * These are what separate the condition from everything else on a line like
+         * `if (m2 > m1) (h2 - h1, m2 - m1) else (…)`, where three parenthesised groups compete for
+         * attention and only one is a condition. [FlixControlFlowAnnotator] emphasises them in
+         * bold by default so that one stands out.
+         *
+         * Falls back to the ordinary parenthesis colour, so the emphasis is weight alone. Setting
+         * this key to a dimmer foreground is the opposite treatment of the same idea — push the
+         * required syntax back instead of pulling it forward — and works just as well; an explicit
+         * value here replaces the default emphasis entirely.
+         */
+        val CONDITION_PARENTHESES: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey(
+                "FLIX_CONDITION_PARENTHESES",
+                DefaultLanguageHighlighterColors.PARENTHESES,
+            )
+
         val STRING: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_STRING", DefaultLanguageHighlighterColors.STRING)
         val NUMBER: TextAttributesKey =

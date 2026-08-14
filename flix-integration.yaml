@@ -32,6 +32,10 @@ registrations:
     # That is also what makes a key unreachable without this page, which is why the two ship
     # together rather than the page being a follow-up.
     com.intellij.colorSettingsPage: org.flixlang.intellij.lang.highlighting.FlixColorSettingsPage
+    # Tells apart the four productions `IF_KW` appears in, one of which -- the Datalog constraint --
+    # is not a conditional. Language, not backend: it reads this plugin's own PSI, so it must keep
+    # working in an IDE with no LSP4IJ and before the server has answered.
+    com.intellij.annotator: org.flixlang.intellij.lang.highlighting.FlixControlFlowAnnotator
     com.intellij.lang.braceMatcher: org.flixlang.intellij.lang.editor.FlixBraceMatcher
     com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
     com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler

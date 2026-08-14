@@ -22,6 +22,9 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
         val defined = setOf(
             FlixSyntaxHighlighter.KEYWORD,
             FlixSyntaxHighlighter.CONTROL_FLOW_KEYWORD,
+            FlixSyntaxHighlighter.GUARD_KEYWORD,
+            FlixSyntaxHighlighter.DATALOG_GUARD_KEYWORD,
+            FlixSyntaxHighlighter.CONDITION_PARENTHESES,
             FlixSyntaxHighlighter.STRING,
             FlixSyntaxHighlighter.NUMBER,
             FlixSyntaxHighlighter.COMMENT,
@@ -30,6 +33,20 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
         )
 
         assertEquals(defined, offered)
+    }
+
+    /**
+     * Every tag the demo uses is declared, and every declared tag is used.
+     *
+     * A tag with no entry in the map is not ignored: the platform fails while rendering the page,
+     * so the whole settings panel breaks rather than one word losing its colour. The reverse -- a
+     * declared tag the demo never uses -- is a key the preview silently stops demonstrating.
+     */
+    fun testTheDemoTagsAndTheDescriptorMapAgree() {
+        val used = Regex("<([A-Za-z]+)>").findAll(page.demoText).map { it.groupValues[1] }.toSet()
+        val declared = page.getAdditionalHighlightingTagToDescriptorMap().orEmpty().keys
+
+        assertEquals(declared, used)
     }
 
     /** No two rows may share a display name, or one of them cannot be identified in the list. */
@@ -49,9 +66,9 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
     fun testTheDemoShowsEveryRoleTheKeyCovers() {
         val demo = page.demoText
 
-        assertTrue("no conditional expression", demo.contains("if (t <= 9)"))
-        assertTrue("no match guard", demo.contains("if wait > 30"))
-        assertTrue("no Datalog constraint", demo.contains(":- Path(x, y), Edge(y, z), if (x != z)"))
+        assertTrue("no conditional expression", demo.contains("if <conditionParens>(</conditionParens>t <= 9"))
+        assertTrue("no match guard", demo.contains("<guard>if</guard> wait > 30"))
+        assertTrue("no Datalog constraint", demo.contains("<datalogGuard>if</datalogGuard>"))
         assertTrue("no comprehension guard", demo.contains("foreach (leg <- legs)"))
         assertTrue("no enum case, which is the counter-example", demo.contains("case Direct(Station, Station)"))
     }
@@ -65,7 +82,9 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
     fun testTheDemoTextIsColoured() {
         val highlighter = page.highlighter
         val lexer = highlighter.highlightingLexer
-        lexer.start(page.demoText)
+        // The platform strips the markup before lexing; do the same, or the tags themselves
+        // would be lexed as Flix and the assertion would be about nonsense.
+        lexer.start(page.demoText.replace(Regex("</?[A-Za-z]+>"), ""))
         val keys = mutableSetOf<String>()
         while (lexer.tokenType != null) {
             highlighter.getTokenHighlights(lexer.tokenType!!).forEach { keys += it.externalName }

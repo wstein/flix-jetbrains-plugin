@@ -46,6 +46,16 @@
         <colorSettingsPage
                 implementation="org.flixlang.intellij.lang.highlighting.FlixColorSettingsPage"/>
 
+        <!-- Tells the four `if`s apart. `IF_KW` is one token in four productions – a conditional
+             expression, a match guard, a comprehension guard and a Datalog constraint – and the
+             last is not a conditional at all. The lexer sees a token; the parser has already
+             worked out which. Here rather than in backend: it reads the plugin's own PSI and needs
+             neither LSP4IJ nor the language server, so it must keep working in an IDE with
+             neither. -->
+        <annotator
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.highlighting.FlixControlFlowAnnotator"/>
+
         <lang.braceMatcher
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.editor.FlixBraceMatcher"/>

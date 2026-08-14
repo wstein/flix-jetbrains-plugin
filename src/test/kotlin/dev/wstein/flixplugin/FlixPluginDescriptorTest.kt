@@ -109,6 +109,10 @@ class FlixPluginDescriptorTest {
                 // platform default, so a key changes nothing on screen until someone picks
                 // one -- and without this page there is nowhere to pick.
                 "colorSettingsPage",
+                // Tells the four productions `IF_KW` appears in apart, one of which -- the
+                // Datalog constraint -- is not a conditional. Reads this plugin's own PSI, so
+                // it belongs wherever the parser loads rather than beside the LSP client.
+                "annotator",
                 "lang.braceMatcher",
                 "lang.commenter",
                 "lang.quoteHandler",
@@ -136,6 +140,7 @@ class FlixPluginDescriptorTest {
             "lang.parserDefinition" to "com.intellij.lang.ParserDefinition",
             "lang.syntaxHighlighterFactory" to "com.intellij.openapi.fileTypes.SyntaxHighlighterFactory",
             "colorSettingsPage" to "com.intellij.openapi.options.colors.ColorSettingsPage",
+            "annotator" to "com.intellij.lang.annotation.Annotator",
             "lang.braceMatcher" to "com.intellij.lang.PairedBraceMatcher",
             "lang.commenter" to "com.intellij.lang.Commenter",
             "lang.quoteHandler" to "com.intellij.codeInsight.editorActions.QuoteHandler",

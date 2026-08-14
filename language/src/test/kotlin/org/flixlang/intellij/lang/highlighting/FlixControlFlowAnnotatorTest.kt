@@ -1,7 +1,6 @@
 package org.flixlang.intellij.lang.highlighting
 
 import com.intellij.lang.LanguageParserDefinitions
-import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiRecursiveElementVisitor
@@ -75,7 +74,7 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
     }
 
     /** The span is the whole parenthesised condition, not the two glyphs around it. */
-    fun testTheConditionIsBandedAsOneSpan() {
+    fun testTheConditionIsOneSpan() {
         val roles = rolesIn("def f(): Int32 = if (x > 0) 1 else 2")
 
         assertEquals(
@@ -91,11 +90,11 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
      * which one is a condition. `findChildByType` looks only at direct children, which is what
      * keeps the other two out -- and a whole-subtree search would sweep them in.
      */
-    fun testTheBandStopsAtTheConditionAndDoesNotSwallowTheBranches() {
+    fun testTheSpanStopsAtTheConditionAndDoesNotSwallowTheBranches() {
         val source = "def d(): Time = if (m2 > m1) (h2 - h1, m2 - m1) else ((h2 - h1) - 1, (60 + m2) - m1)"
 
-        // The failure this guards against is not a missing colour but a band across the whole
-        // line: taking the first `(` and the last `)` of the subtree would do exactly that.
+        // The failure this guards against is not a missing style but the whole line emphasised:
+        // taking the first `(` and the last `)` of the subtree would do exactly that.
         assertEquals(
             listOf("FLIX_CONDITION" to "(m2 > m1)"),
             rolesIn(source).filter { it.first == "FLIX_CONDITION" },
@@ -165,56 +164,50 @@ class FlixControlFlowAnnotatorTest : BasePlatformTestCase() {
     }
 
     /**
-     * The band sets a background and nothing else.
+     * The default sets a font style and nothing else.
      *
-     * This is the requirement that makes a multi-token span workable at all. A condition contains
-     * a string, a number, an operator and a name, each already coloured by the highlighter; the
-     * editor composes highlighter layers field by field, so a null foreground here lets every one
-     * of them keep its own. Setting a foreground -- or cloning inherited attributes the way the
-     * keyword default does -- would flatten the whole condition to one colour.
+     * This is the requirement that lets one rule serve both a single keyword and a span over a
+     * whole condition. Any colour set here would be imposed on every token in the span.
      */
-    fun testTheBandSetsOnlyABackground() {
-        val scheme = EditorColorsManager.getInstance().globalScheme
+    fun testTheDefaultSetsOnlyAFontStyle() {
+        val emphasis = FlixControlFlowAnnotator.EMPHASIS
 
-        val band = FlixControlFlowAnnotator.band(scheme)
-
-        assertNotNull("the band has no background, so nothing would be drawn", band.backgroundColor)
-        assertNull("a foreground would flatten every token in the condition", band.foregroundColor)
-        assertEquals("a span must not be given weight as well", Font.PLAIN, band.fontType)
-        assertNull(band.effectColor)
-    }
-
-    /** The band is mixed from the scheme, so it lands between its background and its foreground. */
-    fun testTheBandIsDerivedFromTheActiveScheme() {
-        val scheme = EditorColorsManager.getInstance().globalScheme
-
-        val band = FlixControlFlowAnnotator.band(scheme).backgroundColor
-
-        assertFalse("an invisible band is the same as no band", band == scheme.defaultBackground)
-        assertFalse("the band must stay subtle", band == scheme.defaultForeground)
+        assertNull("a foreground would flatten every token in the condition", emphasis.foregroundColor)
+        assertNull("a background would be a band, which is not what was asked for", emphasis.backgroundColor)
+        assertNull(emphasis.effectColor)
+        assertEquals(Font.BOLD or Font.ITALIC, emphasis.fontType)
     }
 
     /**
-     * The default emphasis adds weight and takes nothing away.
+     * The platform contract this depends on, asserted directly.
      *
-     * This is why the bold is applied here rather than through `additionalTextAttributes`: a scheme
-     * entry replaces a key's attributes, so the guard would keep the bold and lose the inherited
-     * keyword colour. Deriving from the resolved attributes keeps every colour the scheme chose.
+     * `TextAttributes.merge` composes layered highlighters field by field: a colour on the upper
+     * layer overrides only when set, and font types are **or-ed**. That is the whole reason a
+     * style-only overlay keeps each token's syntax colour and still adds weight and slant. If the
+     * platform ever changed it, every condition in the editor would silently lose its colours --
+     * so it is pinned here rather than trusted.
      */
-    fun testTheDefaultEmphasisKeepsTheInheritedColours() {
-        val base = TextAttributes().apply {
+    fun testAStyleOnlyOverlayKeepsTheColoursUnderneath() {
+        val token = TextAttributes().apply {
             foregroundColor = JBColor.RED
             backgroundColor = JBColor.BLUE
-            fontType = Font.ITALIC
+            fontType = Font.PLAIN
         }
 
-        val bold = FlixControlFlowAnnotator.emphasised(base)
+        val merged = TextAttributes.merge(token, FlixControlFlowAnnotator.EMPHASIS)
 
-        assertEquals(JBColor.RED, bold.foregroundColor)
-        assertEquals(JBColor.BLUE, bold.backgroundColor)
-        assertTrue("the italic the scheme asked for was dropped", bold.fontType and Font.ITALIC != 0)
-        assertTrue("no emphasis was added", bold.fontType and Font.BOLD != 0)
-        assertEquals("the original must not be mutated", Font.ITALIC, base.fontType)
+        assertEquals("the token lost its colour", JBColor.RED, merged.foregroundColor)
+        assertEquals("the token lost its background", JBColor.BLUE, merged.backgroundColor)
+        assertEquals("the emphasis was not added", Font.BOLD or Font.ITALIC, merged.fontType)
+    }
+
+    /** A style the scheme already asked for is kept, not replaced. */
+    fun testAnExistingStyleIsAddedToRatherThanOverwritten() {
+        val alreadyItalic = TextAttributes().apply { fontType = Font.ITALIC }
+
+        val merged = TextAttributes.merge(alreadyItalic, FlixControlFlowAnnotator.EMPHASIS)
+
+        assertEquals(Font.BOLD or Font.ITALIC, merged.fontType)
     }
 
     /**

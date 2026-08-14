@@ -119,7 +119,8 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
          *
          * Assigned by [FlixControlFlowAnnotator], not here, because the token is the same `if` a
          * conditional uses and only the parser knows which is which. Falls back to
-         * [CONTROL_FLOW_KEYWORD], so it reads as control flow until someone separates them.
+         * [CONTROL_FLOW_KEYWORD], so it keeps the control-flow colour until someone separates
+         * them; the annotator adds bold italic on top without touching that colour.
          */
         val GUARD_KEYWORD: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_GUARD_KEYWORD", CONTROL_FLOW_KEYWORD)
@@ -143,10 +144,11 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
          * everything else on a line like `if (m2 > m1) (h2 - h1, m2 - m1) else (…)`, where three
          * parenthesised groups compete and only one is a condition.
          *
-         * **No fallback, deliberately.** [FlixControlFlowAnnotator] draws this as a background band
-         * mixed from the active scheme's own default background and foreground, which is why it
-         * needs no colour of its own and why it adapts to any theme, including ones that do not
-         * exist yet. A value set here in the colour scheme replaces that band outright.
+         * **No fallback, deliberately.** A condition is many tokens, each already coloured by this
+         * highlighter, so this key must not impose a colour of its own on any of them.
+         * [FlixControlFlowAnnotator] draws the span in bold italic and leaves every colour
+         * untouched, which needs no fallback to inherit from. A value set here in the colour scheme
+         * replaces that default outright.
          */
         val CONDITION: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_CONDITION")

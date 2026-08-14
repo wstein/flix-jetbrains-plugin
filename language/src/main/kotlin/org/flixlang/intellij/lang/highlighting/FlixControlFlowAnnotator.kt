@@ -4,13 +4,11 @@ import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.editor.colors.EditorColorsManager
-import com.intellij.openapi.editor.colors.EditorColorsScheme
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.tree.IElementType
-import com.intellij.ui.ColorUtil
 import java.awt.Font
 import org.flixlang.intellij.lang.psi.FlixGuard
 import org.flixlang.intellij.lang.psi.FlixGuardFragment
@@ -51,22 +49,22 @@ import org.flixlang.intellij.lang.psi.FlixTypes
  * banding one turns into a wash across most of a file rather than a cue -- and a nested `if` would
  * sit inside its own parent's band.
  *
- * ## Two different defaults, for two different shapes
+ * ## The default: bold italic, and every colour left alone
  *
- * A **keyword** is one token, so it is emphasised in bold. Bold is the one emphasis that survives
- * every theme: a colour that reads well in Darcula can vanish in the high-contrast scheme, and
- * shipping per-theme attribute files means shipping contrast nobody has looked at.
+ * One rule for all of it -- keywords and condition spans alike -- and it sets **only** the font
+ * style. Every token underneath keeps the colour the syntax highlighter gave it, so a string, a
+ * number, an operator and a name inside one condition each stay their own colour and merely gain
+ * weight and slant. See [EMPHASIS] for the platform mechanism that makes this work, which is not
+ * incidental: it is why the rule can be this simple.
  *
- * A **span** covers many tokens that are already coloured, so it gets a background band and
- * nothing else. Bolding a whole condition would be heavy, and any foreground would flatten the
- * string, number and operator inside it to one colour. The band's colour is mixed from the active
- * scheme's own default background and foreground, so it is subtle in a light scheme and subtle in
- * a dark one with no file per theme -- and it still works in a scheme nobody has written yet.
+ * Style rather than colour, because weight and slant are orthogonal to the palette. A colour that
+ * reads well in Darcula can vanish in the high-contrast scheme, and shipping per-theme attribute
+ * files means shipping contrast nobody has looked at; one style rule reads correctly in all three.
  *
- * Both are applied here rather than through `additionalTextAttributes`, and that is not a style
- * preference. A scheme entry *replaces* a key's attributes instead of adding to them, so the
- * fallback stops applying and a guard keyword would lose its inherited colour -- bold, in the
- * colour of ordinary text.
+ * Applied here rather than through `additionalTextAttributes`, and that is not a style preference.
+ * A scheme entry *replaces* a key's attributes instead of adding to them, so the fallback would
+ * stop applying and a guard keyword would render bold italic in the colour of ordinary text --
+ * losing the very thing this is careful to keep.
  *
  * A user who gives one of these keys attributes of their own gets exactly those: an explicit choice
  * in the colour scheme outranks the default, which is what makes it a default rather than a decree.
@@ -157,7 +155,7 @@ class FlixControlFlowAnnotator : Annotator {
      *
      * `getAttributes(key, false)` asks what the scheme states *for this key*, without walking the
      * fallback chain, so it distinguishes "the user set this" from "this inherits". Only the
-     * second gets a default.
+     * second gets the default.
      */
     private fun apply(range: TextRange, key: TextAttributesKey, holder: AnnotationHolder) {
         val scheme = EditorColorsManager.getInstance().globalScheme
@@ -167,50 +165,34 @@ class FlixControlFlowAnnotator : Annotator {
             builder.textAttributes(key).create()
             return
         }
-        val default = if (key == FlixSyntaxHighlighter.CONDITION) {
-            band(scheme)
-        } else {
-            emphasised(scheme.getAttributes(key))
-        }
-        builder.enforcedTextAttributes(default).create()
+        builder.enforcedTextAttributes(EMPHASIS).create()
     }
 
     internal companion object {
 
-        /** How far the band is mixed from the editor's background towards its foreground. */
-        private const val BAND_STRENGTH = 0.07
-
         /**
-         * A subtle background for the condition span, and **nothing else**.
+         * Bold italic, and **nothing else**.
          *
-         * Every other field is left null on purpose. A span covers many tokens, each already
-         * coloured by [FlixSyntaxHighlighter], and the editor composes highlighter layers by
-         * field: a null foreground here lets each token keep its own. Setting a foreground -- or
-         * cloning some inherited attributes the way [emphasised] does -- would flatten a string,
-         * a number and an operator inside the condition to one colour.
+         * Every colour field is left null on purpose, and that is what lets one rule serve both a
+         * single keyword and a span covering a whole condition. `TextAttributes.merge` composes
+         * layered highlighters field by field:
          *
-         * The colour is mixed from the scheme's own defaults rather than shipped per theme, so it
-         * is subtle in a light scheme and subtle in a dark one without a file per theme, and it
-         * still works in a scheme nobody has written yet.
+         * ```java
+         * if (above.getForegroundColor() != null) attrs.setForegroundColor(...);
+         * attrs.setFontType(above.getFontType() | under.getFontType());
+         * ```
+         *
+         * Colours override only when set, and font types are **or-ed**. So a null foreground here
+         * lets every token underneath keep the colour the syntax highlighter gave it -- the string,
+         * the number, the operator and the name inside a condition each stay their own -- while the
+         * weight and slant are added on top. Setting any colour, or cloning some inherited
+         * attributes, would flatten the span to one colour.
+         *
+         * Style rather than colour for the same reason throughout: weight and slant are orthogonal
+         * to the palette, so one rule reads correctly in the light, dark and high-contrast schemes,
+         * where a chosen colour would have to be checked against each.
          */
-        internal fun band(scheme: EditorColorsScheme): TextAttributes =
-            TextAttributes().apply {
-                backgroundColor = ColorUtil.mix(
-                    scheme.defaultBackground,
-                    scheme.defaultForeground,
-                    BAND_STRENGTH,
-                )
-            }
-
-        /**
-         * [base] in bold, keeping every colour it already has.
-         *
-         * Bold rather than a colour because weight is orthogonal to the palette: it reads the same
-         * in the light, dark and high-contrast schemes, where a chosen colour would have to be
-         * checked against each. Used for the keywords, which are single tokens -- see [band] for
-         * why a span cannot be styled this way.
-         */
-        internal fun emphasised(base: TextAttributes?): TextAttributes =
-            (base?.clone() ?: TextAttributes()).apply { fontType = fontType or Font.BOLD }
+        internal val EMPHASIS: TextAttributes =
+            TextAttributes().apply { fontType = Font.BOLD or Font.ITALIC }
     }
 }

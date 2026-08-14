@@ -54,10 +54,10 @@ Where there are parentheses the span runs from the element's own `(` to its own 
 `findChildByType`, which looks at *direct children only*. That is load-bearing rather than
 incidental. On `Main.flix:88` --
 `if (m2 > m1) (h2 - h1, m2 - m1) else ((h2 - h1) - 1, (60 + m2) - m1)` -- the branches are
-parenthesised too, and a subtree search taking the first `(` and the last `)` bands the entire
-line. `testTheBandStopsAtTheConditionAndDoesNotSwallowTheBranches` is that fault, injected.
+parenthesised too, and a subtree search taking the first `(` and the last `)` emphasises the entire
+line. `testTheSpanStopsAtTheConditionAndDoesNotSwallowTheBranches` is that fault, injected.
 
-A `matchRule` with no guard has no condition to band, and `getExpr()` is null for it.
+A `matchRule` with no guard has no condition to mark, and `getExpr()` is null for it.
 
 ### What the lexer deliberately does not colour
 
@@ -70,30 +70,36 @@ Both need the PSI. This is the boundary between the two layers, not an oversight
 ## Defaults
 
 **No key ships a colour.** A colour that reads well in Darcula can vanish in the high-contrast
-scheme, and shipping per-theme attribute files means shipping contrast nobody has looked at. The
-defaults are instead computed by the annotator at paint time, and they differ by shape:
+scheme, and shipping per-theme attribute files means shipping contrast nobody has looked at.
 
-| Shape | Default | Why |
-| --- | --- | --- |
-| a **keyword** (one token) | bold, over the inherited colour | weight is orthogonal to the palette, so one rule works in every scheme |
-| a **condition** (many tokens) | a background band, and nothing else | see below |
+The annotator instead applies one rule at paint time, to every role it draws — keywords and
+condition spans alike: **bold italic, and nothing else.** Weight and slant are orthogonal to the
+palette, so the same rule reads correctly in the light, dark and high-contrast schemes.
 
-The band sets `backgroundColor` and leaves every other field null. A condition contains a string, a
-number, an operator and a name, each already coloured by the highlighter, and the editor composes
-highlighter layers *field by field* — so a null foreground lets each token keep its own. Setting a
-foreground, or cloning inherited attributes the way the keyword default does, flattens the whole
-condition to one colour. `testTheBandSetsOnlyABackground` pins this.
+That "nothing else" is the load-bearing part, and it rests on how the platform composes layered
+highlighters (`TextAttributes.merge`):
 
-The band's colour is mixed from the active scheme's own `defaultBackground` and `defaultForeground`,
-so it is subtle in a light scheme and subtle in a dark one with no per-theme file, and it still
-works in a scheme nobody has written yet.
+```java
+if (above.getForegroundColor() != null) attrs.setForegroundColor(above.getForegroundColor());
+attrs.setFontType(above.getFontType() | under.getFontType());
+```
 
-Both defaults are applied in the annotator rather than through `additionalTextAttributes`, and that
-is not stylistic: **a scheme entry replaces a key's attributes rather than adding to them**, so the
-fallback would stop applying and a guard keyword would render bold in the colour of ordinary text.
+Colours override **only when set**, and font types are **or-ed**. So an overlay carrying only a
+font style leaves every colour underneath intact: inside one condition the string stays string-
+coloured, the number number-coloured, the operator its own — each merely gains weight and slant. Set
+any colour, or clone some inherited attributes, and the whole span flattens to one colour.
 
-An explicit value for a key in the colour scheme wins outright, including over these defaults. That
-is what makes them defaults rather than decrees — and it is how to get the opposite treatment: set
+`testTheDefaultSetsOnlyAFontStyle` pins the overlay, and
+`testAStyleOnlyOverlayKeepsTheColoursUnderneath` pins the merge contract itself, so a platform
+change breaks the build rather than silently draining the colour out of every condition.
+
+It is applied in the annotator rather than through `additionalTextAttributes`, and that is not
+stylistic: **a scheme entry replaces a key's attributes rather than adding to them**, so the
+fallback would stop applying and a guard keyword would render bold italic in the colour of ordinary
+text — losing exactly what this is careful to keep.
+
+An explicit value for a key in the colour scheme wins outright, including over this default. That is
+what makes it a default rather than a decree — and it is how to get a different treatment: set
 `FLIX_CONDITION` to a dim foreground and the condition recedes instead of standing out.
 
 ### The preview cannot show a computed default

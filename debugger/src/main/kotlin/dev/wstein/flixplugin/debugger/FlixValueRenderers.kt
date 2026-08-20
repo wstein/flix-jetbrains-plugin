@@ -1,7 +1,15 @@
 package dev.wstein.flixplugin.debugger
 
+import com.intellij.debugger.DebuggerContext
+import com.intellij.debugger.engine.evaluation.EvaluateException
 import com.intellij.debugger.engine.evaluation.EvaluationContext
+import com.intellij.debugger.engine.evaluation.EvaluationContextImpl
+import com.intellij.debugger.ui.impl.watch.ValueDescriptorImpl
+import com.intellij.debugger.ui.tree.DebuggerTreeNode
+import com.intellij.debugger.ui.tree.NodeDescriptor
 import com.intellij.debugger.ui.tree.ValueDescriptor
+import com.intellij.debugger.ui.tree.render.ChildrenBuilder
+import com.intellij.debugger.ui.tree.render.ChildrenRenderer
 import com.intellij.debugger.ui.tree.render.CompoundRendererProvider
 import com.intellij.debugger.ui.tree.render.DescriptorLabelListener
 import com.intellij.debugger.ui.tree.render.Renderer
@@ -14,6 +22,8 @@ import com.sun.jdi.ReferenceType
 import com.sun.jdi.StringReference
 import com.sun.jdi.Type
 import com.sun.jdi.Value
+import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiExpression
 import org.jdom.Element
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletableFuture.completedFuture
@@ -36,6 +46,87 @@ internal abstract class FlixLabelRenderer(private val id: String) : ValueLabelRe
         context: EvaluationContext?,
         listener: DescriptorLabelListener?,
     ): String = runCatching { label(descriptor.value) }.getOrDefault("")
+
+    final override fun getUniqueId(): String = id
+
+    /** Stateless, so a copy is the same object. */
+    final override fun clone(): Renderer = this
+
+    final override fun readExternal(element: Element) = Unit
+
+    final override fun writeExternal(element: Element) = Unit
+}
+
+/**
+ * A child node with a name this plugin chooses and a value it already holds.
+ *
+ * The compiled shape of a Flix value is not the shape the programmer wrote, so the names in the
+ * tree have to be supplied rather than read off fields: a record's fields live in the `label` of
+ * each link in a chain, not in the JVM field names, which are `label`, `value` and `rest` all the
+ * way down.
+ *
+ * Deliberately not `UserExpressionData`, which is how the platform's own "Customize Data Views"
+ * children work. That evaluates a Java expression in the debuggee per child, and reaching a record
+ * field would mean a cast per link -- `((RecordExtend$Obj)((RecordExtend$Int32)this.rest).rest)` --
+ * built from each link's runtime type, and a debuggee evaluation for a value the renderer is
+ * already holding. Precomputed values cost nothing and cannot be wrong.
+ *
+ * `ValueDescriptorImpl` is not internal API; three of its methods are, and none is used here.
+ */
+internal class FlixNamedValue(
+    project: Project,
+    private val fieldName: String,
+    value: Value?,
+) : ValueDescriptorImpl(project, value) {
+
+    override fun getName(): String = fieldName
+
+    override fun calcValue(context: EvaluationContextImpl?): Value? = value
+
+    /**
+     * Refused, rather than fabricated.
+     *
+     * This is what "Evaluate expression" and "Copy value" ask for: a Java expression that reproduces
+     * the node. There is none -- the name is a Flix record label or a tag position, and neither
+     * exists in the debuggee's Java namespace. Returning a plausible-looking expression would give
+     * a value that is silently unrelated to the node it was read from.
+     */
+    override fun getDescriptorEvaluation(context: DebuggerContext?): PsiExpression =
+        throw EvaluateException("A Flix ${'$'}fieldName has no Java expression to evaluate")
+}
+
+/**
+ * A [ChildrenRenderer] over children this plugin computes, with nothing else to configure.
+ *
+ * Gathers the parts of the interface that mean nothing for a renderer holding no state, so the two
+ * below are only the rule for turning a value into named children.
+ */
+internal abstract class FlixChildrenRenderer(private val id: String) : ChildrenRenderer {
+
+    /** The children of `value`, as name/value pairs in display order. */
+    abstract fun childrenOf(value: Value?): List<Pair<String, Value?>>
+
+    final override fun buildChildren(value: Value?, builder: ChildrenBuilder, context: EvaluationContext) {
+        val project = context.project ?: return builder.setChildren(emptyList())
+        val nodes = runCatching { childrenOf(value) }.getOrDefault(emptyList())
+            .map { (name, child) -> builder.nodeManager.createNode(FlixNamedValue(project, name, child), context) }
+        builder.setChildren(nodes)
+    }
+
+    /**
+     * `isExpandableAsync`, not `isExpandable`: the latter is deprecated and its default throws
+     * `AbstractMethodError`, so the async form is the one to answer. Nothing here needs the
+     * debuggee, so the answer is already known.
+     */
+    final override fun isExpandableAsync(
+        value: Value?,
+        context: EvaluationContext?,
+        parent: NodeDescriptor?,
+    ): CompletableFuture<Boolean> =
+        completedFuture(runCatching { childrenOf(value).isNotEmpty() }.getOrDefault(false))
+
+    /** See [FlixNamedValue.getDescriptorEvaluation]: a Flix child has no Java expression. */
+    final override fun getChildValueExpression(node: DebuggerTreeNode?, context: DebuggerContext?): PsiExpression? = null
 
     final override fun getUniqueId(): String = id
 
@@ -108,30 +199,52 @@ class FlixRecordRenderer : CompoundRendererProvider() {
 
     override fun isEnabled(): Boolean = true
 
-    override fun getValueLabelRenderer(): ValueLabelRenderer =
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
         object : FlixLabelRenderer("FlixRecord") {
             override fun label(value: Value?): String = renderRecord(value)
         }
 
-    private fun renderRecord(value: Value?): String {
-        val start = value as? ObjectReference ?: return ""
-        val fields = mutableListOf<Pair<String, String>>()
-        var node: ObjectReference? = start
-        var truncated = false
+    /**
+     * The fields of a record, flattened out of the `label`/`value`/`rest` chain.
+     *
+     * Expanding a record used to walk that chain a link at a time -- `label`, `value`, `rest`, then
+     * `rest` again -- so reading the third field of a record meant opening three nested nodes whose
+     * names said nothing about the record. The chain is the compiled form, not the value.
+     *
+     * @param limit how many fields to take. The label is a summary and stops at
+     *              [FlixValues.MAX_RECORD_FIELDS]; the tree is the data and takes them all.
+     */
+    private fun fieldsOf(value: Value?, limit: Int): Pair<List<Pair<String, Value?>>, Boolean> {
+        val fields = mutableListOf<Pair<String, Value?>>()
+        var node = value as? ObjectReference
+        val seen = mutableSetOf<Long>()
 
         while (node != null) {
             if (FlixValues.simpleNameOf(node.referenceType().name()) == FlixValues.RECORD_EMPTY_TYPE) break
-            if (fields.size == FlixValues.MAX_RECORD_FIELDS) {
-                truncated = true
-                break
-            }
-            val label = node.readField("label")?.let(::renderScalar) ?: break
-            val fieldValue = node.readField("value")?.let(::renderScalar) ?: "?"
-            fields += label to fieldValue
+            // A record is immutable and cannot be cyclic, but a debuggee mid-construction or simply
+            // corrupt can be, and a renderer that hangs takes the variables view with it.
+            if (!seen.add(node.uniqueID())) break
+            if (fields.size == limit) return fields to true
+            // Read as text, not through `renderScalar`, which quotes a string: a field is named
+            // `name`, not `"name"`, and the quotes would reach both the label and the tree.
+            val label = (node.readField("label") as? StringReference)?.value() ?: break
+            fields += label to node.readField("value")
             node = node.readField("rest") as? ObjectReference
         }
-        return FlixValues.formatRecord(fields, truncated)
+        return fields to false
     }
+
+    private fun renderRecord(value: Value?): String {
+        if (value !is ObjectReference) return ""
+        val (fields, truncated) = fieldsOf(value, FlixValues.MAX_RECORD_FIELDS)
+        return FlixValues.formatRecord(fields.map { (name, v) -> name to renderScalar(v) }, truncated)
+    }
+
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixRecordChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> =
+                fieldsOf(value, Int.MAX_VALUE).first
+        }
 }
 
 /**
@@ -154,25 +267,51 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
 
     override fun isEnabled(): Boolean = true
 
-    override fun getValueLabelRenderer(): ValueLabelRenderer =
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
         object : FlixLabelRenderer("FlixTagged") {
             override fun label(value: Value?): String = renderTagged(value)
         }
 
-    private fun renderTagged(value: Value?): String {
-        val tagged = value as? ObjectReference ?: return ""
-        val type = tagged.referenceType()
-
-        // v0, v1, ... in declaration order. Reading the field list rather than probing names in a
-        // loop keeps a tag with no payload from costing a failed lookup.
-        val payload = type.allFields()
+    /**
+     * The tag's payload, in declaration order.
+     *
+     * Reading the field list rather than probing `v0`, `v1`, … in a loop keeps a tag with no
+     * payload from costing a failed lookup.
+     */
+    private fun payloadOf(tagged: ObjectReference): List<Pair<String, Value?>> =
+        tagged.referenceType().allFields()
             .filter { it.name().matches(PAYLOAD_FIELD) }
             .sortedBy { it.name().drop(1).toIntOrNull() ?: 0 }
-            .map { renderScalar(tagged.getValue(it)) }
+            .map { it.name() to tagged.getValue(it) }
 
+    private fun renderTagged(value: Value?): String {
+        val tagged = value as? ObjectReference ?: return ""
         val ordinal = (tagged.readField("ordinal") as? com.sun.jdi.IntegerValue)?.value()
-        return FlixValues.formatTagged(type.name(), payload, ordinal)
+        return FlixValues.formatTagged(
+            tagged.referenceType().name(),
+            payloadOf(tagged).map { (_, v) -> renderScalar(v) },
+            ordinal,
+        )
     }
+
+    /**
+     * The payload, and nothing else.
+     *
+     * `ordinal` is dropped: it is the discriminator the label already used, and a reader who has
+     * been shown `InvaderBlast` gains nothing from being shown `0` beside it. It stays visible for
+     * the shared representations, where the label *is* the ordinal, because there it is the only
+     * thing distinguishing one value from another.
+     */
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixTaggedChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> {
+                val tagged = value as? ObjectReference ?: return emptyList()
+                val payload = payloadOf(tagged)
+                if (FlixValues.tagNameOf(tagged.referenceType().name()) != null) return payload
+                val ordinal = tagged.referenceType().allFields().firstOrNull { it.name() == "ordinal" }
+                return payload + listOfNotNull(ordinal?.let { "ordinal" to tagged.getValue(it) })
+            }
+        }
 
     private companion object {
         private val PAYLOAD_FIELD = Regex("""v\d+""")

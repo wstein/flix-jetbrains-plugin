@@ -12,6 +12,7 @@ import com.sun.jdi.request.EventRequest
 import dev.wstein.flixplugin.FlixBuildSpec
 import dev.wstein.flixplugin.FlixLaunchCommand
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
@@ -83,17 +84,137 @@ class FlixDebugSessionTest {
 
     @Test(timeout = SESSION_TIMEOUT_MS)
     fun `a breakpoint on a Flix line binds, hits, and maps back to the source`() {
+        session(fixture, breakpointMarker) { vm, stop, line ->
+            val hit = stop.location()
+
+            // Counted after the hit rather than before it. A debuggee suspended at start has loaded
+            // no class of the program yet -- `allClasses` is JDK classes and nothing else -- which
+            // is exactly why the position manager watches class prepares instead of enumerating. By
+            // the time the line runs, every class that could hold it has prepared.
+            val classes = flixClassesHolding(vm, "Main.flix", line)
+            assertEquals(
+                "the line should be held by exactly one class; more than one is a compiler defect " +
+                    "(gate row 17), and none means the build carried no line numbers: " +
+                    classes.map { it.first.name() },
+                1,
+                classes.size,
+            )
+            assertEquals("one statement, one location in it", 1, classes.single().second.size)
+
+            // The rules this plugin resolves positions with, asked about a location it did not
+            // construct.
+            assertTrue("the hit location is not recognised as Flix", FlixSourceLocations.isFlixLocation(hit))
+            assertEquals(line, FlixSourceLocations.lineNumberOf(hit))
+            // Ends with the file name rather than equalling it, and that is the measurement, not a
+            // hedge: with no SMAP the class exposes `SourceFile` verbatim, and the compiler puts an
+            // absolute path there -- `/…/flix-debug-session…/src/Main.flix`. `locationsOfLine` is
+            // queried with the name JDI reported for exactly this reason, and the label trims it.
+            assertTrue(
+                "the source name should name the fixture: ${FlixSourceLocations.sourceNameOf(hit)}",
+                FlixSourceLocations.sourceNameOf(hit)?.endsWith("Main.flix") == true,
+            )
+
+            // And what the frames view will say about it. `Def$main` is a name no one wrote.
+            assertEquals("main(), Main.flix:$line", FlixFrames.labelOf(hit).toString())
+
+            // No effects in this program, so there is no trampoline and no continuation list: the
+            // JVM stack *is* the call chain. Asserted because the reconstruction runs on every stop,
+            // and must return nothing here rather than something.
+            assertEquals(emptyList<Any>(), FlixContinuations.callChain(stop.thread(), stop.location().declaringType()))
+
+            // And a value, read out of the frame the way the variables view reads it. `Some` is
+            // compiled to a class shared by every one-object case, so this is the assertion that the
+            // compiler's `--Xdebug` tag name reaches a reader: without it the best available answer
+            // is `#1("/home/x")`.
+            assertEquals("Some(\"/home/x\")", labelOf(stop, "at"))
+        }
+    }
+
+    /**
+     * A program whose calls are effectful, so the chain lives in continuations rather than on the
+     * JVM stack: `main` runs `both`, which calls `one` and then `two`, each of which performs `Ask`.
+     */
+    private val effectfulFixture = """
+        eff Ask {
+            def ask(): String
+        }
+
+        def one(): String \ Ask = Ask.ask()
+
+        def two(): String \ Ask = Ask.ask()
+
+        def both(): String \ Ask =
+            let a = one();
+            let b = two();
+            a + b
+
+        def main(): Unit \ IO =
+            run {
+                println(both())
+            } with handler Ask {
+                def ask(resume) = resume("!")
+            }
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `the reconstructed chain names the call each frame is waiting on`() {
+        // Stopped in `both`, between its two effectful calls. `main` is on the chain above it, and
+        // what it should say is where `main` *is* -- at `println(both())` on line 16, the call it is
+        // waiting on -- not at `def main` on line 14, which is where every entry used to point.
+        //
+        // That position is the continuation's `pc`, and a `pc` is a tableswitch key: only the
+        // `pcLines` constant a `--Xdebug` build records makes it readable without disassembling the
+        // method.
+        session(effectfulFixture, "let b = two()") { _, stop, _ ->
+            val provider = FlixAsyncStackTraceProvider()
+            val chain = FlixContinuations.callChain(stop.thread(), stop.location().declaringType())
+            val entries = chain.mapNotNull { provider.definitionLocation(it) }
+                .map { FlixFrames.labelOf(it).toString() }
+
+            assertEquals(listOf("main(), Main.flix:16"), entries)
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a chain whose calls have returned is not shown as the present`() {
+        // The same stop, and the reason the chain is chosen by its head rather than by its length.
+        // Three lists are reachable there -- [main], [both, main] and [one, both, main] -- and the
+        // longest begins at `one`, which returned before this line was reached.
+        session(effectfulFixture, "let b = two()") { _, stop, _ ->
+            val reachable = FlixContinuations.callChain(stop.thread(), stop.location().declaringType())
+            val stale = FlixContinuations.callChain(stop.thread(), staleType(stop))
+
+            assertEquals(1, reachable.size)
+            assertTrue(
+                "a list beginning at `one` should still be reachable, or this proves nothing",
+                stale.isNotEmpty(),
+            )
+        }
+    }
+
+    /** The class of `one`, whose captured chain is still on the heap and no longer describes the run. */
+    private fun staleType(stop: BreakpointEvent): ReferenceType? =
+        stop.virtualMachine().allClasses().firstOrNull { it.name() == "dev.flix.gen.Def\$one" }
+
+    /**
+     * Compiles `fixture`, launches it under a debugger, stops at the line carrying `marker`, and
+     * runs `assertions` there.
+     */
+    private fun session(
+        fixture: String,
+        marker: String,
+        assertions: (VirtualMachine, BreakpointEvent, Int) -> Unit,
+    ) {
         val compiler = compilerJar()
         assumeTrue("No compiler jar: set FLIX_JAR, or put flix.jar in the repository root.", compiler != null)
-        val jar = compiler!!
 
         val project = Files.createTempDirectory("flix-debug-session")
         val source = project.resolve("src/Main.flix")
         source.parent.createDirectories()
         source.writeText(fixture)
-        val line = lineOf(source, breakpointMarker)
+        val line = lineOf(source, marker)
 
-        build(jar, project)
+        build(compiler!!, project)
         val spec = FlixBuildSpec.read(project)
         val mainClass = requireNotNull(spec.mainClass()) { "the build manifest names no main class" }
 
@@ -111,51 +232,7 @@ class FlixDebugSessionTest {
         try {
             val vm = attach(port)
             try {
-                val stop = stopAt(vm, "Main.flix", line)
-                val hit = stop.location()
-
-                // Counted after the hit rather than before it. A debuggee suspended at start has
-                // loaded no class of the program yet -- `allClasses` is JDK classes and nothing
-                // else -- which is exactly why the position manager watches class prepares instead
-                // of enumerating. By the time the line runs, every class that could hold it has
-                // prepared.
-                val classes = flixClassesHolding(vm, "Main.flix", line)
-                assertEquals(
-                    "the line should be held by exactly one class; more than one is a compiler defect " +
-                        "(gate row 17), and none means the build carried no line numbers: " +
-                        classes.map { it.first.name() },
-                    1,
-                    classes.size,
-                )
-                assertEquals("one statement, one location in it", 1, classes.single().second.size)
-
-                // The rules this plugin resolves positions with, asked about a location it did not
-                // construct.
-                assertTrue("the hit location is not recognised as Flix", FlixSourceLocations.isFlixLocation(hit))
-                assertEquals(line, FlixSourceLocations.lineNumberOf(hit))
-                // Ends with the file name rather than equalling it, and that is the measurement,
-                // not a hedge: with no SMAP the class exposes `SourceFile` verbatim, and the
-                // compiler puts an absolute path there --
-                // `/…/flix-debug-session…/src/Main.flix`. `locationsOfLine` is queried with the
-                // name JDI reported for exactly this reason, and the frame label trims it.
-                assertTrue(
-                    "the source name should name the fixture: ${FlixSourceLocations.sourceNameOf(hit)}",
-                    FlixSourceLocations.sourceNameOf(hit)?.endsWith("Main.flix") == true,
-                )
-
-                // And what the frames view will say about it. `Def$main` is a name no one wrote.
-                assertEquals("main(), Main.flix:$line", FlixFrames.labelOf(hit).toString())
-
-                // No effects in this program, so there is no trampoline and no continuation list:
-                // the JVM stack *is* the call chain. Asserted because the reconstruction runs on
-                // every stop, and must return nothing here rather than something.
-                assertEquals(emptyList<Any>(), FlixContinuations.callChain(stop.thread()))
-
-                // And a value, read out of the frame the way the variables view reads it. `Some` is
-                // compiled to a class shared by every one-object case, so this is the assertion that
-                // the compiler's `--Xdebug` tag name reaches a reader: without it the best available
-                // answer is `#1("/home/x")`.
-                assertEquals("Some(\"/home/x\")", labelOf(stop, "at"))
+                assertions(vm, stopAt(vm, "Main.flix", line), line)
             } finally {
                 runCatching { vm.dispose() }
             }

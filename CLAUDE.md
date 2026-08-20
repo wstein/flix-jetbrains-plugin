@@ -100,10 +100,20 @@ four-call chain measured 36 JVM frames with one of them Flix. `FlixContinuations
 off the heap instead — `Frames$` cons lists held by the `installHandler` arguments, by
 `ResumptionCons$.frames` and by `Suspension$.prefix` — and `FlixAsyncStackTraceProvider` presents it
 under the platform's *Async stack trace* separator, as the Kotlin plugin does for coroutines. The
-lists at different handler levels are nested suffixes, so the longest is the complete chain; they
-are compared, never concatenated. What a provider returns **replaces** the real frames below the one
+lists at different handler levels are nested suffixes, but they were captured at different *times*,
+so the longest can describe calls that have since returned. The chain is therefore chosen by its
+**head** — the one beginning at the definition currently executing — and that head is then dropped,
+because the frames view is already showing it as the live frame. Nothing matching means nothing
+current: between suspensions the JVM stack still holds the Flix frames, and what is on the heap is
+history. The lists are compared, never concatenated. What a provider returns **replaces** the real frames below the one
 it answered for — `JavaExecutionStack` schedules it with a null frame iterator — which is why only
 the topmost frame is answered for.
+
+Each entry points at the call that frame is *waiting on*, not at the definition's first line. That
+position is the continuation's `pc` — a `tableswitch` key inside `applyFrame`, which only a
+disassembler could follow — so a `--Xdebug` build records the answer as a `pcLines` constant on the
+class (`GenFunAndClosureClasses.resumeLines`) and `FlixResumePoints` reads it. Without the constant,
+an entry falls back to the definition's first line.
 
 Both kinds of frame are **labelled in Flix** rather than in the compiled form: `readTuning(),
 Main.flix:88` rather than `applyFrame:88, Def$readTuning (dev.flix.gen)`. `FlixFrames` recovers the

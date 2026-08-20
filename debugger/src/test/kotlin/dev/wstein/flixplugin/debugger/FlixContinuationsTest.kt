@@ -5,6 +5,7 @@ import com.sun.jdi.Field
 import com.sun.jdi.Location
 import com.sun.jdi.Method
 import com.sun.jdi.ObjectReference
+import com.sun.jdi.ReferenceType
 import com.sun.jdi.StackFrame
 import com.sun.jdi.ThreadReference
 import com.sun.jdi.Value
@@ -25,9 +26,11 @@ import java.lang.reflect.Proxy
 class FlixContinuationsTest {
 
     @Test
-    fun `the longest of the nested lists is the complete chain`() {
+    fun `the chain that begins at the current definition is the one used`() {
         // What the live stop looked like: each handler level holds the frames captured at that
-        // level, so the outermost holds all four calls and the inner ones hold tails of it.
+        // level, and they are nested suffixes. Stopped in `location`, the list that begins there is
+        // the one describing the present -- and its head is dropped, because the frames view is
+        // already showing that frame as the live one.
         val thread = thread(
             handlerFrame(frames("Def\$readTuning", "Clo\$main")),
             handlerFrame(frames("Tuning\$Def\$path", "Def\$readTuning", "Clo\$main")),
@@ -35,9 +38,33 @@ class FlixContinuationsTest {
         )
 
         assertEquals(
-            listOf("Scores\$Def\$location", "Tuning\$Def\$path", "Def\$readTuning", "Clo\$main"),
-            names(FlixContinuations.callChain(thread)),
+            listOf("Tuning\$Def\$path", "Def\$readTuning", "Clo\$main"),
+            names(FlixContinuations.callChain(thread, type("Scores\$Def\$location"))),
         )
+    }
+
+    @Test
+    fun `a longer chain whose calls have returned is not the present`() {
+        // Measured at a stop in `both`, after its call to `one` returned and before its call to
+        // `two`: the longest list on the thread still begins at `one`, which is finished. Taking
+        // the longest would report a call that is not happening.
+        val thread = thread(
+            handlerFrame(frames("Clo\$main")),
+            handlerFrame(frames("Def\$both", "Clo\$main")),
+            handlerFrame(frames("Def\$one", "Def\$both", "Clo\$main")),
+        )
+
+        assertEquals(listOf("Clo\$main"), names(FlixContinuations.callChain(thread, type("Def\$both"))))
+    }
+
+    @Test
+    fun `a thread whose chains all describe the past shows none of them`() {
+        // Between suspensions the JVM stack still holds the Flix frames directly, so the frames view
+        // is already showing the chain and what is on the heap is history. Showing it would be a
+        // stack of calls that have returned, presented as if they had not.
+        val thread = thread(handlerFrame(frames("Def\$one", "Def\$both", "Clo\$main")))
+
+        assertEquals(emptyList<String>(), names(FlixContinuations.callChain(thread, type("Def\$two"))))
     }
 
     @Test
@@ -48,8 +75,8 @@ class FlixContinuationsTest {
         val thread = thread(handlerFrame(resumption))
 
         assertEquals(
-            listOf("Tuning\$Def\$path", "Def\$readTuning", "Clo\$main"),
-            names(FlixContinuations.callChain(thread)),
+            listOf("Def\$readTuning", "Clo\$main"),
+            names(FlixContinuations.callChain(thread, type("Tuning\$Def\$path"))),
         )
     }
 
@@ -59,8 +86,8 @@ class FlixContinuationsTest {
         val suspension = obj("dev.flix.runtime.Suspension\$", mapOf("resumption" to resumption))
 
         assertEquals(
-            listOf("Def\$readTuning", "Clo\$main"),
-            names(FlixContinuations.callChain(thread(handlerFrame(suspension)))),
+            listOf("Clo\$main"),
+            names(FlixContinuations.callChain(thread(handlerFrame(suspension)), type("Def\$readTuning"))),
         )
     }
 
@@ -78,8 +105,8 @@ class FlixContinuationsTest {
         )
 
         assertEquals(
-            listOf("Scores\$Def\$location", "Tuning\$Def\$path", "Clo\$main"),
-            names(FlixContinuations.callChain(thread(handlerFrame(suspension)))),
+            listOf("Tuning\$Def\$path", "Clo\$main"),
+            names(FlixContinuations.callChain(thread(handlerFrame(suspension)), type("Scores\$Def\$location"))),
         )
     }
 
@@ -93,7 +120,7 @@ class FlixContinuationsTest {
             mapOf("frames" to frames("Clo\$main"), "tail" to outer),
         )
 
-        assertEquals(3, FlixContinuations.callChain(thread(handlerFrame(inner))).size)
+        assertEquals(2, FlixContinuations.callChain(thread(handlerFrame(inner)), type("Tuning\$Def\$path")).size)
     }
 
     @Test
@@ -102,7 +129,7 @@ class FlixContinuationsTest {
         // *is* the call chain, and the frames view already shows it.
         val thread = thread(handlerFrame(obj("java.lang.Object", emptyMap())))
 
-        assertEquals(emptyList<String>(), names(FlixContinuations.callChain(thread)))
+        assertEquals(emptyList<String>(), names(FlixContinuations.callChain(thread, type("Def\$main"))))
     }
 
     @Test
@@ -141,7 +168,7 @@ class FlixContinuationsTest {
             handlerFrame(frames("Def\$readTuning", "Clo\$main")),
         )
 
-        assertEquals(listOf("Def\$readTuning", "Clo\$main"), names(FlixContinuations.callChain(thread)))
+        assertEquals(listOf("Clo\$main"), names(FlixContinuations.callChain(thread, type("Def\$readTuning"))))
     }
 
     // --- what an entry points at ------------------------------------------------------------------
@@ -171,7 +198,7 @@ class FlixContinuationsTest {
         val continuation = continuation("Tuning\$Def\$path")
 
         assertNull(provider.definitionLocation(continuation))
-        assertNull(provider.chainOf(thread(handlerFrame(frames("Tuning\$Def\$path")))))
+        assertNull(provider.chainOf(thread(handlerFrame(frames("Tuning\$Def\$path", "Clo\$main"))), type("Tuning\$Def\$path")))
     }
 
     @Test
@@ -187,14 +214,19 @@ class FlixContinuationsTest {
             ),
         )
 
-        assertEquals(listOf(12, 64, 9), provider.chainOf(thread)?.map { it.line() })
+        assertEquals(listOf(64, 9), provider.chainOf(thread, type("Scores\$Def\$location"))?.map { it.line() })
     }
 
     @Test
     fun `a thread with no chain yields null rather than an empty async stack`() {
         // An empty list still draws the "Async stack trace" separator, promising a reconstruction
         // and showing nothing under it.
-        assertNull(FlixAsyncStackTraceProvider().chainOf(thread(handlerFrame(obj("java.lang.Object", emptyMap())))))
+        assertNull(
+            FlixAsyncStackTraceProvider().chainOf(
+                thread(handlerFrame(obj("java.lang.Object", emptyMap()))),
+                type("Def\$main"),
+            ),
+        )
     }
 
     @Test
@@ -208,6 +240,14 @@ class FlixContinuationsTest {
     }
 
     // --- stubs ------------------------------------------------------------------------------------
+
+    /** The class of the frame the debugger is asking about. */
+    private fun type(definition: String): ReferenceType = proxy(ReferenceType::class.java) { method, _ ->
+        when (method.name) {
+            "name" -> "dev.flix.gen.$definition"
+            else -> null
+        }
+    }
 
     private fun names(chain: List<ObjectReference>): List<String> =
         chain.map { FlixValues.simpleNameOf(it.referenceType().name()) }

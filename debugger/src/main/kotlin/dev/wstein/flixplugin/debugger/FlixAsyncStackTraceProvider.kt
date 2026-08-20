@@ -27,14 +27,18 @@ import com.sun.jdi.ThreadReference
  *
  * ## What each entry points at
  *
- * A continuation's class identifies the definition it belongs to, and the *first* line its
- * `applyFrame` records is that definition's own.
+ * The line the call it is waiting on was made from -- `readTuning(), Main.flix:86` is the frame that
+ * called `path()` from line 86, not the frame that starts at line 84.
  *
- * It is deliberately not the line the call will resume at, which would be the better answer and is
- * not derivable here: the resume point is the continuation's `pc` field, and turning a `pc` into a
- * line means reading the `tableswitch` at the top of `applyFrame` out of the method's bytecode.
- * Until that exists an entry says "this definition is on the chain" rather than claiming a position
- * inside it.
+ * That position is the continuation's `pc`, which is a tableswitch key inside `applyFrame`: the
+ * switch turns it into a bytecode offset and the `LineNumberTable` turns that into a line, so
+ * nothing but a disassembler could read it. A `--Xdebug` build therefore records the answer on the
+ * class, as `pcLines` (`GenFunAndClosureClasses.resumeLines`), and [[FlixResumePoints]] reads it.
+ *
+ * Without that constant -- an older build, or one without `--Xdebug` -- an entry falls back to the
+ * definition's own first line, which is what every entry used to show. That reads as a stack of
+ * function entries, and for a chain of calls in flight it is wrong for every frame but the
+ * innermost.
  *
  * Entries carry no variables. A continuation's fields are its captured state under compiled names
  * (`clo0`, `arg0`, `l0`), and the frame they belong to is not the one the evaluator is pointed at,
@@ -72,12 +76,12 @@ class FlixAsyncStackTraceProvider : AsyncStackTraceProvider {
             return null
         }
         val thread = context.thread?.threadReference ?: return null
-        return chainOf(thread)
+        return chainOf(thread, runCatching { location?.declaringType() }.getOrNull())
     }
 
-    /** The chain `thread` holds, or `null` if it holds none. */
-    internal fun chainOf(thread: ThreadReference): List<StackFrameItem>? {
-        val chain = runCatching { FlixContinuations.callChain(thread) }.getOrDefault(emptyList())
+    /** The chain `thread` holds above a frame of class `current`, or `null` if it holds none. */
+    internal fun chainOf(thread: ThreadReference, current: ReferenceType?): List<StackFrameItem>? {
+        val chain = runCatching { FlixContinuations.callChain(thread, current) }.getOrDefault(emptyList())
         val items = chain.mapNotNull { continuation ->
             val location = definitionLocation(continuation) ?: return@mapNotNull null
             // Labelled in Flix like a live frame, rather than as `applyFrame:177, Tuning$Def$path`.
@@ -98,18 +102,30 @@ class FlixAsyncStackTraceProvider : AsyncStackTraceProvider {
         runCatching { location?.sourceName()?.endsWith(".flix") }.getOrNull() == true
 
     /**
-     * A location inside the definition `continuation` belongs to.
+     * Where `continuation` is: the call it suspended at, or failing that the definition it is in.
      *
-     * `applyFrame` for a continuation, `staticApply` for a definition applied directly; the first
-     * line either records is the definition's own. A class with no line information contributes
-     * nothing, rather than an entry that navigates nowhere.
+     * The resume point is the honest answer and needs the `pcLines` constant a `--Xdebug` build
+     * writes. The definition's first line is the fallback, and it is a real fallback rather than a
+     * second-best default: a frame that has not suspended has no resume point, and a build without
+     * the constant has no way to name one.
      */
     internal fun definitionLocation(continuation: ObjectReference): Location? {
+        val method = frameMethod(continuation) ?: return null
+        return FlixResumePoints.locationOf(continuation, method)
+            ?: runCatching { method.allLineLocations().minByOrNull { it.lineNumber() } }.getOrNull()
+    }
+
+    /**
+     * The method a Flix definition's body compiles to.
+     *
+     * `applyFrame` for a continuation, `staticApply` for a definition applied directly. A class with
+     * neither contributes nothing, rather than an entry that navigates nowhere.
+     */
+    private fun frameMethod(continuation: ObjectReference): Method? {
         val type: ReferenceType = runCatching { continuation.referenceType() }.getOrNull() ?: return null
-        val method: Method = FRAME_METHODS.firstNotNullOfOrNull { name ->
+        return FRAME_METHODS.firstNotNullOfOrNull { name ->
             runCatching { type.methodsByName(name).firstOrNull() }.getOrNull()
-        } ?: return null
-        return runCatching { method.allLineLocations().minByOrNull { it.lineNumber() } }.getOrNull()
+        }
     }
 
     private companion object {

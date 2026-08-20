@@ -1,6 +1,7 @@
 package dev.wstein.flixplugin.debugger
 
 import com.sun.jdi.ObjectReference
+import com.sun.jdi.ReferenceType
 import com.sun.jdi.StackFrame
 import com.sun.jdi.ThreadReference
 import com.sun.jdi.Value
@@ -37,25 +38,36 @@ import com.sun.jdi.Value
  * `BackendObjType.scala` -- `FramesCons.HeadField`/`TailField`, `ResumptionCons.FramesField`/
  * `TailField`, `Suspension.PrefixField`/`ResumptionField`.
  *
- * ## Why the longest one
+ * ## Which list, and why the head is dropped
  *
- * Each handler holds the frames captured at *its* level, and measurement shows those lists are
- * nested suffixes of one another:
+ * A thread holds several. Each handler level keeps the frames captured at *its* level, and they are
+ * nested suffixes of one another -- but they are captured at different *times*, and a list whose
+ * calls have since returned stays reachable. Measured at a stop in `both`, between its call to
+ * `one` (returned) and its call to `two` (not yet made):
  *
  * ```
- * installHandler #1   [readTuning, main]
- * installHandler #2   [path, readTuning, main]
- * installHandler #3   [location, path, readTuning, main]
+ * installHandler   [main]                 the level this resumption runs under
+ * installHandler   [both, main]           what is true now
+ * installHandler   [one, both, main]      captured when `one` suspended; `one` has returned
  * ```
  *
- * So the longest is the complete chain and every other is a tail of it. Taking the longest is
- * therefore not a guess between rivals -- the shorter lists carry no call the longest lacks. The
- * lists are compared, never concatenated: concatenation would assert an ordering across handler
- * levels that has not been measured, and would invent calls where the suffix property already
- * accounts for them.
+ * Taking the longest would report a call that finished. So the list is chosen by its **head**: the
+ * chain that describes the present is the one that begins at the definition currently executing.
+ * Among those -- recursion can produce more than one -- the longest is taken, which is where the
+ * suffix property still earns its keep.
  *
- * This is a property observed rather than proved, which is why it is stated here and asserted in
- * `FlixContinuationsTest`.
+ * That head is then dropped. It is the frame the debugger is already showing as the live one, and
+ * repeating it below an *Async stack trace* separator says the same frame twice.
+ *
+ * When no list begins at the current definition, there is nothing current to show and the answer is
+ * empty. That is the ordinary case for a program between suspensions: the JVM stack still holds the
+ * Flix frames directly, so the frames view is already showing the chain, and what is on the heap is
+ * history.
+ *
+ * The lists are compared, never concatenated: concatenation would assert an ordering across handler
+ * levels that has not been measured, and would invent calls the suffix property already accounts
+ * for. All of this is measured rather than derived, which is why it is written down here and
+ * asserted in `FlixContinuationsTest`.
  */
 internal object FlixContinuations {
 
@@ -75,14 +87,26 @@ internal object FlixContinuations {
     private const val MAX_JVM_FRAMES = 512
 
     /**
-     * The Flix continuations above `thread`'s current position, innermost first.
+     * The Flix calls waiting above `thread`'s current position, innermost first.
      *
-     * Empty when the thread holds no continuation list, which is the ordinary case for a program
-     * with no effects: there is no trampoline, the JVM stack *is* the call chain, and the frames
-     * view already shows it.
+     * `current` is the class of the frame the debugger is asking about, and it is what identifies
+     * the chain that describes the present rather than a suspension that has since finished.
+     *
+     * Empty when nothing on the heap begins there -- a program with no effects has no continuations
+     * at all, and one between suspensions has only the previous chain, which is history.
      */
-    fun callChain(thread: ThreadReference): List<ObjectReference> =
-        candidates(thread).maxByOrNull { it.size }.orEmpty()
+    fun callChain(thread: ThreadReference, current: ReferenceType?): List<ObjectReference> {
+        val name = runCatching { current?.name() }.getOrNull() ?: return emptyList()
+        return candidates(thread)
+            .filter { chain -> chain.firstOrNull()?.let { typeNameOf(it) } == name }
+            .maxByOrNull { it.size }
+            .orEmpty()
+            // The head is the live frame, which the frames view is already showing.
+            .drop(1)
+    }
+
+    private fun typeNameOf(value: ObjectReference): String? =
+        runCatching { value.referenceType().name() }.getOrNull()
 
     /** Every frame list this thread can reach, in no particular order. */
     private fun candidates(thread: ThreadReference): List<List<ObjectReference>> {

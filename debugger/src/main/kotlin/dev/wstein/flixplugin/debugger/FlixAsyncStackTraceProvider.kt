@@ -79,7 +79,14 @@ class FlixAsyncStackTraceProvider : AsyncStackTraceProvider {
     internal fun chainOf(thread: ThreadReference): List<StackFrameItem>? {
         val chain = runCatching { FlixContinuations.callChain(thread) }.getOrDefault(emptyList())
         val items = chain.mapNotNull { continuation ->
-            definitionLocation(continuation)?.let { StackFrameItem(it, null) }
+            val location = definitionLocation(continuation) ?: return@mapNotNull null
+            // Labelled in Flix like a live frame, rather than as `applyFrame:177, Tuning$Def$path`.
+            // An entry that exists only because this reconstruction put it there has no excuse for
+            // naming the compiled form.
+            // Falling back to the platform's own item rather than dropping the entry: a compiled
+            // label still names a call that happened, and a chain with a hole in it does not.
+            val label = runCatching { FlixFrames.labelOf(location) }.getOrNull()
+            if (label != null) FlixStackFrameItem(location, label) else StackFrameItem(location, null)
         }
         // Null rather than an empty list: an empty one still draws the separator, which would
         // promise a reconstruction and then show nothing under it.

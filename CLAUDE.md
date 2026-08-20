@@ -105,6 +105,15 @@ are compared, never concatenated. What a provider returns **replaces** the real 
 it answered for — `JavaExecutionStack` schedules it with a null frame iterator — which is why only
 the topmost frame is answered for.
 
+Both kinds of frame are **labelled in Flix** rather than in the compiled form: `readTuning(),
+Main.flix:88` rather than `applyFrame:88, Def$readTuning (dev.flix.gen)`. `FlixFrames` recovers the
+definition by inverting the compiler's own naming rule (`JvmName.mkNamespacedClassName`, `mangle`,
+`Symbol.generatedDefnSym`). The label itself has no extension point — it comes from
+`StackFrameDescriptorImpl.calcRepresentation` by way of the package-private `JavaFramesListRenderer`
+— but the *frame* does: `JavaExecutionStack.createFrames` asks
+`PositionManagerWithMultipleStackFrames.createStackFramesAsync` before building a `JavaStackFrame`
+itself. Supply the frame; do not try to intercept the label.
+
 `FlixSteppingCommands` + `FlixSteppingFilter` implement Step Over. CPS invokes every continuation
 from one trampoline loop, so successive Flix lines sit at the same JVM depth — JDI's depth-based
 Step Over cannot express "stay in this function", so the definition is captured at step start and

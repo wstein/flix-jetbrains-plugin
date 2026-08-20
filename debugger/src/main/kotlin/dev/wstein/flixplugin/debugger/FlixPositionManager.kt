@@ -7,8 +7,14 @@ import com.intellij.debugger.PositionManagerFactory
 import com.intellij.debugger.SourcePosition
 import com.intellij.debugger.engine.DebugProcess
 import com.intellij.debugger.engine.DebugProcessListener
+import com.intellij.debugger.engine.PositionManagerWithMultipleStackFrames
 import com.intellij.debugger.engine.SuspendContext
+import com.intellij.debugger.engine.evaluation.EvaluationContext
+import com.intellij.debugger.jdi.StackFrameProxyImpl
 import com.intellij.debugger.requests.ClassPrepareRequestor
+import com.intellij.debugger.ui.impl.watch.StackFrameDescriptorImpl
+import com.intellij.util.ThreeState
+import com.intellij.xdebugger.frame.XStackFrame
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileTypes.FileType
@@ -31,7 +37,13 @@ import org.flixlang.intellij.lang.FlixFileType
  * It never calls `VirtualMachine.setDefaultStratum`. That setting is process-global and would
  * corrupt every other language's position manager in the session.
  */
-class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequestPositionManager {
+// Kotlin otherwise emits a compatibility bridge for every default method of a Kotlin interface it
+// does not override -- including the deprecated `createStackFrames`, which would then be both
+// overridden and invoked by this class according to the Plugin Verifier, for code nobody wrote. The
+// bridges exist for binary compatibility with Kotlin 1.x callers of this class; there are none.
+@JvmDefaultWithoutCompatibility
+class FlixPositionManager(private val debugProcess: DebugProcess) :
+    MultiRequestPositionManager, PositionManagerWithMultipleStackFrames {
 
     /**
      * Resolved Flix origins per loaded class, for the lifetime of one suspension.
@@ -59,6 +71,47 @@ class FlixPositionManager(private val debugProcess: DebugProcess) : MultiRequest
      * says the same thing twice while failing the Plugin Verifier.
      */
     override fun isAcceptedFileType(fileType: FileType): Boolean = fileType == FlixFileType.INSTANCE
+
+    /**
+     * Supplies the frame object for a Flix frame, so the frames view can name it in Flix.
+     *
+     * `JavaExecutionStack.createFrames` asks the position manager before falling back to a plain
+     * `JavaStackFrame`, which makes this the only way in: the label itself comes from
+     * `StackFrameDescriptorImpl.calcRepresentation` by way of the package-private
+     * `JavaFramesListRenderer`, and neither is extensible. See [FlixStackFrame].
+     *
+     * `null` for anything that is not Flix, and for a Flix location whose class name carries no
+     * definition -- the platform then builds its own frame exactly as before. Declining is the
+     * default here in the same way [NoDataException] is elsewhere in this class: what this manager
+     * does not own, it must leave untouched. (`CompoundPositionManager` turns a `null` into
+     * [NoDataException] itself, and moves on to the next manager.)
+     *
+     * The suspending half of the pair is the one implemented: the synchronous `createStackFrames`
+     * is deprecated and its default implementation runs this one and blocks, so overriding this
+     * covers both entry points and overriding that one would cover neither properly.
+     */
+    override suspend fun createStackFramesAsync(descriptor: StackFrameDescriptorImpl): List<XStackFrame>? {
+        val location = descriptor.location ?: return null
+        val label = runCatching { FlixFrames.labelOf(location) }.getOrNull() ?: return null
+        return listOf(FlixStackFrame(descriptor, label))
+    }
+
+    /**
+     * Declines to evaluate breakpoint conditions, which arrives with
+     * [PositionManagerWithMultipleStackFrames] rather than by choice.
+     *
+     * [ThreeState.UNSURE] is the abstention: the platform then evaluates the condition the way it
+     * would if this manager did not exist. Answering here would mean a second expression evaluator
+     * for Flix, and the one this plugin has is deliberately limited to reading the frame
+     * ([FlixCodeFragmentFactory]) -- a condition it silently could not evaluate would be worse than
+     * one the platform reports honestly.
+     */
+    override fun evaluateCondition(
+        context: EvaluationContext,
+        frame: StackFrameProxyImpl,
+        location: Location,
+        expression: String,
+    ): ThreeState = ThreeState.UNSURE
 
     override fun getSourcePosition(location: Location?): SourcePosition? {
         val jdiLocation = location ?: throw NoDataException.INSTANCE

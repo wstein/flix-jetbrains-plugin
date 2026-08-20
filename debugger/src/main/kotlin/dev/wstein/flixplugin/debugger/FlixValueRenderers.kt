@@ -45,7 +45,32 @@ internal abstract class FlixLabelRenderer(private val id: String) : ValueLabelRe
         descriptor: ValueDescriptor,
         context: EvaluationContext?,
         listener: DescriptorLabelListener?,
-    ): String = runCatching { label(descriptor.value) }.getOrDefault("")
+    ): String {
+        val text = runCatching { label(descriptor.value) }.getOrDefault("")
+        if (text.isNotEmpty()) {
+            hideCompiledIdentity(descriptor)
+        }
+        return text
+    }
+
+    /**
+     * Drops the `{RecordExtend$Obj@1127}` the platform puts in front of a rendered value.
+     *
+     * `ValueDescriptorImpl.getValueLabel` composes `"{" + idLabel + "}" + valueText`, and the id
+     * label is set from the renderer just before this runs, so clearing it here is what removes it,
+     * and only for values a Flix renderer claimed.
+     *
+     * Dropped rather than rewritten because it names a class the programmer never wrote:
+     * `RecordExtend$Obj` is the compiled shape of a record, and `Tag$Obj$Obj` is one class serving
+     * every two-field tag. Neither is the value's type in Flix, and printing a Java-looking type
+     * beside a Flix-looking value invites the reader to write the Java one in a watch.
+     *
+     * Only when a label was produced. An empty one means the renderer failed, and there the identity
+     * is the only thing left that says anything at all.
+     */
+    private fun hideCompiledIdentity(descriptor: ValueDescriptor) {
+        runCatching { descriptor.setIdLabel(null) }
+    }
 
     final override fun getUniqueId(): String = id
 

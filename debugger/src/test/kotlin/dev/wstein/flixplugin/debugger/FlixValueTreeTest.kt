@@ -1,5 +1,6 @@
 package dev.wstein.flixplugin.debugger
 
+import com.intellij.debugger.ui.tree.ValueDescriptor
 import com.sun.jdi.ClassType
 import com.sun.jdi.Field
 import com.sun.jdi.InterfaceType
@@ -129,6 +130,44 @@ class FlixValueTreeTest {
         assertEquals(true, FlixTaggedRenderer().applicableTo(tag.referenceType()))
         assertEquals(false, FlixRecordRenderer().applicableTo(tag.referenceType()))
     }
+
+    // --- the compiled identity the platform prepends ---------------------------------------------
+
+    @Test
+    fun `a rendered value drops the compiled class and object id`() {
+        // The platform composes "{" + idLabel + "}" + valueText, so without this a record read
+        // `{RecordExtend$Obj@1127} { dir = … }`. `RecordExtend$Obj` is the compiled shape of a
+        // record and not its Flix type; printing it beside a Flix value invites writing it in a
+        // watch, where it means nothing.
+        val cleared = mutableListOf<String?>()
+        val label = (FlixRecordRenderer().valueLabelRenderer as FlixLabelRenderer)
+            .calcLabel(descriptorFor(record("a" to int(1)), cleared), null, null)
+
+        assertEquals("{ a = 1 }", label)
+        assertEquals(listOf<String?>(null), cleared)
+    }
+
+    @Test
+    fun `a value the renderer could not read keeps its identity`() {
+        // An empty label means the renderer failed. Clearing the identity there would leave the
+        // node showing nothing at all, which is worse than showing the compiled class.
+        val cleared = mutableListOf<String?>()
+        val label = (FlixRecordRenderer().valueLabelRenderer as FlixLabelRenderer)
+            .calcLabel(descriptorFor(null, cleared), null, null)
+
+        assertEquals("", label)
+        assertEquals(emptyList<String?>(), cleared)
+    }
+
+    /** A descriptor that records what its id label was set to. */
+    private fun descriptorFor(value: Value?, cleared: MutableList<String?>): ValueDescriptor =
+        proxy(ValueDescriptor::class.java) { method, args ->
+            when (method.name) {
+                "getValue" -> value
+                "setIdLabel" -> { cleared += args?.get(0) as String?; null }
+                else -> null
+            }
+        }
 
     // --- stubs ----------------------------------------------------------------------------------
 

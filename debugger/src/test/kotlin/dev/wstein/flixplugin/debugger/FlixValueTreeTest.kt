@@ -1,6 +1,9 @@
 package dev.wstein.flixplugin.debugger
 
+import com.sun.jdi.ClassType
 import com.sun.jdi.Field
+import com.sun.jdi.InterfaceType
+import com.sun.jdi.Type
 import com.sun.jdi.IntegerValue
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
@@ -9,6 +12,8 @@ import com.sun.jdi.Value
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.lang.reflect.Proxy
+import java.util.concurrent.CompletableFuture
+import java.util.function.Function as JFunction
 
 /**
  * What a Flix value looks like once it is *expanded*, not merely labelled.
@@ -98,7 +103,49 @@ class FlixValueTreeTest {
         assertEquals(emptyList<String>(), FlixTaggedRenderer().childNamesOf(tagged))
     }
 
+    // --- applicability, through the checker the platform actually calls ------------------------
+
+    @Test
+    fun `a null value has a null type, and asking about it must not throw`() {
+        // The platform asks every renderer about every value. A `null` field -- `l0`, `param_1` in a
+        // CPS frame -- has no type, so the checker is handed `null`. Kotlin's SAM conversion takes
+        // the Java parameter as non-null and inserted a check, so the lambda threw an NPE for each
+        // one, and the platform reported that on the *node*: every null field in the variables view
+        // read "Internal error. See logs for more details" instead of `null`.
+        //
+        // Asserted through `getIsApplicableChecker` rather than `FlixValues.isA`, because the check
+        // Kotlin inserts lives in the SAM and calling the rule directly steps straight past it.
+        assertEquals(false, FlixRecordRenderer().applicableTo(null))
+        assertEquals(false, FlixTaggedRenderer().applicableTo(null))
+    }
+
+    @Test
+    fun `a record and a tag are recognised through the same checker`() {
+        val record = record("a" to int(1))
+        val tag = tagged("dev.flix.gen.BombKind\$Fast", ordinal = 0, payload = emptyList())
+
+        assertEquals(true, FlixRecordRenderer().applicableTo(record.referenceType()))
+        assertEquals(false, FlixTaggedRenderer().applicableTo(record.referenceType()))
+        assertEquals(true, FlixTaggedRenderer().applicableTo(tag.referenceType()))
+        assertEquals(false, FlixRecordRenderer().applicableTo(tag.referenceType()))
+    }
+
     // --- stubs ----------------------------------------------------------------------------------
+
+    /**
+     * Asks the checker the way the platform does, `null` included.
+     *
+     * One helper per renderer because the property is protected on the shared base class, and the
+     * cast is what lets `null` through: the Java parameter is non-null to Kotlin, which is the whole
+     * reason the SAM inserted a check and threw.
+     */
+    private fun FlixRecordRenderer.applicableTo(type: Type?): Boolean = ask(isApplicableChecker, type)
+
+    private fun FlixTaggedRenderer.applicableTo(type: Type?): Boolean = ask(isApplicableChecker, type)
+
+    @Suppress("UNCHECKED_CAST")
+    private fun ask(checker: JFunction<Type, CompletableFuture<Boolean>>, type: Type?): Boolean =
+        (checker as JFunction<Type?, CompletableFuture<Boolean>>).apply(type).get()
 
     private fun FlixRecordRenderer.childNamesOf(value: Value): List<String> =
         (childrenRenderer as FlixChildrenRenderer).childrenOf(value).map { it.first }
@@ -122,34 +169,46 @@ class FlixValueTreeTest {
         objectRef(
             "dev.flix.gen.RecordExtend\$Obj",
             mapOf("label" to string(label), "value" to value, "rest" to rest),
+            interfaces = listOf("dev.flix.gen.Record\$"),
         )
 
-    private fun emptyRecord(): ObjectReference = objectRef("dev.flix.gen.RecordEmpty\$", emptyMap())
+    private fun emptyRecord(): ObjectReference =
+        objectRef("dev.flix.gen.RecordEmpty\$", emptyMap(), interfaces = listOf("dev.flix.gen.Record\$"))
 
     /** A chain whose tail points back at its head. */
     private fun cyclicRecord(): ObjectReference {
         val fields = mutableMapOf<String, Value?>("label" to string("a"), "value" to int(1))
-        val head = objectRef("dev.flix.gen.RecordExtend\$Obj", fields)
+        val head = objectRef("dev.flix.gen.RecordExtend\$Obj", fields, interfaces = listOf("dev.flix.gen.Record\$"))
         fields["rest"] = head
         return head
     }
 
     private fun tagged(className: String, ordinal: Int, payload: List<Value>): ObjectReference {
         val fields = payload.withIndex().associate { (i, v) -> "v$i" to v } + ("ordinal" to int(ordinal))
-        return objectRef(className, fields)
+        return objectRef(className, fields, superclass = "dev.flix.gen.Tagged\$")
     }
 
     /** Distinct per stubbed object, as a real `uniqueID` is: the cycle guard keys on it. */
     private var nextId = 0L
 
-    private fun objectRef(className: String, fields: Map<String, Value?>): ObjectReference {
+    private fun objectRef(
+        className: String,
+        fields: Map<String, Value?>,
+        superclass: String? = null,
+        interfaces: List<String> = emptyList(),
+    ): ObjectReference {
         val id = nextId++
         val declared = fields.keys.map { field(it) }
-        val type = proxy(ReferenceType::class.java) { method, args ->
+        // A ClassType, not a bare ReferenceType: the renderers reach `Record$` through an interface
+        // and `Tagged$` through a superclass, so a stub with no hierarchy would answer "not a Flix
+        // value" for both and prove nothing.
+        val type = proxy(ClassType::class.java) { method, args ->
             when (method.name) {
                 "name" -> className
                 "allFields", "fields" -> declared
                 "fieldByName" -> declared.firstOrNull { it.name() == args?.get(0) }
+                "superclass" -> superclass?.let { classType(it) }
+                "interfaces" -> interfaces.map { interfaceType(it) }
                 else -> null
             }
         }
@@ -160,6 +219,23 @@ class FlixValueTreeTest {
                 "getValue" -> fields[(args?.get(0) as Field).name()]
                 else -> null
             }
+        }
+    }
+
+    private fun classType(name: String): ClassType = proxy(ClassType::class.java) { method, _ ->
+        when (method.name) {
+            "name" -> name
+            "superclass" -> null
+            "interfaces" -> emptyList<InterfaceType>()
+            else -> null
+        }
+    }
+
+    private fun interfaceType(name: String): InterfaceType = proxy(InterfaceType::class.java) { method, _ ->
+        when (method.name) {
+            "name" -> name
+            "superinterfaces" -> emptyList<InterfaceType>()
+            else -> null
         }
     }
 

@@ -194,8 +194,13 @@ class FlixRecordRenderer : CompoundRendererProvider() {
      * applying and says nothing. That is exactly what happened when generated classes moved into
      * `dev.flix.gen`. The name is still declared above because the settings UI shows it.
      */
-    override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
-        Function { type -> completedFuture(FlixValues.isA(supertypesOf(type), FlixValues.RECORD_TYPE)) }
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        // `type: Type?` is load-bearing. The platform asks every renderer about every value,
+        // including one whose value is `null` and whose type is therefore `null` too. Kotlin's SAM
+        // conversion takes the Java parameter as non-null and inserts a check, so the lambda threw
+        // an NPE for each of those -- and the platform reports a renderer that throws as
+        // "Internal error. See logs for more details" on the node, not on the renderer.
+        Function { type: Type? -> completedFuture(FlixValues.isA(supertypesOf(type), FlixValues.RECORD_TYPE)) }
 
     override fun isEnabled(): Boolean = true
 
@@ -262,8 +267,13 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
     override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.TAGGED_TYPE
 
     /** Matches on the simple name; see [FlixRecordRenderer.getIsApplicableChecker]. */
-    override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
-        Function { type -> completedFuture(FlixValues.isA(supertypesOf(type), FlixValues.TAGGED_TYPE)) }
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        // `type: Type?` is load-bearing. The platform asks every renderer about every value,
+        // including one whose value is `null` and whose type is therefore `null` too. Kotlin's SAM
+        // conversion takes the Java parameter as non-null and inserts a check, so the lambda threw
+        // an NPE for each of those -- and the platform reports a renderer that throws as
+        // "Internal error. See logs for more details" on the node, not on the renderer.
+        Function { type: Type? -> completedFuture(FlixValues.isA(supertypesOf(type), FlixValues.TAGGED_TYPE)) }
 
     override fun isEnabled(): Boolean = true
 

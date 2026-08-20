@@ -84,6 +84,7 @@ class FlixColorSettingsPage : ColorSettingsPage {
             AttributesDescriptor("String", FlixSyntaxHighlighter.STRING),
             AttributesDescriptor("Number", FlixSyntaxHighlighter.NUMBER),
             AttributesDescriptor("Comment", FlixSyntaxHighlighter.COMMENT),
+            AttributesDescriptor("Doc comment", FlixSyntaxHighlighter.DOC_COMMENT),
             AttributesDescriptor("Annotation", FlixSyntaxHighlighter.ANNOTATION),
             AttributesDescriptor("Bad character", FlixSyntaxHighlighter.BAD_CHARACTER),
         )

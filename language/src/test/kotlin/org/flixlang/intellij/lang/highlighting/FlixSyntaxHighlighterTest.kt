@@ -64,6 +64,7 @@ class FlixSyntaxHighlighterTest : BasePlatformTestCase() {
         val source = """
             /// A module.
             mod M {
+                // The test flag, for now.
                 @Test
                 def f(x: Int32): String = if (x <= 9) "0" else "${'$'}{x}"
             }
@@ -73,7 +74,31 @@ class FlixSyntaxHighlighterTest : BasePlatformTestCase() {
         assertTrue("nothing in the file was coloured", keys.isNotEmpty())
         assertTrue("keywords went uncoloured: $keys", keys.any { it.second == "FLIX_KEYWORD" })
         assertTrue("comments went uncoloured: $keys", keys.any { it.second == "FLIX_COMMENT" })
+        assertTrue("doc comments went uncoloured: $keys", keys.any { it.second == "FLIX_DOC_COMMENT" })
         assertTrue("strings went uncoloured: $keys", keys.any { it.second == "FLIX_STRING" })
+    }
+
+    /**
+     * `///` documents the declaration below it; `//` remarks on a line. They are different things
+     * and every other language in the IDE colours them differently, so these do too.
+     */
+    fun testDocCommentsAreNotOrdinaryComments() {
+        val source = "/// Adds one.\n// a remark\ndef inc(x: Int32): Int32 = x + 1"
+
+        assertEquals("FLIX_DOC_COMMENT", keyOf(source, "/// Adds one."))
+        assertEquals("FLIX_COMMENT", keyOf(source, "// a remark"))
+    }
+
+    /**
+     * Four slashes are *not* documentation, which is the compiler's rule and not a guess made here.
+     *
+     * `Lexer.acceptLineOrDocComment` says it outright -- "a doc comment leads with exactly 3
+     * slashes, for example `//// example` is NOT a doc comment" -- and adding a slash is a common
+     * way to comment out a doc line. Colouring that as documentation would say the opposite of what
+     * the compiler does with it.
+     */
+    fun testFourSlashesAreAnOrdinaryComment() {
+        assertEquals("FLIX_COMMENT", keyOf("//// heading\ndef f(): Unit = ()", "//// heading"))
     }
 
     /** Punctuation carries no key, which is what leaves it the scheme's default text colour. */

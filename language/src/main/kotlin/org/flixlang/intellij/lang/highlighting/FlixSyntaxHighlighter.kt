@@ -45,6 +45,9 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
         }
         val name = TOKEN_NAMES[tokenType] ?: return EMPTY_KEYS
         val key = when {
+            // Before the general comment rule, which would otherwise claim it: `///` is Flix's doc
+            // comment and the lexer already tells it apart from `//`.
+            name == "COMMENT_DOC" -> DOC_COMMENT
             name.startsWith("COMMENT_") -> COMMENT
             name == "LITERAL_STRING" || name == "LITERAL_CHAR" || name == "LITERAL_REGEX" ||
                 name.startsWith("LITERAL_STRING_INTERPOLATION") -> STRING
@@ -159,6 +162,16 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
             TextAttributesKey.createTextAttributesKey("FLIX_NUMBER", DefaultLanguageHighlighterColors.NUMBER)
         val COMMENT: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_COMMENT", DefaultLanguageHighlighterColors.LINE_COMMENT)
+
+        /**
+         * A `///` comment, which documents the declaration below it rather than annotating a line.
+         *
+         * Falls back to the scheme's own doc-comment colour, so it reads like Javadoc or KDoc does
+         * in the same theme -- the difference a reader is looking for is documentation against
+         * remark, and every language in the IDE draws that difference the same way.
+         */
+        val DOC_COMMENT: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_DOC_COMMENT", DefaultLanguageHighlighterColors.DOC_COMMENT)
         val ANNOTATION: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_ANNOTATION", DefaultLanguageHighlighterColors.METADATA)
         val BAD_CHARACTER: TextAttributesKey =

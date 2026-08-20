@@ -109,6 +109,20 @@ paint time does not appear in the preview until someone stores a value. The demo
 *which* ranges each key governs, which is the part a reader needs in order to choose. Fixing this
 properly means shipping `additionalTextAttributes` per theme, which is the contrast problem above.
 
+## Comments, of which there are two kinds
+
+`///` documents the declaration below it and `//` remarks on a line, so they get different keys —
+`FLIX_DOC_COMMENT` falling back to the scheme's own doc-comment colour, which is what makes a Flix
+doc comment read like Javadoc or KDoc in the same theme.
+
+The lexer already told them apart (`COMMENT_DOC` against `COMMENT_LINE`); the highlighter bucketed
+both under `COMMENT_` and lost the distinction. The rule for which is which is the **compiler's**,
+and it is worth knowing before touching it: a doc comment leads with *exactly* three slashes.
+`//// heading` is an ordinary comment, which matters because adding a slash is a common way to
+comment out a doc line — colouring that as documentation would say the opposite of what the compiler
+does with it. `Lexer.acceptLineOrDocComment` in the fork states it, `_Flix.flex` matches it, and
+`FlixSyntaxHighlighterTest` pins it.
+
 ## What is not coloured, and why
 
 Branch contents. A branch is an arbitrary expression that can be pages long and can nest, so a tint

@@ -16,13 +16,14 @@ public class FlixLanguageServerFactory implements LanguageServerFactory {
     }
 
     /**
-     * Replaces only the workspace-folder feature; everything else is LSP4IJ's default.
-     * {@link FlixWorkspaceFolderStrategy} says why the folder's <em>name</em> decides whether the
-     * server sees the project at all.
+     * Replaces the workspace-folder feature and the enablement check; everything else is LSP4IJ's
+     * default. {@link FlixWorkspaceFolderStrategy} says why the folder's <em>name</em> decides
+     * whether the server sees the project at all, and {@link FlixClientFeatures} why a missing
+     * compiler is answered before a start rather than during one.
      */
     @Override
     public @NotNull LSPClientFeatures createClientFeatures() {
-        return new LSPClientFeatures().setWorkspaceFolderFeature(new LSPWorkspaceFolderFeature() {
+        return new FlixClientFeatures().setWorkspaceFolderFeature(new LSPWorkspaceFolderFeature() {
             @Override
             protected @NotNull WorkspaceFolderStrategy createStrategy() {
                 return new FlixWorkspaceFolderStrategy();

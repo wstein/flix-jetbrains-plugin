@@ -116,6 +116,16 @@
                     anchor="right"
                     icon="com.intellij.icons.AllIcons.Toolwindows.ToolWindowPalette"
                     factoryClass="dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory"/>
+
+        <!-- Where a problem with the project's own configuration is reported. The one message that
+             uses it today is "no compiler could be resolved", which is why the language server was
+             not started; it used to reach the user as a stack trace out of the syntax highlighter,
+             once per highlighting pass, because that is where the failed start happened to be
+             triggered from. A balloon is where a message about a project belongs.
+
+             The group must be registered: an unregistered id is dropped with a log line, which
+             would put the message nowhere at all. -->
+        <notificationGroup id="Flix" displayType="BALLOON"/>
     </extensions>
 
     <actions>

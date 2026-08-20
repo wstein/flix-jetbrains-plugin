@@ -291,9 +291,15 @@ class FlixRecordRenderer : CompoundRendererProvider() {
  * Renders a Flix tagged-union value as `Some(42)` or `NoneLeft` rather than
  * `{Chain$dotViewLeft$405229$NoneLeft@5678}`.
  *
- * The tag is the last segment of the class name. Values compiled to a shared representation --
- * `Tag$Bool`, `Tag$Char$Obj` -- carry no tag name, so those fall back to the `ordinal`, which is
- * the only discriminator they have.
+ * A case *without* terms has a class of its own, so its name is the last segment of the class name.
+ * A case *with* terms does not: it is compiled to a representation shared by every case of the same
+ * erased shape -- `Tag$Bool`, `Tag$Char$Obj` -- where the class says nothing and only an ordinal
+ * separates one case from another.
+ *
+ * For those, a `--Xdebug` build records the name in the value itself
+ * ([FlixValues.TAG_NAME_FIELD]), which is why `Some("/home/…")` reads as itself rather than as
+ * `#1("/home/…")`. An optimized build has no such field and falls back to the ordinal, which is
+ * then genuinely all the value knows about itself.
  */
 class FlixTaggedRenderer : CompoundRendererProvider() {
 
@@ -336,8 +342,13 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
             tagged.referenceType().name(),
             payloadOf(tagged).map { (_, v) -> renderScalar(v) },
             ordinal,
+            recordedTagOf(tagged),
         )
     }
+
+    /** The case name a `--Xdebug` build wrote into the value, or `null` if it carries none. */
+    private fun recordedTagOf(tagged: ObjectReference): String? =
+        (tagged.readField(FlixValues.TAG_NAME_FIELD) as? StringReference)?.value()
 
     /**
      * The payload, and nothing else.
@@ -352,7 +363,7 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
             override fun childrenOf(value: Value?): List<Pair<String, Value?>> {
                 val tagged = value as? ObjectReference ?: return emptyList()
                 val payload = payloadOf(tagged)
-                if (FlixValues.tagNameOf(tagged.referenceType().name()) != null) return payload
+                if (FlixValues.tagOf(tagged.referenceType().name(), recordedTagOf(tagged)) != null) return payload
                 val ordinal = tagged.referenceType().allFields().firstOrNull { it.name() == "ordinal" }
                 return payload + listOfNotNull(ordinal?.let { "ordinal" to tagged.getValue(it) })
             }

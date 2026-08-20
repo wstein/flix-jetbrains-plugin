@@ -98,6 +98,26 @@ class FlixValueTreeTest {
     }
 
     @Test
+    fun `a recorded name takes the ordinal out of the tree`() {
+        // With a name, the ordinal is the discriminator the label already used, and showing it
+        // beside `Some` adds nothing -- the same reasoning that drops it for a case with a class of
+        // its own. Without a name, the shared representation keeps it, because there it is the only
+        // thing distinguishing one value from another.
+        val named = tagged("dev.flix.gen.Tag\$Obj", ordinal = 1, payload = listOf(int(7)), recordedTag = "Some")
+        val unnamed = tagged("dev.flix.gen.Tag\$Obj", ordinal = 1, payload = listOf(int(7)))
+
+        assertEquals(listOf("v0"), FlixTaggedRenderer().childNamesOf(named))
+        assertEquals(listOf("v0", "ordinal"), FlixTaggedRenderer().childNamesOf(unnamed))
+    }
+
+    @Test
+    fun `a recorded name labels a value the class cannot name`() {
+        val value = tagged("dev.flix.gen.Tag\$Obj", ordinal = 1, payload = listOf(string("/home/x")), recordedTag = "Some")
+
+        assertEquals("Some(\"/home/x\")", FlixTaggedRenderer().labelOf(value))
+    }
+
+    @Test
     fun `a nullary tag expands to nothing`() {
         val tagged = tagged("dev.flix.gen.BombKind\$Fast", ordinal = 0, payload = emptyList())
 
@@ -195,6 +215,9 @@ class FlixValueTreeTest {
     private fun FlixTaggedRenderer.childNamesOf(value: Value): List<String> =
         (childrenRenderer as FlixChildrenRenderer).childrenOf(value).map { it.first }
 
+    private fun FlixTaggedRenderer.labelOf(value: Value): String =
+        (valueLabelRenderer as FlixLabelRenderer).label(value)
+
     /** A record, as `RecordExtend$…` links ending at `RecordEmpty$`. */
     private fun record(vararg fields: Pair<String, Value>): ObjectReference {
         var rest = emptyRecord()
@@ -222,8 +245,16 @@ class FlixValueTreeTest {
         return head
     }
 
-    private fun tagged(className: String, ordinal: Int, payload: List<Value>): ObjectReference {
-        val fields = payload.withIndex().associate { (i, v) -> "v$i" to v } + ("ordinal" to int(ordinal))
+    private fun tagged(
+        className: String,
+        ordinal: Int,
+        payload: List<Value>,
+        recordedTag: String? = null,
+    ): ObjectReference {
+        val fields = payload.withIndex().associate { (i, v) -> "v$i" to v } +
+            ("ordinal" to int(ordinal)) +
+            // Present only in a `--Xdebug` build, so absent by default here.
+            listOfNotNull(recordedTag?.let { FlixValues.TAG_NAME_FIELD to string(it) })
         return objectRef(className, fields, superclass = "dev.flix.gen.Tagged\$")
     }
 

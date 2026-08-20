@@ -13,6 +13,7 @@ import dev.wstein.flixplugin.FlixBuildSpec
 import dev.wstein.flixplugin.FlixLaunchCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -76,8 +77,8 @@ class FlixDebugSessionTest {
         def main(): Unit \ IO =
             let a = 1;
             let b = a + 2;
-            let c = b * 3;
-            println("c = " + "${'$'}{c}")
+            let at = Some("/home/x");
+            println("c = " + "${'$'}{a + b}" + "${'$'}{at}")
     """.trimIndent() + "\n"
 
     @Test(timeout = SESSION_TIMEOUT_MS)
@@ -110,7 +111,8 @@ class FlixDebugSessionTest {
         try {
             val vm = attach(port)
             try {
-                val hit = stopAt(vm, "Main.flix", line)
+                val stop = stopAt(vm, "Main.flix", line)
+                val hit = stop.location()
 
                 // Counted after the hit rather than before it. A debuggee suspended at start has
                 // loaded no class of the program yet -- `allClasses` is JDK classes and nothing
@@ -147,7 +149,13 @@ class FlixDebugSessionTest {
                 // No effects in this program, so there is no trampoline and no continuation list:
                 // the JVM stack *is* the call chain. Asserted because the reconstruction runs on
                 // every stop, and must return nothing here rather than something.
-                assertEquals(emptyList<Any>(), FlixContinuations.callChain(hit.virtualMachine().allThreads().first { it.name() == "main" }))
+                assertEquals(emptyList<Any>(), FlixContinuations.callChain(stop.thread()))
+
+                // And a value, read out of the frame the way the variables view reads it. `Some` is
+                // compiled to a class shared by every one-object case, so this is the assertion that
+                // the compiler's `--Xdebug` tag name reaches a reader: without it the best available
+                // answer is `#1("/home/x")`.
+                assertEquals("Some(\"/home/x\")", labelOf(stop, "at"))
             } finally {
                 runCatching { vm.dispose() }
             }
@@ -197,7 +205,7 @@ class FlixDebugSessionTest {
      * `Clo$main$626ZYxrpg1N`. `FlixPositionManager.createPrepareRequests` says the same at length,
      * and this is that arrangement carried out for real.
      */
-    private fun stopAt(vm: VirtualMachine, sourceName: String, line: Int): Location {
+    private fun stopAt(vm: VirtualMachine, sourceName: String, line: Int): BreakpointEvent {
         val prepare = vm.eventRequestManager().createClassPrepareRequest()
         prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
         prepare.enable()
@@ -209,7 +217,7 @@ class FlixDebugSessionTest {
             val events = vm.eventQueue().remove(POLL_MS) ?: continue
             for (event in events) {
                 when (event) {
-                    is BreakpointEvent -> return event.location()
+                    is BreakpointEvent -> return event
                     is VMDisconnectEvent ->
                         throw AssertionError("the program exited without hitting the breakpoint")
                     is ClassPrepareEvent -> {
@@ -233,6 +241,26 @@ class FlixDebugSessionTest {
                 "no class holding $sourceName:$line ever prepared, so nothing could be armed"
             },
         )
+    }
+
+    /**
+     * How the variables view would label the local named [name] in the frame that stopped.
+     *
+     * Through the renderer's own label path, so what is asserted is what a reader sees rather than
+     * a rule the renderer happens to call. The local is visible at all because `--Xdebug` emits a
+     * `LocalVariableTable`; without one there is no name here to ask for.
+     */
+    private fun labelOf(stop: BreakpointEvent, name: String): String {
+        val frame = stop.thread().frame(0)
+        val variable = frame.visibleVariableByName(name)
+        if (variable == null) {
+            fail(
+                "no local named `$name` is visible in ${stop.location()}; locals: " +
+                    frame.visibleVariables().map { it.name() },
+            )
+        }
+        val renderer = FlixTaggedRenderer().valueLabelRenderer as FlixLabelRenderer
+        return renderer.label(frame.getValue(variable))
     }
 
     /** The locations in [type] that implement [sourceName]:[line], or none if it holds no such line. */

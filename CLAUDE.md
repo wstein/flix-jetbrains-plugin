@@ -200,7 +200,10 @@ tests:
   build: a folded-in function gets no class of its own and its line survives nowhere, so every
   single-expression helper would be unbreakpointable. Debug sessions therefore run unoptimized.
 - `--Xdebug` is not only a JDWP switch: `Let`, `ApplyDef`, `ApplyClo`, `IfThenElse` and `Stm` emit
-  line numbers *only* under it. Without it most statements have no breakpointable line.
+  line numbers *only* under it. Without it most statements have no breakpointable line. It also
+  names frame slots, and writes the **case name** into a tagged value (`Tagged$.tag`) — a case with
+  terms is compiled to a class shared by every case of its erased shape, so without that field
+  `Some("/home/x")` can only be reported as `#1("/home/x")`.
 - **`flix run` does not run the program.** It builds and then starts the program in a JVM of its
   own, so an agent on that command line lands on the *compiler* and the program runs unwatched one
   process further down — with no error and no bound breakpoint. Never put the agent there.

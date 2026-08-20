@@ -45,16 +45,16 @@ class FlixValuesTest {
     fun `a nullary tag reads as its name`() {
         assertEquals(
             "NoneLeft",
-            FlixValues.formatTagged("Chain\$dotViewLeft\$405229\$NoneLeft", emptyList(), ordinal = 0),
+            FlixValues.formatTagged("Chain\$dotViewLeft\$405229\$NoneLeft", emptyList(), ordinal = 0, recordedTag = null),
         )
     }
 
     @Test
     fun `a tag with a payload reads as a call`() {
-        assertEquals("Some(42)", FlixValues.formatTagged("Option\$1234\$Some", listOf("42"), ordinal = 1))
+        assertEquals("Some(42)", FlixValues.formatTagged("Option\$1234\$Some", listOf("42"), ordinal = 1, recordedTag = null))
         assertEquals(
             "Pair(1, \"x\")",
-            FlixValues.formatTagged("Tuple\$99\$Pair", listOf("1", "\"x\""), ordinal = 0),
+            FlixValues.formatTagged("Tuple\$99\$Pair", listOf("1", "\"x\""), ordinal = 0, recordedTag = null),
         )
     }
 
@@ -63,10 +63,45 @@ class FlixValuesTest {
         // Tag$Bool and friends are one class serving several tags; the final segment names the
         // representation, not a tag. Reporting "Bool" as the tag name would be confidently wrong,
         // which is worse than the ordinal being terse.
-        assertEquals("#3", FlixValues.formatTagged("Tag\$Bool", emptyList(), ordinal = 3))
-        assertEquals("#2(true)", FlixValues.formatTagged("Tag\$Char\$Obj", listOf("true"), ordinal = 2))
+        assertEquals("#3", FlixValues.formatTagged("Tag\$Bool", emptyList(), ordinal = 3, recordedTag = null))
+        assertEquals("#2(true)", FlixValues.formatTagged("Tag\$Char\$Obj", listOf("true"), ordinal = 2, recordedTag = null))
         assertNull(FlixValues.tagNameOf("Tag\$Bool"))
         assertNull(FlixValues.tagNameOf("Tagged\$"))
+    }
+
+    @Test
+    fun `a recorded name rescues a shared representation from its ordinal`() {
+        // The whole point of the compiler-side field. `Tag$Obj` is `Some`, `Ok` and `Cons` at once,
+        // so before this a debugger could only report `#1("/home/…")` -- correct, and unreadable.
+        assertEquals(
+            "Some(\"/home/x\")",
+            FlixValues.formatTagged(
+                "dev.flix.gen.Tag\$Obj",
+                listOf("\"/home/x\""),
+                ordinal = 1,
+                recordedTag = "Some",
+            ),
+        )
+    }
+
+    @Test
+    fun `the recorded name is the only one an operator case has`() {
+        // A case named `+` compiles to `Op$$plus`, whose last segment is the mangled word `plus` --
+        // lower-case, so the class-name rule refuses it rather than reporting `plus` as the case.
+        // Correct, and it leaves the value nameless. The recorded name is what the source spells.
+        assertEquals("+", FlixValues.tagOf("dev.flix.gen.Op\$\$plus", recordedTag = "+"))
+        assertNull(FlixValues.tagOf("dev.flix.gen.Op\$\$plus", recordedTag = null))
+    }
+
+    @Test
+    fun `a build without --Xdebug records nothing, and nothing changes`() {
+        // The field is absent from an optimized build, so every reader has to keep working without
+        // it. This is that build, and the answers are the ones from before the field existed.
+        assertEquals("NoneLeft", FlixValues.tagOf("Chain\$405229\$NoneLeft", recordedTag = null))
+        assertNull(FlixValues.tagOf("dev.flix.gen.Tag\$Obj\$Obj", recordedTag = null))
+        // An empty string is treated as no answer rather than as a nameless tag: a blank label in
+        // the variables view says nothing at all, where an ordinal at least discriminates.
+        assertNull(FlixValues.tagOf("dev.flix.gen.Tag\$Obj\$Obj", recordedTag = ""))
     }
 
     @Test
@@ -81,7 +116,7 @@ class FlixValuesTest {
     fun `an unnameable tag with no ordinal degrades to the class name`() {
         // Better a raw name than a fabricated one: the reader can still tell what they are looking
         // at, and nothing claims more than is known.
-        assertEquals("Tag\$Bool", FlixValues.formatTagged("Tag\$Bool", emptyList(), ordinal = null))
+        assertEquals("Tag\$Bool", FlixValues.formatTagged("Tag\$Bool", emptyList(), ordinal = null, recordedTag = null))
     }
 
     // --- qualified names, which is all JDI ever hands over ------------------------------------
@@ -101,13 +136,13 @@ class FlixValuesTest {
     fun `an unnameable tag degrades to the simple name`() {
         assertEquals(
             "Tag\$Obj\$Obj",
-            FlixValues.formatTagged("dev.flix.gen.Tag\$Obj\$Obj", emptyList(), ordinal = null),
+            FlixValues.formatTagged("dev.flix.gen.Tag\$Obj\$Obj", emptyList(), ordinal = null, recordedTag = null),
         )
     }
 
     @Test
     fun `a qualified shared representation still falls back to its ordinal`() {
-        assertEquals("#1", FlixValues.formatTagged("dev.flix.gen.Tag\$Obj\$Obj", emptyList(), ordinal = 1))
+        assertEquals("#1", FlixValues.formatTagged("dev.flix.gen.Tag\$Obj\$Obj", emptyList(), ordinal = 1, recordedTag = null))
     }
 
     @Test

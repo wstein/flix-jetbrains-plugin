@@ -73,12 +73,35 @@ internal object FlixValues {
      *
      * @param className the JDI class name of the value
      * @param payload the tag's `v0`, `v1`, … fields, already rendered
-     * @param ordinal the value's `ordinal` field, used only when the class name carries no tag
+     * @param ordinal the value's `ordinal` field, used only when nothing names the tag
+     * @param recordedTag the value's [TAG_NAME_FIELD], which a `--Xdebug` build writes
      */
-    fun formatTagged(className: String, payload: List<String>, ordinal: Int?): String {
-        val tag = tagNameOf(className) ?: ordinal?.let { "#$it" } ?: return simpleNameOf(className)
+    fun formatTagged(className: String, payload: List<String>, ordinal: Int?, recordedTag: String?): String {
+        val tag = tagOf(className, recordedTag) ?: ordinal?.let { "#$it" } ?: return simpleNameOf(className)
         return if (payload.isEmpty()) tag else "$tag(${payload.joinToString(", ")})"
     }
+
+    /**
+     * The field a `--Xdebug` build writes the case name into.
+     *
+     * A case with terms is compiled to a class shared by every case of its erased shape, so its
+     * name is nowhere in the class -- `Tag$Obj` is `Some`, `Ok` and `Cons` at once, and only an
+     * ordinal separates them. The compiler therefore records the name in the value, under
+     * `--Xdebug` and only there (`BackendObjType.Tagged.NameField`). Absent in an optimized build,
+     * which is why every reader of it falls back.
+     */
+    const val TAG_NAME_FIELD: String = "tag"
+
+    /**
+     * The case a value is, from whichever source knows.
+     *
+     * The recorded name first: it is what the compiler wrote, unmangled and unambiguous. The class
+     * name second, which is enough for a case without terms because that one has a class of its
+     * own -- and is also all there is when the program was built without `--Xdebug`. `null` when
+     * neither answers, and then the caller has only the ordinal.
+     */
+    fun tagOf(className: String, recordedTag: String?): String? =
+        recordedTag?.takeIf { it.isNotBlank() } ?: tagNameOf(className)
 
     /**
      * The tag a compiled class stands for, or `null` if its name does not carry one.

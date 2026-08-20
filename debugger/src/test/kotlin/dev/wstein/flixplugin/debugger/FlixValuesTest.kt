@@ -166,6 +166,31 @@ class FlixValuesTest {
         assertEquals("NoneLeft", FlixValues.displayTagOf("Chain\$405229\$NoneLeft", recordedTag = null))
     }
 
+    // --- maps and sets ----------------------------------------------------------------------------
+
+    @Test
+    fun `a map and a set read as they are written`() {
+        assertEquals(
+            """Map#{1 => "one", 2 => "two"}""",
+            FlixValues.formatMap(listOf("1" to "\"one\"", "2" to "\"two\""), truncated = false),
+        )
+        assertEquals("Set#{10, 20}", FlixValues.formatSet(listOf("10", "20"), truncated = false))
+    }
+
+    @Test
+    fun `an empty one is written as empty, not as a pair of braces with nothing between them`() {
+        assertEquals("Map#{}", FlixValues.formatMap(emptyList(), truncated = false))
+        assertEquals("Set#{}", FlixValues.formatSet(emptyList(), truncated = false))
+    }
+
+    @Test
+    fun `a label that stopped short says so, and claims no terminator`() {
+        // Unlike a list there is nothing to terminate: a map is written as the entries it has, so
+        // the ellipsis is the whole statement about what was not shown.
+        assertEquals("Set#{1, …}", FlixValues.formatSet(listOf("1"), truncated = true))
+        assertEquals("Map#{1 => 2, …}", FlixValues.formatMap(listOf("1" to "2"), truncated = true))
+    }
+
     // --- qualified names, which is all JDI ever hands over ------------------------------------
 
     @Test

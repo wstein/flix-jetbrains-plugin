@@ -198,6 +198,24 @@ internal object FlixValues {
     }
 
     /**
+     * A map rendered as it is written: `Map#{1 => "one", 2 => "two"}`.
+     *
+     * `Map#{}` for an empty one, and an ellipsis where the label stopped short of the end. Unlike a
+     * list there is no terminator to keep: a map is written as the entries it has.
+     */
+    fun formatMap(entries: List<Pair<String, String>>, truncated: Boolean): String =
+        formatCollection("Map#", entries.map { (key, value) -> "$key => $value" }, truncated)
+
+    /** A set rendered as it is written: `Set#{10, 20, 30}`. */
+    fun formatSet(elements: List<String>, truncated: Boolean): String =
+        formatCollection("Set#", elements, truncated)
+
+    private fun formatCollection(prefix: String, parts: List<String>, truncated: Boolean): String {
+        val body = (parts + if (truncated) listOf("…") else emptyList()).joinToString(", ")
+        return if (body.isEmpty()) "$prefix{}" else "$prefix{$body}"
+    }
+
+    /**
      * How many list elements to render in a label.
      *
      * The same trade as [[MAX_RECORD_FIELDS]]: the label summarises and the tree below it holds

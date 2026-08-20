@@ -381,6 +381,41 @@ class FlixDebugSessionTest {
         throw AssertionError("no class carrying SMAP prepared")
     }
 
+    /** A map, a set and an empty map, which are red-black trees in the debuggee. */
+    private val collectionFixture = """
+        def main(): Unit \ IO =
+            let m = Map#{1 => "one", 2 => "two", 3 => "three"};
+            let s = Set#{10, 20, 30};
+            let empty = (Map#{}: Map[Int32, String]);
+            println(Map.size(m) + Set.size(s) + Map.size(empty));
+            spin(2000000000)
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a map and a set read as they are written, live`() {
+        // Against real trees rather than a stubbed one: the walk depends on the standard library's
+        // own field order -- `Node(colour, left, key, value, right)` -- which is measured, not
+        // specified, and a stub would only repeat the measurement back.
+        session(collectionFixture, "spin(2000000000)") { _, stop, _ ->
+            assertEquals("""Map#{1 => "one", 2 => "two", 3 => "three"}""", tagLabel(stop, "m"))
+            assertEquals("Set#{10, 20, 30}", tagLabel(stop, "s"))
+            assertEquals("Map#{}", tagLabel(stop, "empty"))
+        }
+    }
+
+    /** What the variables view would label the local `name`, through the tagged renderer. */
+    private fun tagLabel(stop: BreakpointEvent, name: String): String {
+        val frame = stop.thread().frame(0)
+        val variable = frame.visibleVariableByName(name)
+        if (variable == null) {
+            fail("no local named `$name`; locals: " + frame.visibleVariables().map { it.name() })
+        }
+        val renderer = FlixTaggedRenderer().valueLabelRenderer as FlixLabelRenderer
+        return renderer.label(frame.getValue(variable))
+    }
+
     /**
      * Compiles `fixture`, launches it under a debugger, stops at the line carrying `marker`, and
      * runs `assertions` there.

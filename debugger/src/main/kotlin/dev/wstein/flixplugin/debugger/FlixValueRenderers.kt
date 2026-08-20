@@ -394,6 +394,15 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
         listElements(tagged, FlixValues.MAX_LIST_ELEMENTS)?.let { (elements, end) ->
             return FlixValues.formatList(elements.map { renderScalar(it) }, end)
         }
+        if (FlixCollections.isMap(tagged)) {
+            val (entries, truncated) = FlixCollections.entries(tagged, FlixValues.MAX_LIST_ELEMENTS)
+            return FlixValues.formatMap(entries.map { (k, v) -> renderScalar(k) to renderScalar(v) }, truncated)
+        }
+        if (FlixCollections.isSet(tagged)) {
+            val (entries, truncated) = FlixCollections.entries(tagged, FlixValues.MAX_LIST_ELEMENTS)
+            // A set stores a unit beside each element; the element is the key.
+            return FlixValues.formatSet(entries.map { (element, _) -> renderScalar(element) }, truncated)
+        }
         val ordinal = (tagged.readField("ordinal") as? com.sun.jdi.IntegerValue)?.value()
         return FlixValues.formatTagged(
             tagged.referenceType().name(),
@@ -449,6 +458,16 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
                 // reading the fourth element took four clicks and named none of them.
                 listElements(tagged, Int.MAX_VALUE)?.let { (elements, _) ->
                     return elements.mapIndexed { index, element -> "[$index]" to element }
+                }
+                // A map expands to its entries, named by key: the key is what a reader is looking
+                // for, and a positional name would send them counting.
+                if (FlixCollections.isMap(tagged)) {
+                    return FlixCollections.entries(tagged, Int.MAX_VALUE).first
+                        .map { (key, value) -> renderScalar(key) to value }
+                }
+                if (FlixCollections.isSet(tagged)) {
+                    return FlixCollections.entries(tagged, Int.MAX_VALUE).first
+                        .mapIndexed { index, (element, _) -> "[$index]" to element }
                 }
                 val payload = payloadOf(tagged)
                 if (FlixValues.tagOf(tagged.referenceType().name(), recordedTagOf(tagged)) != null) return payload

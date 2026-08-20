@@ -846,6 +846,37 @@ was compiled:
 | `Def$noSmapFixture.staticApply` | **full** — `n`, `doubled`, `shifted` | 62, 63, 64, 65 — sequential | variables populate normally |
 | `Clo$main$400241.applyFrame` | **empty** | 16 entries, non-monotonic | *Variables debug info not available* |
 
+> **2026-08-20 — the second row is out of date, and the reason it was true is worth keeping.**
+>
+> A continuation restores its state into real JVM locals on entry, so the table was the right place
+> for those names all along; it was simply not being written. The compiler now records a frame's
+> **captures and parameters** there. Its *locals* were never the gap: `GenExpression` already names
+> a let-binding wherever it compiles one, inside a continuation as much as anywhere else — recording
+> them a second time put two entries on one slot, which is how a debugger loses the first.
+>
+> Measured in the frame from a real session, `Tuning$Clo$path$…applyFrame`:
+>
+> ```
+> visible variables: 2
+>   sep   java.lang.String       = "/"
+>   at    dev.flix.gen.Record$   = instance of dev.flix.gen.RecordExtend$Obj
+> ```
+>
+> Both are the names in the source. Before, they were `clo0` and `arg0`, and asking for `sep`
+> answered *Cannot find local variable*.
+>
+> This was safe to do with the standard format only because the mapping turned out to be stable.
+> Across the six suspension points of the largest continuation in `flix-proc-invaders` — 17 fields —
+> **no field was paired with more than one local slot and no slot served more than one field.** Had
+> a slot been reused between program-counter states, an entry naming it would be right at one
+> suspension point and wrong at another, and the answer would have had to be a `pc`-keyed side
+> table instead.
+>
+> What this does **not** give: Flix *types* (the table carries `dev.flix.gen.Record$`, not
+> `{dir = String, file = String}`), shadowed bindings (the recorded range is the whole method, so
+> two bindings of one name cannot be told apart), or any Flix syntax in a watch — `at#dir` is still
+> a Java expression to the evaluator. Those need the scope table and a Flix evaluator.
+
 A direct, effect-free call compiles to an ordinary method and debugs like ordinary Java. A CPS
 continuation keeps its state in **fields** — `l0`…`l8` plus `pc` — because the frame must survive
 being suspended and resumed, and fields are not locals, so nothing appears in the variables view.

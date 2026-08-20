@@ -8,6 +8,17 @@ for that is recorded rather than the conclusion alone.
 
 Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 
+> **2026-08-20.** Section 2's rows were measured against a compiler in which `flix run` compiled and
+> ran the program in one JVM. `flix-fork@a282efce0` (2026-08-12) made `flix run` fork the program
+> into a JVM of its own, which silently detached every debug session from the program it was meant
+> to be debugging; the plugin's debug launch is now two phases and starts the program itself. See
+> the [gate](native-debugger-gate.md)'s note and rows 15–16.
+>
+> Section 2's rows are about the position manager and the platform, which that change does not
+> touch, and are left as they stand. What has been **re-measured** is only that a `.flix` line binds
+> under the new launch (gate row 15). Rows 13–14 below record what the change added and what it
+> still does not establish.
+
 | | Meaning |
 | --- | --- |
 | ✅ | Established, with the test or gate row named |
@@ -50,6 +61,9 @@ Rows map to the [native-debugger gate](native-debugger-gate.md), which is **Gree
 | — | *(added by review)* The two `GenericDebuggerRunner` gates are satisfied | ✅ `FlixDebuggerRunnerGatesTest` — both were failing, which is why Debug could never have attached |
 | — | *(added by review)* The attach port matches the port on the debuggee's command line | ✅ `FlixLaunchTest` |
 | 12 | No DAP process or second JDI/JDWP client starts | ✅ gate row 12, and now structurally enforced: `checkIntegrationGlue` fails the build if a `debugAdapterServer` is registered while the backend is `intellijJvm` |
+| 13 | *(added 2026-08-20)* **The debuggee is the program, not the compiler** | ✅ `FlixDebuggeeIdentityTest` statically — the agent and the program's main class must be on one command line, and the compiler jar must not appear on it. Fault-injected: replacing `-cp` with `-jar` fails two of its assertions. Live: gate row 15, 3 classes from `Main.flix` prepared and lines 5–8 `can bind`, against **0** and `absent` under the old launch |
+| 14 | *(added 2026-08-20)* **Test debugging** | ⚠️ **binding measured, gesture not.** `flix test` runs the tests in the compiler's own JVM (`Bootstrap.testWith` reflects them), so an agent there is on the right process: gate row 16 prepared 2 classes from `TestMain.flix` with lines 6–8 `can bind`, from a terminal launch. ⬜ **Not measured, and not implemented:** pressing Debug on a test in the IDE. There is no test debug configuration — the test task is a plain `flix test --events-json` run with no agent and no `RemoteConnectionCreator` — so today the answer is that a user cannot do it at all |
+| 15 | *(added 2026-08-20)* **A breakpoint stops once per line, not once per handled effect** | ✅ gate row 17. `Lowering.wrapInHandler` gave every default-handler frame the body's location, so five classes reported `Main.flix:18` and Continue stopped there four times before reaching the statement. Fixed in the compiler; pinned by `TestLineNumberTable`. Whole-program measurement on `flix-proc-invaders`: classes holding that line 5 → **1**, project and library source lines made unreachable **0** |
 
 ### Rows 10 and 11 — what an orphan actually requires
 
@@ -221,6 +235,15 @@ Ordered by what blocks the milestone rather than by matrix position.
    extends nor intercepts. Everything else in rows 2.7 and 2.8 is now evidenced.
 4. **Optional profiles.** Groovy (row 7) and Scala row 6 are closed. Row 5's breakpoint and stack
    halves are proven; its navigation and evaluator halves need an IDE with the Scala plugin.
+5. **Debugging a test from the IDE** (row 2.14). The compiler side is measured and works; the plugin
+   side does not exist. A test debug configuration would need the same two `GenericDebuggerRunner`
+   gates the program one has, and — unlike the program launch — it needs no build manifest, because
+   `flix test` does not fork. Recorded here rather than left implied: "test debugging works" is true
+   of the compiler and false of the plugin, and the two are easy to confuse.
+6. **Rows 2.1–2.12 under the two-phase launch.** They were measured through the one-process launch
+   and are carried forward on the argument that the change is upstream of everything they test.
+   That argument is sound and it is still an argument. Re-running the gate's fixture set once
+   against the new launch would replace it with a measurement.
 
 ### The two inliners do not behave alike
 

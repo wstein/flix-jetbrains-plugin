@@ -87,6 +87,12 @@ counterintuitive and were each learned from a failure:
 3. **Class-prepare filtering is per line, not per file.** One `.flix` file compiles to dozens of
    classes each covering part of it. A class lacking the line reports "no executable code", and
    `RequestManagerImpl.setInvalid` makes that stick if it lands first.
+4. **A line held by more than one class is a compiler bug, not a plugin one.** The position manager
+   correctly binds a breakpoint in *every* class reporting that line, so if several do, Continue
+   stops once per class. That happened: each default-effect handler frame carried the body's
+   location, five classes reported `Main.flix:18`, and four of them ran none of it. Fixed in
+   `Lowering.wrapInHandler`. Before treating a repeated stop as a stepping bug, check the line
+   tables — `javap -p -l` on the `Clo$…` classes says immediately how many hold the line.
 
 `FlixSteppingCommands` + `FlixSteppingFilter` implement Step Over. CPS invokes every continuation
 from one trampoline loop, so successive Flix lines sit at the same JVM depth — JDI's depth-based
@@ -175,7 +181,35 @@ tests:
   single-expression helper would be unbreakpointable. Debug sessions therefore run unoptimized.
 - `--Xdebug` is not only a JDWP switch: `Let`, `ApplyDef`, `ApplyClo`, `IfThenElse` and `Stm` emit
   line numbers *only* under it. Without it most statements have no breakpointable line.
-- The JDWP agent goes before `-jar`; everything after it is the compiler's own argument list.
+- **`flix run` does not run the program.** It builds and then starts the program in a JVM of its
+  own, so an agent on that command line lands on the *compiler* and the program runs unwatched one
+  process further down — with no error and no bound breakpoint. Never put the agent there.
+  `JAVA_TOOL_OPTIONS` does not help either: the child inherits it, both JVMs load the agent, and the
+  second dies with `transport error 202: bind failed`.
+
+## Debugging is two phases
+
+A debug session therefore does the launching itself, and `FlixLaunch` splits into the two halves:
+
+1. `flix build --Xdebug --yes [--entrypoint …]` — no agent; this JVM is the compiler. A failed build
+   fails the *launch*, because the alternative is a session over whatever the last build left
+   behind, whose only symptom is breakpoints landing on the wrong lines.
+2. `<spec.java> <agent> -cp <spec.runtimeClasspath> <spec.mainClass>` — the JVM the debugger attaches
+   to *and* the JVM the program runs in. That identity is the whole point; `FlixDebuggeeIdentityTest`
+   pins it.
+
+`FlixBuildSpec` reads the second half out of `build/development/build.json` (`formatVersion: 4`)
+rather than computing it. Deriving the classpath, the main class and the `java` here would be a
+second implementation of three compiler rules that must agree with the first, and the failure when
+they do not is a `NoClassDefFoundError` naming none of them. `spec.java()` is the compiler's own JVM
+— the release the program was compiled for — and is **not** `FlixJar.javaExecutable`, which answers
+which JVM runs the *compiler*.
+
+A plain Run is unchanged: still one process, still `flix run`.
+
+The platform's 30-second connection poll is not a constraint on phase one.
+`DebugProcessImpl.attachVirtualMachine` connects *after* `startProcess` when the IDE is not the
+server, so the clock covers a JVM binding a socket rather than a cold compile.
 
 ## The UI smoke test
 
@@ -221,7 +255,9 @@ gaps here.
 ## Where things are recorded
 
 - `docs/native-debugger-gate.md` — the Phase-3 proof, its results table, and a runbook for when a
-  breakpoint does not bind.
+  breakpoint does not bind. Rows 15–17 are the 2026-08 rework: which JVM the agent belongs on,
+  whether test debugging binds, and why one line was held by five classes. Read row 17 before
+  changing anything about line numbers — it records two fixes that measurement disproved.
 - `docs/phase-8-verification.md` — which verification rows are established and, deliberately, which
   are **not measured**. Read before claiming anything works.
 - `docs/syntax-highlighting.md` — the two layers that colour a buffer, the four productions `if`

@@ -5,6 +5,35 @@ debugger, plus `FlixPositionManager` and `FlixJavaDebugAware`, actually debug Fl
 
 Recorded outcome: **Green** — see the results table at the end.
 
+> ### ⚠️ 2026-08-20 — the 2026-07-28 result was invalidated on 2026-08-12, and is green again
+>
+> Every row below was measured against a compiler in which `flix run` compiled **and ran** the
+> program in one JVM. On **2026-08-12**, `flix-fork@a282efce0` ("feat: flix run starts the program a
+> build left behind") changed that: `Bootstrap.run` now calls `runForked`, which starts the program
+> in a JVM of its own through `ProgramRunner.command` — `java -cp <classpath> Main`, with no JVM
+> options and therefore no way to pass an agent.
+>
+> The plugin went on putting `-agentlib:jdwp` on `flix run`. For eight days every debug session
+> attached to the **compiler** while the program ran, unwatched, one process further down. Nothing
+> failed: 16,000+ tests were green, `checkIntegrationGlue` passed, the position manager answered
+> every question it was asked correctly — and the questions were all about the compiler's own
+> classes. Breakpoints simply never bound. Row 15 below is the measurement, and
+> `FlixDebuggeeIdentityTest` is the assertion that would have caught it on the day.
+>
+> The gate is green again as of **2026-08-20** by a different mechanism, not by reverting the fork:
+> a debug launch is now two phases — `flix build --Xdebug`, then the plugin starts the program
+> itself from the launch spec the build records in `build/development/build.json`
+> (`BuildManifest.LaunchSpec`, format 4).
+>
+> Fixing the attachment exposed a second defect rather than curing everything: a breakpoint bound in
+> *five* classes at once, because each default-effect handler frame had been given the body's source
+> location. That is row 17, and it is fixed in the compiler's lowering phase.
+>
+> Rows 1–14 were measured through the old one-process launch and have **not** been re-measured
+> through the new one; rows 15 and 17 establish that a `.flix` line binds, and binds in exactly one
+> class. Treat rows 1–14 as evidence about the position manager and the platform, which neither
+> change touches, and not as evidence about the current launch path.
+
 > **Historical note on how this gate was run.** At the time, the gutter arrow and right-click Debug
 > both routed to LSP4IJ's DAP producer, so every row here was measured through a hand-made
 > **Remote JVM Debug** configuration with the debuggee started from a terminal. That workaround is
@@ -359,6 +388,100 @@ Run of **2026-07-28**, `flix-lab` with the `Greeter.java` fixture, plugin at `a3
 | 12 | **No DAP process** — `ps aux \| grep -c '[F]lixDebugAdapter'` prints `0` **while suspended**, and the console shows `Connected to the target VM` rather than `[flix-debug-adapter]` | ✅ `0`, and the console shows `Connected to the target VM` |
 | 13 | All of the above under `runIdeSplitMode` as well as `runIde` | ✅ identical on both |
 | 14 | **Step Over inside Flix advances to the next Flix line** | ✅ confirmed live, 2026-07-28 |
+| 15 | **The JVM the agent is on is the JVM the program runs in** | ✅ 2026-08-20 — see below |
+| 17 | **One `.flix` line is held by one class, not by every handler frame** | ✅ 2026-08-20 — see below |
+
+### Row 15 — the agent has to be on the program's JVM, and for eight days it was not
+
+The row the gate did not have, added because its absence cost the debugger eight days (see the note
+at the top). It is deliberately about the *launch* rather than about the debugger: everything rows
+1–14 measure is downstream of a debuggee that contains the program.
+
+Measured with `scripts/FlixLineProbe.java` against a four-statement fixture, same compiler, same
+`--Xdebug` build, only the JVM carrying the agent differing:
+
+| Agent on | Classes from `Main.flix` that prepared | Lines 5–8 |
+| --- | --- | --- |
+| `java -agentlib:jdwp … -jar flix.jar run --Xdebug` (the old launch) | **0** | `absent` |
+| `java -agentlib:jdwp … -cp <build/development/class> Main` (the new one) | **3** | `can bind` |
+
+The bytecode was never the problem. `javap -l` on `dev.flix.gen.Def$main` from the same build shows
+`SourceFile` pointing at the absolute `Main.flix` path and a `LineNumberTable` of `5, 6, 7, 8` —
+exactly the four `let`/`println` statements. `--Xdebug` was doing its job in a process nobody was
+attached to.
+
+Two corroborating measurements, both from 2026-08-20:
+
+- **`JAVA_TOOL_OPTIONS` cannot rescue the one-process launch.** A child process inherits it, so both
+  JVMs load the agent and the second loses the race for the port:
+  `ERROR: transport error 202: bind failed: Address already in use`, then
+  `JDWP exit error AGENT_ERROR_TRANSPORT_INIT(197)`. The compiler wins, so the failure mode is a
+  program that silently never starts.
+- **The forked child, captured live from a real IDE session** on `flix-proc-invaders`:
+  `…/bin/java -cp …/build/development/class:…/lib/external/processing-core.jar Main` — no agent.
+
+### Row 16 — test debugging, measured
+
+`flix test` does **not** fork. `Bootstrap.testWith` reflects the compiled functions in this process,
+so the agent on the `flix test` JVM is on the JVM the tests run in.
+
+Measured 2026-08-20 on the same fixture: `java -agentlib:jdwp … -jar flix.jar test --Xdebug`
+prepared **2** classes from `TestMain.flix`, and lines 6, 7 and 8 report `can bind`; the test itself
+ran and passed in the same session.
+
+What that establishes is the *binding*, from a terminal launch. It is not evidence that pressing
+Debug on a test in the IDE works, because the plugin has no test debug configuration — the test task
+is a plain `flix test --events-json` run. See `docs/phase-8-verification.md`.
+
+### Row 17 — a breakpoint on one line must stop once, not once per handled effect
+
+Row 15 made Debug attach to the right JVM, and that exposed the next defect rather than fixing it.
+Breakpoints bound and hit — and Continue stopped on the *same* source line four more times before
+moving on, each time in a different class, with the stack deeper and no variables to show:
+
+```
+staticApply:18, Def$main                  2 hidden frames
+applyFrame:18, Clo$main$hxrGySH8ThV      10 hidden frames
+applyFrame:18, Clo$main$TbJN4sJf8mG      13 hidden frames
+applyFrame:18, Clo$main$DEBaibTRSAG      16 hidden frames
+```
+
+`main`'s effects each have a default handler, and `Lowering.wrapInHandler` wraps the body once per
+effect. Lambda lifting gives each wrapper a class, and each was given the body's location — so all
+of them reported `Main.flix:18`, the body's first line, for a frame that runs none of it. Five
+classes held that line; four held no statement of it.
+
+Two candidate fixes were **disproved by measurement** before the third was adopted, and both are
+recorded because each looked obviously right:
+
+| Attempted | Measurement that killed it |
+| --- | --- |
+| `LineNumbers.finish()` writes an undisplaced declaration entry | with `finish()` writing nothing at all, the phantom entries survived unchanged — they were never headers |
+| the closure `applyFrame` should carry no header | the entry moved from offset 0 to 13 instead of disappearing, and the real body class lost its first 100 offsets |
+
+The cause was one level up: the wrapper's *expression* carried the body's location, so
+`GenExpression` emitted that line legitimately. The fix is in the lowering phase — the wrapper is
+located nowhere, while the innermost lambda, which does hold the body, keeps the body's location.
+That distinction is load-bearing: a lifted class takes its primary source from its own location, and
+an unknown one there sent the whole body to foreign line numbers.
+
+Marking the location synthetic is **not** sufficient, and that too was measured. `asSynthetic` keeps
+the file and the line, and suppressing every synthetic location in the back end removed 308 lines
+across 66 files — including 19 consecutive lines of one project file, which turned out to be string
+interpolation: desugared, synthetic, and written by the programmer.
+
+Verified on `flix-proc-invaders` by comparing every generated class's line table before and after:
+
+| | before | after |
+| --- | --- | --- |
+| classes reporting `Main.flix:18` | 5 | **1** |
+| project source lines made unreachable | — | **0** |
+| library source lines made unreachable | — | **0** |
+
+Pinned by `TestLineNumberTable` in the compiler: *a handled effect does not multiply the first
+statement across handler frames*, alongside two tests that the body keeps every statement and that
+no line of the program becomes unreachable. Fault-injected: restoring the wrapper's location fails
+the first and leaves the other two passing, which is exactly the shape of the original defect.
 
 ### Some lines could not take a breakpoint — a compiler defect, now fixed
 

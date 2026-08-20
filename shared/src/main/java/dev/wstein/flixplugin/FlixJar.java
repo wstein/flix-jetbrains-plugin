@@ -112,7 +112,7 @@ public final class FlixJar {
      * nothing about which JDK to run it on, and flixw honours the same variable while keeping its
      * own JDK, so this matches what the wrapper itself would do.
      *
-     * <p>The order is flixw's own ({@code flixw.java:974-996}) with one step removed:
+     * <p>The order is flixw's own with one step removed:
      * {@link #JAVA_HOME_ENV}, then the JDK flixw installed, then {@code PATH}. What is missing
      * between the first two is "the JVM flixw is running on", and it is missing because it cannot
      * be answered from here — the JVM <em>this</em> runs on is the IDE's, not the terminal's. See

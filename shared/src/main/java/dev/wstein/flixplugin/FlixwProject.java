@@ -37,12 +37,17 @@ import java.util.regex.Pattern;
  * <h2>What that costs, stated exactly</h2>
  *
  * <p>The layout below is flixw's, and this is a second implementation of it. That is a real cost —
- * a change to the cache layout breaks this silently — and it is bounded by being <em>derivable</em>:
- * every rule here is a transcription of a specific function in the wrapper's own vendored source,
- * cited by name, and each is a pure function of the lock plus the environment.
+ * a change to the cache layout breaks this silently — and it is bounded two ways. Every rule here is
+ * a transcription of one <em>named</em> function in the wrapper's own source, and each is a pure
+ * function of the lock plus the environment.
+ *
+ * <p>The second bound is {@code FlixwTranscriptionTest}, which compares those functions' bodies
+ * against a flixw checkout and fails when one changes. It replaces the line-number citations this
+ * class used to carry, every one of which was stale within about eight days: the behaviour still
+ * matched, by luck, while the thing that was supposed to prove it had quietly expired.
  *
  * <p>The JDK is the exception, and it is not derivable. flixw picks one by search
- * ({@code flixw.java:974-996}): an environment variable, then <em>the JVM flixw is running on</em>,
+ * ({@code javaExe}): an environment variable, then <em>the JVM flixw is running on</em>,
  * then its own installed JDK, then known system installations. The second of those cannot be
  * reproduced here by construction — the JVM this code runs on is the IDE's, not the terminal's — so
  * this deliberately implements a narrower rule and says so. See {@link #installedJdk}.
@@ -80,8 +85,8 @@ public final class FlixwProject {
      * <p>Enforced rather than trusted because the digest is <em>interpolated into a file name</em>
      * that is then opened: a lock is a committed file, so a hostile one naming
      * {@code ../../../../etc/passwd} would otherwise be a path traversal out of the cache. flixw
-     * writes {@code String.format("%064x", ...)} ({@code flixw.java:466}), so anything else is not
-     * a lock this understands.
+     * writes {@code String.format("%064x", ...)}, so anything else is not a lock this understands.
+     * Checked against the wrapper's own source by {@code FlixwTranscriptionTest}.
      */
     private static final Pattern DIGEST = Pattern.compile("[0-9a-f]{64}");
 
@@ -164,7 +169,8 @@ public final class FlixwProject {
     /**
      * Where flixw keeps what it has verified.
      *
-     * <p>Transcribed from {@code flixw.java:449-460}. The {@code .envrc} is consulted before the
+     * <p>Transcribed from the wrapper's {@code cacheHome()}, whose body
+     * {@code FlixwTranscriptionTest} compares against this one. The {@code .envrc} is consulted before the
      * ambient environment for the same reason {@link FlixJar#resolve} does it: in a terminal direnv
      * would have overwritten the inherited value on entering the directory, so preferring the
      * ambient one here would make the IDE the only place the project's own choice loses.
@@ -193,7 +199,7 @@ public final class FlixwProject {
     /**
      * The jar {@code lock} names, if the cache still holds it.
      *
-     * <p>The name is built as {@code flixw.java:631} builds it. Checking the file exists is not
+     * <p>The name is built as the wrapper's {@code compilerPath(Lock)} builds it. Checking the file exists is not
      * belt-and-braces: a cache pruned behind flixw's back leaves a lock that still names a jar, and
      * the alternative to noticing here is {@code java -jar} failing with a path.
      */
@@ -204,7 +210,7 @@ public final class FlixwProject {
     }
 
     /**
-     * The version with its build metadata dropped, as {@code flixw.java:622} does it.
+     * The version with its build metadata dropped, as the wrapper's {@code canonical(String)} does it.
      *
      * <p>A fork pins {@code 0.75.2+fork.wstein.260813.1}; the jar beside it is
      * {@code flix-0.75.2-<digest>.jar}. The metadata identifies the build, and the digest already
@@ -219,7 +225,7 @@ public final class FlixwProject {
      * The {@code java} flixw installed for itself, if that is still what the marker names.
      *
      * <p>This is deliberately <em>narrower</em> than what flixw would answer. Its own order
-     * ({@code flixw.java:974-996}) is: {@code FLIX_JAVA_HOME}/{@code JAVA_HOME}, then the JVM it is
+     * is: {@code FLIX_JAVA_HOME}/{@code JAVA_HOME}, then the JVM it is
      * running on, then this marker, then known system installations. The second step is the one
      * that cannot be transcribed — flixw running in a terminal picks that terminal's JVM, and the
      * JVM this code runs on is the IDE's — so reproducing the order would produce a confidently
@@ -227,7 +233,7 @@ public final class FlixwProject {
      * environment variable itself and falls back to {@code java} on {@code PATH}, which is what
      * every launch did before any of this existed.
      *
-     * <p>The containment check is flixw's ({@code flixw.java:1315-1320}) and is kept because the
+     * <p>The containment check is flixw's own, and is kept because the
      * consequence is kept: this path is about to be executed. A lexical prefix test is not
      * containment — a symlink under {@code jdks/} can point anywhere — so both sides are resolved
      * before they are compared.
@@ -264,7 +270,7 @@ public final class FlixwProject {
      *
      * <p>A deliberate subset of TOML, in the same spirit as {@link FlixEnvrc}: the two keys read
      * here are quoted scalars in a single table, because that is what {@code ./flixw pin} writes
-     * ({@code flixw.java:2377-2385}) and a lock is generated rather than hand-edited — its own
+     * and a lock is generated rather than hand-edited — its own
      * header says so. Anything else is not understood and answers "nothing pinned" rather than
      * guessing. Both values are validated before they can become part of a file name.
      */

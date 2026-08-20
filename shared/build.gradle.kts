@@ -18,4 +18,11 @@ tasks.test {
     providers.gradleProperty("flixCorpusDir").orNull
         ?.takeIf { it.isNotBlank() }
         ?.let { systemProperty("flixCorpusDir", it) }
+
+    // FlixwTranscriptionTest compares FlixwProject against the wrapper it transcribes. Same
+    // conditional-set rule as above, and same reason: an unconditional "" would overwrite a value
+    // given on the command line and turn the gate into a silent skip.
+    providers.gradleProperty("flixwDir").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { systemProperty("flixwDir", it) }
 }

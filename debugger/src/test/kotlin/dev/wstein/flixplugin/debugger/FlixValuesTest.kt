@@ -119,6 +119,46 @@ class FlixValuesTest {
         assertEquals("Tag\$Bool", FlixValues.formatTagged("Tag\$Bool", emptyList(), ordinal = null, recordedTag = null))
     }
 
+    // --- lists ------------------------------------------------------------------------------------
+
+    @Test
+    fun `a list reads as it is written`() {
+        assertEquals("1 :: 2 :: 3 :: Nil", FlixValues.formatList(listOf("1", "2", "3"), reachedNil = true))
+        assertEquals("Nil", FlixValues.formatList(emptyList(), reachedNil = true))
+    }
+
+    @Test
+    fun `a list the renderer stopped walking does not claim to end`() {
+        // `Nil` at the end of a truncated list would say the list ends where the label stopped
+        // looking, which is a different statement from "there is more".
+        assertEquals("1 :: 2 :: …", FlixValues.formatList(listOf("1", "2"), reachedNil = false))
+    }
+
+    @Test
+    fun `a monomorphised enum is normalised back to the one in the source`() {
+        // Measured: a list of Float32 records `List$Vv4NSpVAmjE.Cons`, because monomorphisation
+        // gives each instantiation an enum symbol of its own. `List[Int32]` and `List[String]` are
+        // different enums by then and neither is spelled `List`, so a reader asking "is this a
+        // list" has to undo it -- with the same rule that undoes a lifted lambda's hash.
+        assertEquals("List.Cons", FlixValues.tagOf("dev.flix.gen.Tag\$Obj\$Obj", "List\$Vv4NSpVAmjE.Cons"))
+        assertEquals("Cons", FlixValues.displayTagOf("dev.flix.gen.Tag\$Obj\$Obj", "List\$Vv4NSpVAmjE.Cons"))
+        // An enum that was never specialised keeps its name, and a suffix of the wrong length is
+        // part of the name rather than a hash.
+        assertEquals("Shade.Mixed", FlixValues.tagOf("dev.flix.gen.Tag\$Obj", "Shade.Mixed"))
+        assertEquals("List\$Vv4NSpVA.Cons", FlixValues.tagOf("dev.flix.gen.Tag\$Obj", "List\$Vv4NSpVA.Cons"))
+    }
+
+    @Test
+    fun `the enum qualifies a decision and not a label`() {
+        // `List.Cons` is what the compiler records, because the erased representation carries no
+        // enum and a renderer deciding *what a value is* needs one. A reader scanning the variables
+        // view is looking for what the source says, which is `Cons`.
+        assertEquals("List.Cons", FlixValues.tagOf("dev.flix.gen.Tag\$Obj\$Obj", recordedTag = "List.Cons"))
+        assertEquals("Cons", FlixValues.displayTagOf("dev.flix.gen.Tag\$Obj\$Obj", recordedTag = "List.Cons"))
+        // A class name is never qualified by an enum, so both answers agree there.
+        assertEquals("NoneLeft", FlixValues.displayTagOf("Chain\$405229\$NoneLeft", recordedTag = null))
+    }
+
     // --- qualified names, which is all JDI ever hands over ------------------------------------
 
     @Test

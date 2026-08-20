@@ -48,12 +48,6 @@ internal object FlixFrames {
     /** The class-name segment that separates a namespace prefix from the symbol's own name. */
     private val KINDS = setOf("Def", "Clo", "Eff")
 
-    /** `StableHash.HashLength`. */
-    private const val HASH_LENGTH = 11
-
-    /** `StableHash.Base58Alphabet` -- no `0`, `O`, `I` or `l`. */
-    private const val BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-
     /** `JvmName.mangleReplacement`, read backwards. */
     private val UNMANGLED = mapOf(
         "plus" to "+",
@@ -135,14 +129,13 @@ internal object FlixFrames {
         }
     }
 
-    /** `main$626ZYxrpg1N` back to `main`, the definition the lambda was lifted out of. */
-    private fun withoutLiftedHash(name: String): String {
-        val separator = name.lastIndexOf('$')
-        if (separator <= 0) return name
-        val suffix = name.substring(separator + 1)
-        val isHash = suffix.length == HASH_LENGTH && suffix.all { it in BASE58 }
-        return if (isHash) name.substring(0, separator) else name
-    }
+    /**
+     * `main$626ZYxrpg1N` back to `main`, the definition the lambda was lifted out of.
+     *
+     * The same suffix a monomorphised enum carries, and the same rule removes it -- see
+     * [FlixValues.withoutStableHash], which is where it lives so that both readers share one.
+     */
+    private fun withoutLiftedHash(name: String): String = FlixValues.withoutStableHash(name)
 }
 
 /**

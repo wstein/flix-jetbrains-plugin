@@ -113,6 +113,14 @@ dependencies {
 
 tasks.test {
     useJUnit()
+
+    // `FlixRunConfigurationTest` asserts what a configuration says when *no* compiler can be found,
+    // and `FLIX_JAR` is the documented way to supply one -- so on a machine where it is exported,
+    // that test asserted the opposite of what it says. It is removed here rather than worked around
+    // in the test: the absence is the fixture, and a fixture that depends on the developer's shell
+    // is not one. The debugger module keeps the variable, because its live session needs a real
+    // compiler to run at all.
+    environment.remove("FLIX_JAR")
 }
 
 val testIdeUi by intellijPlatformTesting.testIdeUi.registering {

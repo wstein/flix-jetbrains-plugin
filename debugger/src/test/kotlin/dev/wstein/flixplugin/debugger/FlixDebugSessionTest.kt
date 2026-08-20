@@ -79,7 +79,8 @@ class FlixDebugSessionTest {
             let a = 1;
             let b = a + 2;
             let at = Some("/home/x");
-            println("c = " + "${'$'}{a + b}" + "${'$'}{at}")
+            let xs = -96.0f32 :: -64.0f32 :: -36.0f32 :: Nil;
+            println("c = " + "${'$'}{a + b}" + "${'$'}{at}" + "${'$'}{xs}")
     """.trimIndent() + "\n"
 
     @Test(timeout = SESSION_TIMEOUT_MS)
@@ -127,6 +128,11 @@ class FlixDebugSessionTest {
             // compiler's `--Xdebug` tag name reaches a reader: without it the best available answer
             // is `#1("/home/x")`.
             assertEquals("Some(\"/home/x\")", labelOf(stop, "at"))
+
+            // And a list, which is a chain of `Cons` cells in the debuggee and read as one until
+            // the compiler started recording which enum a case belongs to. `f32` because that is
+            // how the literal is written: an unsuffixed `-96.0` would be a Float64 if typed back in.
+            assertEquals("-96.0f32 :: -64.0f32 :: -36.0f32 :: Nil", labelOf(stop, "xs"))
         }
     }
 

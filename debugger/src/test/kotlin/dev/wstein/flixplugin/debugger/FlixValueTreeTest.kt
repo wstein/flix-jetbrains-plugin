@@ -124,6 +124,73 @@ class FlixValueTreeTest {
         assertEquals(emptyList<String>(), FlixTaggedRenderer().childNamesOf(tagged))
     }
 
+    // --- lists ------------------------------------------------------------------------------------
+
+    @Test
+    fun `a list reads as a list, not as a chain of cons cells`() {
+        // What the variables view showed: `Cons(-96.0, Obj)`, and one nested node per element below
+        // it, each named `v1` after the field holding the rest.
+        val list = list(float(-96.0f), float(-64.0f), float(-36.0f))
+
+        assertEquals("-96.0f32 :: -64.0f32 :: -36.0f32 :: Nil", FlixTaggedRenderer().labelOf(list))
+    }
+
+    @Test
+    fun `a list expands to its elements, named by position`() {
+        val list = list(float(-96.0f), float(-64.0f), float(-36.0f))
+
+        assertEquals(listOf("[0]", "[1]", "[2]"), FlixTaggedRenderer().childNamesOf(list))
+    }
+
+    @Test
+    fun `the empty list is Nil`() {
+        assertEquals("Nil", FlixTaggedRenderer().labelOf(nil()))
+        assertEquals(emptyList<String>(), FlixTaggedRenderer().childNamesOf(nil()))
+    }
+
+    @Test
+    fun `a label stops at the limit and says so, while the tree holds everything`() {
+        // An ellipsis rather than `Nil`, because a `Nil` there would claim the list ends where the
+        // renderer stopped looking.
+        val long = list(*(1..FlixValues.MAX_LIST_ELEMENTS + 3).map { int(it) as Value }.toTypedArray())
+
+        assertEquals(true, FlixTaggedRenderer().labelOf(long).endsWith(":: …"))
+        assertEquals(FlixValues.MAX_LIST_ELEMENTS + 3, FlixTaggedRenderer().childNamesOf(long).size)
+    }
+
+    @Test(timeout = 10_000)
+    fun `a cyclic list terminates instead of hanging the variables view`() {
+        // The tree is where this matters: the label stops at its own limit either way, while the
+        // tree walks the whole list and would follow a cycle forever -- on the debugger thread,
+        // with the UI waiting on it. Hence the timeout: without the guard this hangs rather than
+        // failing, and a hung suite says nothing.
+        val fields = mutableMapOf<String, Value?>("v0" to int(1), "ordinal" to int(1), "tag" to string("List\$Vv4NSpVAmjE.Cons"))
+        val cell = objectRef("dev.flix.gen.Tag\$Obj\$Obj", fields, superclass = "dev.flix.gen.Tagged\$")
+        fields["v1"] = cell
+
+        assertEquals("1 :: …", FlixTaggedRenderer().labelOf(cell))
+        assertEquals(listOf("[0]"), FlixTaggedRenderer().childNamesOf(cell))
+    }
+
+    @Test
+    fun `a two-term case that is not a list is still a tag`() {
+        // The reason a list is recognised by its recorded case name and not by its shape: `Pair` is
+        // built into the same class as `Cons`, and a structural rule would walk it as a list.
+        val pair = tagged("dev.flix.gen.Tag\$Obj\$Obj", ordinal = 0, payload = listOf(int(1), int(2)), recordedTag = "Shape.Pair")
+
+        assertEquals("Pair(1, 2)", FlixTaggedRenderer().labelOf(pair))
+    }
+
+    @Test
+    fun `without a recorded case name a list is the cons chain it is`() {
+        // A build without `--Xdebug` records nothing, and nothing can be inferred: the class is
+        // shared with every other two-term case. The old rendering is the honest one.
+        val inner = tagged("dev.flix.gen.List\$Nil", ordinal = 0, payload = emptyList())
+        val outer = tagged("dev.flix.gen.Tag\$Obj\$Obj", ordinal = 1, payload = listOf(int(1), inner))
+
+        assertEquals("#1(1, Nil)", FlixTaggedRenderer().labelOf(outer))
+    }
+
     // --- applicability, through the checker the platform actually calls ------------------------
 
     @Test
@@ -245,6 +312,32 @@ class FlixValueTreeTest {
         return head
     }
 
+    /** A Flix list, as the `Cons` cells and the `Nil` a `--Xdebug` build produces. */
+    private fun list(vararg elements: Value): ObjectReference {
+        var rest = nil()
+        for (element in elements.reversed()) {
+            rest = tagged(
+                "dev.flix.gen.Tag\$Obj\$Obj",
+                ordinal = 1,
+                payload = listOf(element, rest),
+                // As the compiler writes it: monomorphised, hash and all.
+                recordedTag = "List\$Vv4NSpVAmjE.Cons",
+            )
+        }
+        return rest
+    }
+
+    private fun nil(): ObjectReference =
+        tagged("dev.flix.gen.List\$Nil", ordinal = 0, payload = emptyList(), recordedTag = "List\$Vv4NSpVAmjE.Nil")
+
+    private fun float(value: Float): com.sun.jdi.FloatValue = proxy(com.sun.jdi.FloatValue::class.java) { method, _ ->
+        when (method.name) {
+            "value", "floatValue" -> value
+            "toString" -> value.toString()
+            else -> null
+        }
+    }
+
     private fun tagged(
         className: String,
         ordinal: Int,
@@ -268,15 +361,18 @@ class FlixValueTreeTest {
         interfaces: List<String> = emptyList(),
     ): ObjectReference {
         val id = nextId++
-        val declared = fields.keys.map { field(it) }
+        // Read from the map on every call rather than captured once. A cyclic fixture is built by
+        // adding the back-reference *after* the object exists, and a snapshot taken here would omit
+        // it -- so the walk would stop for want of a field rather than because a guard stopped it,
+        // and the cycle tests would pass while proving nothing.
         // A ClassType, not a bare ReferenceType: the renderers reach `Record$` through an interface
         // and `Tagged$` through a superclass, so a stub with no hierarchy would answer "not a Flix
         // value" for both and prove nothing.
         val type = proxy(ClassType::class.java) { method, args ->
             when (method.name) {
                 "name" -> className
-                "allFields", "fields" -> declared
-                "fieldByName" -> declared.firstOrNull { it.name() == args?.get(0) }
+                "allFields", "fields" -> fields.keys.map { field(it) }
+                "fieldByName" -> fields.keys.firstOrNull { it == args?.get(0) }?.let { field(it) }
                 "superclass" -> superclass?.let { classType(it) }
                 "interfaces" -> interfaces.map { interfaceType(it) }
                 else -> null

@@ -17,6 +17,11 @@ import com.intellij.debugger.ui.tree.render.ValueLabelRenderer
 import com.sun.jdi.ClassNotPreparedException
 import com.sun.jdi.ClassType
 import com.sun.jdi.InterfaceType
+import com.sun.jdi.CharValue
+import com.sun.jdi.ByteValue
+import com.sun.jdi.ShortValue
+import com.sun.jdi.LongValue
+import com.sun.jdi.FloatValue
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.StringReference
@@ -337,6 +342,9 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
 
     private fun renderTagged(value: Value?): String {
         val tagged = value as? ObjectReference ?: return ""
+        listElements(tagged, FlixValues.MAX_LIST_ELEMENTS)?.let { (elements, reachedNil) ->
+            return FlixValues.formatList(elements.map { renderScalar(it) }, reachedNil)
+        }
         val ordinal = (tagged.readField("ordinal") as? com.sun.jdi.IntegerValue)?.value()
         return FlixValues.formatTagged(
             tagged.referenceType().name(),
@@ -346,9 +354,34 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
         )
     }
 
-    /** The case name a `--Xdebug` build wrote into the value, or `null` if it carries none. */
-    private fun recordedTagOf(tagged: ObjectReference): String? =
-        (tagged.readField(FlixValues.TAG_NAME_FIELD) as? StringReference)?.value()
+    /**
+     * The elements of a Flix list, and whether the walk reached `Nil`.
+     *
+     * `null` when this is not a list, which is the interesting part of the rule: a list is a chain
+     * of `List.Cons` cells, and *only* the case name the compiler recorded says so. The compiled
+     * form cannot: a two-term case is built into a class shared with every other two-term case, so
+     * a structural guess -- "a tag with two terms whose second is another such tag" -- would catch
+     * any user-defined pair that happened to nest. Without `--Xdebug` there is no recorded name and
+     * a list renders as the `Cons` chain it is, which is what it did before.
+     */
+    private fun listElements(value: ObjectReference, limit: Int): Pair<List<Value?>, Boolean>? {
+        if (FlixValues.tagOf(value.referenceType().name(), recordedTagOf(value)) !in LIST_CASES) return null
+        val elements = mutableListOf<Value?>()
+        val seen = mutableSetOf<Long>()
+        var node: ObjectReference? = value
+        while (node != null && elements.size < limit) {
+            val case = FlixValues.tagOf(node.referenceType().name(), recordedTagOf(node))
+            if (case == FlixValues.LIST_NIL) return elements to true
+            if (case != FlixValues.LIST_CONS) return elements to false
+            // A list is immutable and cannot be circular, but a debuggee caught mid-construction or
+            // simply corrupt can be, and this runs on the debugger thread while the UI waits.
+            if (!seen.add(node.uniqueID())) return elements to false
+            val terms = payloadOf(node)
+            elements += terms.getOrNull(0)?.second
+            node = terms.getOrNull(1)?.second as? ObjectReference
+        }
+        return elements to false
+    }
 
     /**
      * The payload, and nothing else.
@@ -362,6 +395,12 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
         object : FlixChildrenRenderer("FlixTaggedChildren") {
             override fun childrenOf(value: Value?): List<Pair<String, Value?>> {
                 val tagged = value as? ObjectReference ?: return emptyList()
+                // A list expands to its elements. Expanding the `Cons` chain instead meant one
+                // nested node per element, each named `v1` after the field holding the rest --
+                // reading the fourth element took four clicks and named none of them.
+                listElements(tagged, Int.MAX_VALUE)?.let { (elements, _) ->
+                    return elements.mapIndexed { index, element -> "[$index]" to element }
+                }
                 val payload = payloadOf(tagged)
                 if (FlixValues.tagOf(tagged.referenceType().name(), recordedTagOf(tagged)) != null) return payload
                 val ordinal = tagged.referenceType().allFields().firstOrNull { it.name() == "ordinal" }
@@ -371,6 +410,9 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
 
     private companion object {
         private val PAYLOAD_FIELD = Regex("""v\d+""")
+
+        /** The two cases a list is made of; anything else is rendered as the tag it is. */
+        private val LIST_CASES = setOf(FlixValues.LIST_CONS, FlixValues.LIST_NIL)
     }
 }
 
@@ -394,9 +436,21 @@ internal fun ObjectReference.readField(name: String): Value? =
 internal fun renderScalar(value: Value?): String = when (value) {
     null -> "null"
     is StringReference -> "\"${value.value()}\""
+    is CharValue -> "'${value.value()}'"
+    // Suffixed the way the literal would be written. Flix reads an unsuffixed `1` as Int32 and
+    // `1.0` as Float64, so those are printed bare and every other width says which one it is --
+    // `-96.0f32` rather than a `-96.0` that would be a different type if it were typed back in.
+    is ByteValue -> "${value.value()}i8"
+    is ShortValue -> "${value.value()}i16"
+    is LongValue -> "${value.value()}i64"
+    is FloatValue -> "${value.value()}f32"
     is ObjectReference -> {
         val typeName = value.referenceType().name()
-        FlixValues.tagNameOf(typeName) ?: typeName.substringAfterLast('.').substringAfterLast('$')
+        FlixValues.displayTagOf(typeName, recordedTagOf(value)) ?: typeName.substringAfterLast('.').substringAfterLast('$')
     }
     else -> value.toString()
 }
+
+/** The case name a `--Xdebug` build wrote into `value`, or `null` if it carries none. */
+internal fun recordedTagOf(value: ObjectReference): String? =
+    (value.readField(FlixValues.TAG_NAME_FIELD) as? StringReference)?.value()

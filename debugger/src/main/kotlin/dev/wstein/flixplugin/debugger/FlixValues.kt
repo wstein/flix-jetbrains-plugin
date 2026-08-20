@@ -77,7 +77,7 @@ internal object FlixValues {
      * @param recordedTag the value's [TAG_NAME_FIELD], which a `--Xdebug` build writes
      */
     fun formatTagged(className: String, payload: List<String>, ordinal: Int?, recordedTag: String?): String {
-        val tag = tagOf(className, recordedTag) ?: ordinal?.let { "#$it" } ?: return simpleNameOf(className)
+        val tag = displayTagOf(className, recordedTag) ?: ordinal?.let { "#$it" } ?: return simpleNameOf(className)
         return if (payload.isEmpty()) tag else "$tag(${payload.joinToString(", ")})"
     }
 
@@ -93,15 +93,88 @@ internal object FlixValues {
     const val TAG_NAME_FIELD: String = "tag"
 
     /**
-     * The case a value is, from whichever source knows.
+     * The case a value is, qualified by its enum where that is known.
      *
-     * The recorded name first: it is what the compiler wrote, unmangled and unambiguous. The class
-     * name second, which is enough for a case without terms because that one has a class of its
-     * own -- and is also all there is when the program was built without `--Xdebug`. `null` when
-     * neither answers, and then the caller has only the ordinal.
+     * The recorded name first -- `List.Cons` -- because it is what the compiler wrote: unmangled,
+     * and carrying the enum, which the erased representation does not. The class name second, which
+     * is enough for a case without terms because that one has a class of its own, and is all there
+     * is in a build without `--Xdebug`; that answer is unqualified. `null` when neither answers, and
+     * then the caller has only the ordinal.
+     *
+     * Callers that display it want [[displayTagOf]]; callers deciding *what a value is* want this.
      */
     fun tagOf(className: String, recordedTag: String?): String? =
-        recordedTag?.takeIf { it.isNotBlank() } ?: tagNameOf(className)
+        recordedTag?.takeIf { it.isNotBlank() }?.let(::withoutSpecialization) ?: tagNameOf(className)
+
+    /**
+     * The source enum behind a monomorphised one: `List$Vv4NSpVAmjE.Cons` is `List.Cons`.
+     *
+     * Monomorphisation gives each instantiation of a generic enum a symbol of its own, named by
+     * `Symbol.specializedEnumSym` as the source name plus a stable hash -- so `List[Int32]` and
+     * `List[String]` are different enums by the time a value exists, and neither is spelled `List`.
+     * The extra precision is real and is kept in what the compiler records; a reader asking "is this
+     * a list" wants it removed.
+     */
+    private fun withoutSpecialization(tag: String): String {
+        val separator = tag.lastIndexOf('.')
+        if (separator < 0) return tag
+        return withoutStableHash(tag.substring(0, separator)) + tag.substring(separator)
+    }
+
+    /**
+     * A name with the compiler's stable-hash suffix removed, if it carries one.
+     *
+     * `StableHash.xxh3_64Base58` is eleven characters of an alphabet without `0`, `O`, `I` or `l`,
+     * and the compiler appends it after a `$` wherever it needs a name to be unique without being
+     * a source name: a monomorphised enum ([[withoutSpecialization]]) and a lifted lambda
+     * ([[FlixFrames]]) both carry one.
+     */
+    fun withoutStableHash(name: String): String {
+        val separator = name.lastIndexOf('$')
+        if (separator <= 0) return name
+        val suffix = name.substring(separator + 1)
+        val isHash = suffix.length == HASH_LENGTH && suffix.all { it in BASE58 }
+        return if (isHash) name.substring(0, separator) else name
+    }
+
+    /** `StableHash.HashLength`. */
+    private const val HASH_LENGTH: Int = 11
+
+    /** `StableHash.Base58Alphabet` -- no `0`, `O`, `I` or `l`. */
+    private const val BASE58: String = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+    /**
+     * The case a value is, as it is written where it is used.
+     *
+     * `List.Cons` is how the compiler records it and `Cons` is how it reads in the source, which is
+     * what a reader is scanning for. The enum earns its place in a decision, not in a label.
+     */
+    fun displayTagOf(className: String, recordedTag: String?): String? =
+        tagOf(className, recordedTag)?.substringAfterLast('.')
+
+    /** `List.Cons` and `List.Nil`, the two cases every Flix list is built from. */
+    const val LIST_CONS: String = "List.Cons"
+    const val LIST_NIL: String = "List.Nil"
+
+    /**
+     * A list rendered the way it is written: `1 :: 2 :: 3 :: Nil`.
+     *
+     * `Nil` is printed only when the walk reached it. A truncated list ends in an ellipsis instead,
+     * because a `Nil` there would claim the list ends where the renderer stopped looking.
+     */
+    fun formatList(elements: List<String>, reachedNil: Boolean): String {
+        val tail = if (reachedNil) "Nil" else "…"
+        return (elements + tail).joinToString(" :: ")
+    }
+
+    /**
+     * How many list elements to render in a label.
+     *
+     * The same trade as [[MAX_RECORD_FIELDS]]: the label summarises and the tree below it holds
+     * everything, so walking a long -- or circular -- list to build a string nobody reads is the
+     * wrong cost to pay on the debugger thread.
+     */
+    const val MAX_LIST_ELEMENTS: Int = 8
 
     /**
      * The tag a compiled class stands for, or `null` if its name does not carry one.

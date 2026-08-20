@@ -18,10 +18,6 @@ import com.sun.jdi.ClassNotPreparedException
 import com.sun.jdi.ClassType
 import com.sun.jdi.InterfaceType
 import com.sun.jdi.CharValue
-import com.sun.jdi.ByteValue
-import com.sun.jdi.ShortValue
-import com.sun.jdi.LongValue
-import com.sun.jdi.FloatValue
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.StringReference
@@ -342,8 +338,8 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
 
     private fun renderTagged(value: Value?): String {
         val tagged = value as? ObjectReference ?: return ""
-        listElements(tagged, FlixValues.MAX_LIST_ELEMENTS)?.let { (elements, reachedNil) ->
-            return FlixValues.formatList(elements.map { renderScalar(it) }, reachedNil)
+        listElements(tagged, FlixValues.MAX_LIST_ELEMENTS)?.let { (elements, end) ->
+            return FlixValues.formatList(elements.map { renderScalar(it) }, end)
         }
         val ordinal = (tagged.readField("ordinal") as? com.sun.jdi.IntegerValue)?.value()
         return FlixValues.formatTagged(
@@ -364,23 +360,23 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
      * any user-defined pair that happened to nest. Without `--Xdebug` there is no recorded name and
      * a list renders as the `Cons` chain it is, which is what it did before.
      */
-    private fun listElements(value: ObjectReference, limit: Int): Pair<List<Value?>, Boolean>? {
+    private fun listElements(value: ObjectReference, limit: Int): Pair<List<Value?>, FlixListEnd>? {
         if (FlixValues.tagOf(value.referenceType().name(), recordedTagOf(value)) !in LIST_CASES) return null
         val elements = mutableListOf<Value?>()
         val seen = mutableSetOf<Long>()
         var node: ObjectReference? = value
         while (node != null && elements.size < limit) {
             val case = FlixValues.tagOf(node.referenceType().name(), recordedTagOf(node))
-            if (case == FlixValues.LIST_NIL) return elements to true
-            if (case != FlixValues.LIST_CONS) return elements to false
+            if (case == FlixValues.LIST_NIL) return elements to FlixListEnd.NIL
+            if (case != FlixValues.LIST_CONS) return elements to FlixListEnd.BROKEN
             // A list is immutable and cannot be circular, but a debuggee caught mid-construction or
             // simply corrupt can be, and this runs on the debugger thread while the UI waits.
-            if (!seen.add(node.uniqueID())) return elements to false
+            if (!seen.add(node.uniqueID())) return elements to FlixListEnd.BROKEN
             val terms = payloadOf(node)
             elements += terms.getOrNull(0)?.second
             node = terms.getOrNull(1)?.second as? ObjectReference
         }
-        return elements to false
+        return elements to FlixListEnd.TRUNCATED
     }
 
     /**
@@ -436,14 +432,11 @@ internal fun ObjectReference.readField(name: String): Value? =
 internal fun renderScalar(value: Value?): String = when (value) {
     null -> "null"
     is StringReference -> "\"${value.value()}\""
+    // Quoted, because a bare `c` reads as a name where a string is already unambiguous.
     is CharValue -> "'${value.value()}'"
-    // Suffixed the way the literal would be written. Flix reads an unsuffixed `1` as Int32 and
-    // `1.0` as Float64, so those are printed bare and every other width says which one it is --
-    // `-96.0f32` rather than a `-96.0` that would be a different type if it were typed back in.
-    is ByteValue -> "${value.value()}i8"
-    is ShortValue -> "${value.value()}i16"
-    is LongValue -> "${value.value()}i64"
-    is FloatValue -> "${value.value()}f32"
+    // Numbers are printed as they are, without the `f32`/`i64` suffix that would say which width
+    // they are. The width is not what a reader is looking at, and a value is easier to compare with
+    // the source when it is spelled the way the source spells it.
     is ObjectReference -> {
         val typeName = value.referenceType().name()
         FlixValues.displayTagOf(typeName, recordedTagOf(value)) ?: typeName.substringAfterLast('.').substringAfterLast('$')

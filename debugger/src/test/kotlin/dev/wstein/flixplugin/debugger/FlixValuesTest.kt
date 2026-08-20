@@ -123,15 +123,22 @@ class FlixValuesTest {
 
     @Test
     fun `a list reads as it is written`() {
-        assertEquals("1 :: 2 :: 3 :: Nil", FlixValues.formatList(listOf("1", "2", "3"), reachedNil = true))
-        assertEquals("Nil", FlixValues.formatList(emptyList(), reachedNil = true))
+        assertEquals("1 :: 2 :: 3 :: Nil", FlixValues.formatList(listOf("1", "2", "3"), FlixListEnd.NIL))
+        assertEquals("Nil", FlixValues.formatList(emptyList(), FlixListEnd.NIL))
     }
 
     @Test
-    fun `a list the renderer stopped walking does not claim to end`() {
-        // `Nil` at the end of a truncated list would say the list ends where the label stopped
-        // looking, which is a different statement from "there is more".
-        assertEquals("1 :: 2 :: …", FlixValues.formatList(listOf("1", "2"), reachedNil = false))
+    fun `a truncated list keeps its terminator and says where it stopped`() {
+        // A Flix list always ends in `Nil` -- that is what makes it a list -- so the terminator is
+        // not in question; where the label stopped looking is, and the ellipsis is what says it.
+        assertEquals("1 :: 2 :: … :: Nil", FlixValues.formatList(listOf("1", "2"), FlixListEnd.TRUNCATED))
+    }
+
+    @Test
+    fun `a tail that is not a list shows no terminator`() {
+        // The one case with no `Nil` to show: whatever this was, it is not a list all the way down,
+        // and printing a terminator would be a claim rather than a summary.
+        assertEquals("1 :: …", FlixValues.formatList(listOf("1"), FlixListEnd.BROKEN))
     }
 
     @Test

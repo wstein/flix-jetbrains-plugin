@@ -130,9 +130,8 @@ class FlixDebugSessionTest {
             assertEquals("Some(\"/home/x\")", labelOf(stop, "at"))
 
             // And a list, which is a chain of `Cons` cells in the debuggee and read as one until
-            // the compiler started recording which enum a case belongs to. `f32` because that is
-            // how the literal is written: an unsuffixed `-96.0` would be a Float64 if typed back in.
-            assertEquals("-96.0f32 :: -64.0f32 :: -36.0f32 :: Nil", labelOf(stop, "xs"))
+            // the compiler started recording which enum a case belongs to.
+            assertEquals("-96.0 :: -64.0 :: -36.0 :: Nil", labelOf(stop, "xs"))
         }
     }
 

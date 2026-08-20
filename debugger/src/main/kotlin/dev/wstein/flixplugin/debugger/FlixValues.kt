@@ -11,6 +11,9 @@ package dev.wstein.flixplugin.debugger
  * Kept free of JDI so the formatting rules can be tested directly; [FlixValueRenderers] does the
  * reading and hands the pieces here.
  */
+/** How a walk over a list ended: at `Nil`, at the renderer's limit, or at something unexpected. */
+internal enum class FlixListEnd { NIL, TRUNCATED, BROKEN }
+
 internal object FlixValues {
 
     /**
@@ -159,11 +162,20 @@ internal object FlixValues {
     /**
      * A list rendered the way it is written: `1 :: 2 :: 3 :: Nil`.
      *
-     * `Nil` is printed only when the walk reached it. A truncated list ends in an ellipsis instead,
-     * because a `Nil` there would claim the list ends where the renderer stopped looking.
+     * The terminator is always shown, because a Flix list always has one -- it is `Nil` or it is not
+     * a list. A label that stopped early says so with an ellipsis *before* the `Nil`, which is the
+     * difference between "there is more here" and "the list ends here".
+     *
+     * [FlixListEnd.BROKEN] is the one case with no `Nil` to show: the walk found a tail that is
+     * neither a cell nor `Nil`, so what it was looking at is not a list all the way down and saying
+     * otherwise would be a claim rather than a summary.
      */
-    fun formatList(elements: List<String>, reachedNil: Boolean): String {
-        val tail = if (reachedNil) "Nil" else "…"
+    fun formatList(elements: List<String>, end: FlixListEnd): String {
+        val tail = when (end) {
+            FlixListEnd.NIL -> listOf("Nil")
+            FlixListEnd.TRUNCATED -> listOf("…", "Nil")
+            FlixListEnd.BROKEN -> listOf("…")
+        }
         return (elements + tail).joinToString(" :: ")
     }
 

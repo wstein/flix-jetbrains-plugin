@@ -132,7 +132,7 @@ class FlixValueTreeTest {
         // it, each named `v1` after the field holding the rest.
         val list = list(float(-96.0f), float(-64.0f), float(-36.0f))
 
-        assertEquals("-96.0f32 :: -64.0f32 :: -36.0f32 :: Nil", FlixTaggedRenderer().labelOf(list))
+        assertEquals("-96.0 :: -64.0 :: -36.0 :: Nil", FlixTaggedRenderer().labelOf(list))
     }
 
     @Test
@@ -154,7 +154,7 @@ class FlixValueTreeTest {
         // renderer stopped looking.
         val long = list(*(1..FlixValues.MAX_LIST_ELEMENTS + 3).map { int(it) as Value }.toTypedArray())
 
-        assertEquals(true, FlixTaggedRenderer().labelOf(long).endsWith(":: …"))
+        assertEquals(true, FlixTaggedRenderer().labelOf(long).endsWith(":: … :: Nil"))
         assertEquals(FlixValues.MAX_LIST_ELEMENTS + 3, FlixTaggedRenderer().childNamesOf(long).size)
     }
 

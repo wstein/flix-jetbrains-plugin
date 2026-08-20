@@ -94,6 +94,15 @@ counterintuitive and were each learned from a failure:
    `Lowering.wrapInHandler`. Before treating a repeated stop as a stepping bug, check the line
    tables — `javap -p -l` on the `Clo$…` classes says immediately how many hold the line.
 
+The **Flix call chain is not on the JVM stack**, for the same reason. One Flix frame is live at a
+time; between the frames sit `Handler$.installHandler` and the trampoline's `invoke` wrappers, so a
+four-call chain measured 36 JVM frames with one of them Flix. `FlixContinuations` reads the chain
+off the heap instead — `Frames$` cons lists held by the `installHandler` arguments, by
+`ResumptionCons$.frames` and by `Suspension$.prefix` — and `FlixAsyncStackTraceProvider` presents it
+under the platform's *Async stack trace* separator, as the Kotlin plugin does for coroutines. The
+lists at different handler levels are nested suffixes, so the longest is the complete chain; they
+are compared, never concatenated.
+
 `FlixSteppingCommands` + `FlixSteppingFilter` implement Step Over. CPS invokes every continuation
 from one trampoline loop, so successive Flix lines sit at the same JVM depth — JDI's depth-based
 Step Over cannot express "stay in this function", so the definition is captured at step start and

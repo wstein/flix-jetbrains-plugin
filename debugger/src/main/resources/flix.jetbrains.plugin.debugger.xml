@@ -83,5 +83,19 @@
              compiler and run in the debuggee. -->
         <debugger.codeFragmentFactory
                 implementation="dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory"/>
+
+        <!-- The Flix call chain, which the JVM stack does not contain. Under CPS the trampoline
+             invokes every continuation from one loop, so one Flix frame is live at a time and the
+             calls the programmer made live in continuation objects on the heap. Measured on a real
+             stop: 36 JVM frames for a chain of four Flix calls, 35 of them hidden and every one of
+             them handler machinery.
+
+             The same extension point Kotlin uses to show a coroutine's logical stack rather than
+             its dispatcher. The platform draws the result under an "Async stack trace" separator,
+             so a reconstruction is presented as derived rather than mixed into the real frames.
+             Returns null for a frame that is not Flix: the platform asks every provider about every
+             frame of every JVM language. -->
+        <debugger.asyncStackTraceProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixAsyncStackTraceProvider"/>
     </extensions>
 </idea-plugin>

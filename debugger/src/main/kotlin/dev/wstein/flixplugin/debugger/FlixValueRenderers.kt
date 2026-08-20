@@ -289,6 +289,59 @@ class FlixRecordRenderer : CompoundRendererProvider() {
 }
 
 /**
+ * Renders a Flix tuple as `(1, 2)` rather than `{Tuple$Int32$Int32@3405}`.
+ *
+ * A tuple is the one Flix value whose compiled form says everything about it: `BackendObjType.Tuple`
+ * gives each arity and component typing its own class, `dev.flix.gen.Tuple$Int32$Int32`, with fields
+ * `field0`, `field1` and so on. There is no shared representation to disambiguate and no tag to
+ * read -- the class *is* the type, which is why this renderer needs nothing from `--Xdebug`.
+ *
+ * A tuple has no field names in the source either, so its components are shown by position, the way
+ * a list's elements are.
+ */
+class FlixTupleRenderer : CompoundRendererProvider() {
+
+    override fun getName(): String = "Flix tuple"
+
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + "Tuple\$"
+
+    /** Matches on the class name, which is where a tuple's identity lives; see [FlixRecordRenderer]. */
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type: Type? -> completedFuture(type != null && FlixValues.isTuple(type.name())) }
+
+    override fun isEnabled(): Boolean = true
+
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
+        object : FlixLabelRenderer("FlixTuple") {
+            override fun label(value: Value?): String =
+                FlixValues.formatTuple(componentsOf(value).map { (_, v) -> renderScalar(v) })
+        }
+
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixTupleChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> = componentsOf(value)
+        }
+
+    /**
+     * The components, in source order.
+     *
+     * Sorted by the number in the field name rather than by the order JDI lists fields in: that
+     * order is the class file's, which is the order the compiler wrote them and not something to
+     * depend on for a value the user reads positionally.
+     */
+    private fun componentsOf(value: Value?): List<Pair<String, Value?>> {
+        val tuple = value as? ObjectReference ?: return emptyList()
+        return tuple.referenceType().allFields()
+            .mapNotNull { field ->
+                FlixValues.TUPLE_FIELD.matchEntire(field.name())?.groupValues?.get(1)?.toIntOrNull()
+                    ?.let { index -> index to field }
+            }
+            .sortedBy { it.first }
+            .map { (index, field) -> "[$index]" to tuple.getValue(field) }
+    }
+}
+
+/**
  * Renders a Flix tagged-union value as `Some(42)` or `NoneLeft` rather than
  * `{Chain$dotViewLeft$405229$NoneLeft@5678}`.
  *
@@ -439,9 +492,31 @@ internal fun renderScalar(value: Value?): String = when (value) {
     // the source when it is spelled the way the source spells it.
     is ObjectReference -> {
         val typeName = value.referenceType().name()
-        FlixValues.displayTagOf(typeName, recordedTagOf(value)) ?: typeName.substringAfterLast('.').substringAfterLast('$')
+        when {
+            // Shallow, like every other nested value here: a tuple of tuples shows the inner ones
+            // by class, and expanding the node is what shows the rest.
+            FlixValues.isTuple(typeName) -> FlixValues.formatTuple(tupleComponents(value).map(::renderComponent))
+            else -> FlixValues.displayTagOf(typeName, recordedTagOf(value))
+                ?: typeName.substringAfterLast('.').substringAfterLast('$')
+        }
     }
     else -> value.toString()
+}
+
+/** A tuple's components in source order, for a caller that only needs the values. */
+private fun tupleComponents(tuple: ObjectReference): List<Value?> =
+    tuple.referenceType().allFields()
+        .mapNotNull { field ->
+            FlixValues.TUPLE_FIELD.matchEntire(field.name())?.groupValues?.get(1)?.toIntOrNull()
+                ?.let { it to field }
+        }
+        .sortedBy { it.first }
+        .map { (_, field) -> tuple.getValue(field) }
+
+/** One component of a nested tuple: rendered, but not recursed into any further. */
+private fun renderComponent(value: Value?): String = when (value) {
+    is ObjectReference -> value.referenceType().name().substringAfterLast('.').substringAfterLast('$')
+    else -> renderScalar(value)
 }
 
 /** The case name a `--Xdebug` build wrote into `value`, or `null` if it carries none. */

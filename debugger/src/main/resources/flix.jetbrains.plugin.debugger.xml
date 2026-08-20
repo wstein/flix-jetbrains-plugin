@@ -82,6 +82,13 @@
         <debugger.compoundRendererProvider
                 implementation="dev.wstein.flixplugin.debugger.FlixTaggedRenderer"/>
 
+        <!-- A tuple is the one Flix value whose compiled class says everything about it: each arity
+             and component typing gets a class of its own, `Tuple$Int32$Int32`, with `field0` and
+             `field1`. Unrendered it shows as {Tuple$Int32$Int32@3405}, which names the shape and
+             not the value; the language writes a tuple as (1, 2) and so does this. -->
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixTupleRenderer"/>
+
         <!-- Lets a watch be written in Flix rather than in Java. IntelliJ's Java debugger still owns
              the session (ADR 0002); this only supplies the front end for a .flix context, so Java,
              Kotlin and Scala frames keep their own evaluators: `isContextAccepted` is what keeps

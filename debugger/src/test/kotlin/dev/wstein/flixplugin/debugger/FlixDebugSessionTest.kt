@@ -3,6 +3,7 @@ package dev.wstein.flixplugin.debugger
 import com.sun.jdi.Bootstrap
 import com.sun.jdi.Location
 import com.sun.jdi.ReferenceType
+import com.sun.jdi.Value
 import com.sun.jdi.VirtualMachine
 import com.sun.jdi.event.BreakpointEvent
 import com.sun.jdi.event.ClassPrepareEvent
@@ -286,6 +287,59 @@ class FlixDebugSessionTest {
             debuggee.destroyForcibly()
             debuggee.waitFor(10, TimeUnit.SECONDS)
         }
+    }
+
+    /**
+     * A Datalog program, solved and queried -- the shape a query result comes back in.
+     *
+     * The result of `query … select (x, y)` is a vector of tuples, which is why this is the fixture
+     * for tuple rendering: it is where a reader meets one without having written it themselves.
+     */
+    private val datalogFixture = """
+        def main(): Unit \ IO =
+            let p = #{
+                Edge(1, 2).
+                Edge(2, 3).
+                Edge(3, 4).
+                Path(x, y) :- Edge(x, y).
+                Path(x, z) :- Path(x, y), Edge(y, z).
+            };
+            let resolved = solve p;
+            let paths = query resolved select (x, y) from Path(x, y);
+            println(paths);
+            spin(2000000000)
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a tuple reads as a tuple, live`() {
+        session(datalogFixture, "println(paths)") { _, stop, _ ->
+            // `paths` is a vector, so what is asserted is one of its elements: the vector node
+            // itself is the platform's array rendering, which is already legible.
+            val element = firstElement(stop, "paths")
+
+            assertEquals("(1, 2)", label(element))
+        }
+    }
+
+    /** The first element of the array-valued local `name`, as the variables view would show it. */
+    private fun firstElement(stop: BreakpointEvent, name: String): Value? {
+        val frame = stop.thread().frame(0)
+        val variable = frame.visibleVariableByName(name)
+        if (variable == null) {
+            fail("no local named `$name`; locals: " + frame.visibleVariables().map { it.name() })
+        }
+        val array = frame.getValue(variable) as? com.sun.jdi.ArrayReference
+            ?: throw AssertionError("`$name` is not an array: ${frame.getValue(variable)}")
+        assertTrue("`$name` is empty, so there is nothing to render", array.length() > 0)
+        return array.getValue(0)
+    }
+
+    /** What the variables view would label `value`, through the renderer that claims it. */
+    private fun label(value: Value?): String {
+        val renderer = FlixTupleRenderer().valueLabelRenderer as FlixLabelRenderer
+        return renderer.label(value)
     }
 
     /** Phase one without `--Xdebug`, so the optimizer runs and inlining happens. */

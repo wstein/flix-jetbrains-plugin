@@ -155,6 +155,24 @@ internal object FlixValues {
     fun displayTagOf(className: String, recordedTag: String?): String? =
         tagOf(className, recordedTag)?.substringAfterLast('.')
 
+    /**
+     * The class every Flix tuple is compiled to, before its component types.
+     *
+     * `(1, 2)` is `dev.flix.gen.Tuple$Int32$Int32` with fields `field0` and `field1`
+     * (`BackendObjType.Tuple`), so both the recognition and the arity come from the class itself --
+     * there is no shared representation here and nothing to guess.
+     */
+    const val TUPLE_PREFIX: String = "Tuple\$"
+
+    /** A tuple's component fields, in order: `field0`, `field1`, … */
+    val TUPLE_FIELD: Regex = Regex("""field(\d+)""")
+
+    /** A tuple rendered as it is written: `(1, 2)`. */
+    fun formatTuple(components: List<String>): String = components.joinToString(", ", "(", ")")
+
+    /** Whether `className` is a Flix tuple. */
+    fun isTuple(className: String): Boolean = simpleNameOf(className).startsWith(TUPLE_PREFIX)
+
     /** `List.Cons` and `List.Nil`, the two cases every Flix list is built from. */
     const val LIST_CONS: String = "List.Cons"
     const val LIST_NIL: String = "List.Nil"

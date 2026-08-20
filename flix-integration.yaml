@@ -74,6 +74,8 @@ registrations:
     # every compiled specialisation is covered without naming it.
     com.intellij.debugger.compoundRendererProvider.record: dev.wstein.flixplugin.debugger.FlixRecordRenderer
     com.intellij.debugger.compoundRendererProvider.tagged: dev.wstein.flixplugin.debugger.FlixTaggedRenderer
+    # A tuple needs no shared supertype: each arity and component typing has a class of its own.
+    com.intellij.debugger.compoundRendererProvider.tuple: dev.wstein.flixplugin.debugger.FlixTupleRenderer
     # Flix expressions in a watch. Scoped by `isContextAccepted` to a .flix context, so the Java,
     # Kotlin and Scala evaluators are untouched -- the platform asks every registered factory.
     com.intellij.debugger.codeFragmentFactory: dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory

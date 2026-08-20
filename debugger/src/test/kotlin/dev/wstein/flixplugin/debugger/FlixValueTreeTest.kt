@@ -191,6 +191,42 @@ class FlixValueTreeTest {
         assertEquals("#1(1, Nil)", FlixTaggedRenderer().labelOf(outer))
     }
 
+    // --- tuples -----------------------------------------------------------------------------------
+
+    @Test
+    fun `a tuple reads the way the language writes one`() {
+        // `(exp1, …, expn)` is the syntax, so that is the rendering. Unrendered this was
+        // `{Tuple$Int32$Int32@3405}`, which names the shape and not the value.
+        assertEquals("(1, 2)", FlixTupleRenderer().labelOf(tuple(int(1), int(2))))
+        assertEquals("(1, \"x\", true)", FlixTupleRenderer().labelOf(tuple(int(1), string("x"), bool(true))))
+    }
+
+    @Test
+    fun `a tuple expands by position, because that is how one is written`() {
+        assertEquals(listOf("[0]", "[1]"), FlixTupleRenderer().childNamesOf(tuple(int(1), int(2))))
+    }
+
+    @Test
+    fun `components are ordered by their index and not by the class file`() {
+        // JDI lists fields in the order the compiler wrote them, which is not something a value read
+        // positionally should depend on.
+        val reversed = objectRef(
+            "dev.flix.gen.Tuple\$Int32\$Int32",
+            linkedMapOf("field1" to int(2), "field0" to int(1)),
+        )
+
+        assertEquals("(1, 2)", FlixTupleRenderer().labelOf(reversed))
+    }
+
+    @Test
+    fun `a tuple is recognised by its class, with no tag and no --Xdebug`() {
+        // The one Flix value whose compiled form is unambiguous on its own: `BackendObjType.Tuple`
+        // gives every arity and component typing a class of its own.
+        assertEquals(true, FlixTupleRenderer().applicableTo(tuple(int(1)).referenceType()))
+        assertEquals(false, FlixTupleRenderer().applicableTo(record("a" to int(1)).referenceType()))
+        assertEquals(false, FlixTupleRenderer().applicableTo(null))
+    }
+
     // --- applicability, through the checker the platform actually calls ------------------------
 
     @Test
@@ -311,6 +347,29 @@ class FlixValueTreeTest {
         fields["rest"] = head
         return head
     }
+
+    /** A tuple, as `BackendObjType.Tuple` compiles one: a class per arity, fields `field0`, `field1`. */
+    private fun tuple(vararg components: Value): ObjectReference {
+        val types = components.joinToString("\$") { "Obj" }
+        val fields = components.withIndex().associate { (i, v) -> "field$i" to v }
+        return objectRef("dev.flix.gen.Tuple\$$types", fields)
+    }
+
+    private fun bool(value: Boolean): com.sun.jdi.BooleanValue = proxy(com.sun.jdi.BooleanValue::class.java) { method, _ ->
+        when (method.name) {
+            "value", "booleanValue" -> value
+            "toString" -> value.toString()
+            else -> null
+        }
+    }
+
+    private fun FlixTupleRenderer.labelOf(value: Value): String =
+        (valueLabelRenderer as FlixLabelRenderer).label(value)
+
+    private fun FlixTupleRenderer.childNamesOf(value: Value): List<String> =
+        (childrenRenderer as FlixChildrenRenderer).childrenOf(value).map { it.first }
+
+    private fun FlixTupleRenderer.applicableTo(type: Type?): Boolean = ask(isApplicableChecker, type)
 
     /** A Flix list, as the `Cons` cells and the `Nil` a `--Xdebug` build produces. */
     private fun list(vararg elements: Value): ObjectReference {

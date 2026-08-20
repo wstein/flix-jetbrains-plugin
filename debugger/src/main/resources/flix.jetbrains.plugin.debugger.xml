@@ -67,5 +67,21 @@
                 implementation="dev.wstein.flixplugin.debugger.FlixRecordRenderer"/>
         <debugger.compoundRendererProvider
                 implementation="dev.wstein.flixplugin.debugger.FlixTaggedRenderer"/>
+
+        <!-- Lets a watch be written in Flix rather than in Java. IntelliJ's Java debugger still owns
+             the session (ADR 0002); this only supplies the front end for a .flix context, so Java,
+             Kotlin and Scala frames keep their own evaluators: `isContextAccepted` is what keeps
+             them apart, and the platform asks every factory.
+
+             The Kotlin plugin registers against this same point for its own frames, which is what
+             establishes that it is reached at all: a Kotlin frame is a plain JavaStackFrame, exactly
+             as a Flix one is.
+
+             Deliberately not a translation of Flix into Java. It answers only what can be read from
+             the paused frame (a name, and record projections out of it) and refuses everything
+             else by naming the limit. Anything larger has to be resolved, typed and lowered by the
+             compiler and run in the debuggee. -->
+        <debugger.codeFragmentFactory
+                implementation="dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory"/>
     </extensions>
 </idea-plugin>

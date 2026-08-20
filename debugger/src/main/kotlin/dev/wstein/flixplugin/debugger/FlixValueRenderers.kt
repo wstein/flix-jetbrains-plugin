@@ -139,6 +139,36 @@ internal abstract class FlixChildrenRenderer(private val id: String) : ChildrenR
 }
 
 /**
+ * The fields of a Flix record, flattened out of the `label`/`value`/`rest` chain.
+ *
+ * Shared by the renderer, which shows them, and the evaluator, which projects one out of them. One
+ * walk, so a field the tree displays is by construction the field `#` reaches.
+ *
+ * @param limit how many fields to take. The renderer's label is a summary and stops early; the tree
+ *              and the evaluator take them all.
+ * @return the fields in declaration order, and whether [limit] cut the walk short.
+ */
+internal fun recordFields(value: Value?, limit: Int): Pair<List<Pair<String, Value?>>, Boolean> {
+    val fields = mutableListOf<Pair<String, Value?>>()
+    var node = value as? ObjectReference
+    val seen = mutableSetOf<Long>()
+
+    while (node != null) {
+        if (FlixValues.simpleNameOf(node.referenceType().name()) == FlixValues.RECORD_EMPTY_TYPE) break
+        // A record is immutable and cannot be cyclic, but a debuggee mid-construction or simply
+        // corrupt can be, and a walk that hangs takes the variables view with it.
+        if (!seen.add(node.uniqueID())) break
+        if (fields.size == limit) return fields to true
+        // Read as text, not through `renderScalar`, which quotes a string: a field is named `name`,
+        // not `"name"`, and the quotes would reach the label, the tree and any `#` lookup.
+        val label = (node.readField("label") as? StringReference)?.value() ?: break
+        fields += label to node.readField("value")
+        node = node.readField("rest") as? ObjectReference
+    }
+    return fields to false
+}
+
+/**
  * `type` and every supertype above it, by JDI name.
  *
  * Breadth-first over both superclasses and interfaces, because a Flix record reaches `Record$`
@@ -219,36 +249,16 @@ class FlixRecordRenderer : CompoundRendererProvider() {
      * @param limit how many fields to take. The label is a summary and stops at
      *              [FlixValues.MAX_RECORD_FIELDS]; the tree is the data and takes them all.
      */
-    private fun fieldsOf(value: Value?, limit: Int): Pair<List<Pair<String, Value?>>, Boolean> {
-        val fields = mutableListOf<Pair<String, Value?>>()
-        var node = value as? ObjectReference
-        val seen = mutableSetOf<Long>()
-
-        while (node != null) {
-            if (FlixValues.simpleNameOf(node.referenceType().name()) == FlixValues.RECORD_EMPTY_TYPE) break
-            // A record is immutable and cannot be cyclic, but a debuggee mid-construction or simply
-            // corrupt can be, and a renderer that hangs takes the variables view with it.
-            if (!seen.add(node.uniqueID())) break
-            if (fields.size == limit) return fields to true
-            // Read as text, not through `renderScalar`, which quotes a string: a field is named
-            // `name`, not `"name"`, and the quotes would reach both the label and the tree.
-            val label = (node.readField("label") as? StringReference)?.value() ?: break
-            fields += label to node.readField("value")
-            node = node.readField("rest") as? ObjectReference
-        }
-        return fields to false
-    }
-
     private fun renderRecord(value: Value?): String {
         if (value !is ObjectReference) return ""
-        val (fields, truncated) = fieldsOf(value, FlixValues.MAX_RECORD_FIELDS)
+        val (fields, truncated) = recordFields(value, FlixValues.MAX_RECORD_FIELDS)
         return FlixValues.formatRecord(fields.map { (name, v) -> name to renderScalar(v) }, truncated)
     }
 
     public override fun getChildrenRenderer(): ChildrenRenderer =
         object : FlixChildrenRenderer("FlixRecordChildren") {
             override fun childrenOf(value: Value?): List<Pair<String, Value?>> =
-                fieldsOf(value, Int.MAX_VALUE).first
+                recordFields(value, Int.MAX_VALUE).first
         }
 }
 

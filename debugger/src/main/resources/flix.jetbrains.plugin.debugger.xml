@@ -92,9 +92,10 @@
 
              The same extension point Kotlin uses to show a coroutine's logical stack rather than
              its dispatcher. The platform draws the result under an "Async stack trace" separator,
-             so a reconstruction is presented as derived rather than mixed into the real frames.
-             Returns null for a frame that is not Flix: the platform asks every provider about every
-             frame of every JVM language. -->
+             and JavaExecutionStack schedules it with a null frame iterator, so what is returned
+             *replaces* the real frames below the one answered for rather than following them. That
+             is why this answers only for the topmost frame, and only when it is Flix: the platform
+             asks every provider about every frame of every JVM language. -->
         <debugger.asyncStackTraceProvider
                 implementation="dev.wstein.flixplugin.debugger.FlixAsyncStackTraceProvider"/>
     </extensions>

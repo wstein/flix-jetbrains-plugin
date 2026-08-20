@@ -101,7 +101,9 @@ off the heap instead — `Frames$` cons lists held by the `installHandler` argum
 `ResumptionCons$.frames` and by `Suspension$.prefix` — and `FlixAsyncStackTraceProvider` presents it
 under the platform's *Async stack trace* separator, as the Kotlin plugin does for coroutines. The
 lists at different handler levels are nested suffixes, so the longest is the complete chain; they
-are compared, never concatenated.
+are compared, never concatenated. What a provider returns **replaces** the real frames below the one
+it answered for — `JavaExecutionStack` schedules it with a null frame iterator — which is why only
+the topmost frame is answered for.
 
 `FlixSteppingCommands` + `FlixSteppingFilter` implement Step Over. CPS invokes every continuation
 from one trampoline loop, so successive Flix lines sit at the same JVM depth — JDI's depth-based

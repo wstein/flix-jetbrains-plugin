@@ -39,15 +39,34 @@ import com.sun.jdi.ThreadReference
  * Entries carry no variables. A continuation's fields are its captured state under compiled names
  * (`clo0`, `arg0`, `l0`), and the frame they belong to is not the one the evaluator is pointed at,
  * so presenting them as that frame's variables would show values that cannot be read back or
- * evaluated against. The variables view keeps showing the live frame, which is the frame those
- * names belong to.
+ * evaluated against. Selecting one says "Variables are not available in async stacks", which is
+ * true; the variables view keeps showing the live frame, which is where those names belong.
+ *
+ * ## Why only the topmost frame is answered for
+ *
+ * Answering is not additive. `JavaExecutionStack.AppendFrameCommand` schedules the returned list
+ * with a **null** frame iterator and returns, so the real JVM frames below the one answered for are
+ * replaced rather than followed by the reconstruction -- the same substitution the Kotlin plugin's
+ * coroutine stacks rely on. Under the trampoline that is exactly right: what it replaces is the
+ * machinery.
+ *
+ * It is also why nothing below the top frame is answered for. The platform asks about each frame in
+ * turn, so a provider that answered for a lower one would truncate every real frame beneath it to
+ * re-state a chain it had already shown.
+ *
+ * The cost, stated because it is real: a Java frame sitting directly *below* a Flix top frame is
+ * hidden along with the machinery. That needs a Flix closure invoked from Java, which the interop
+ * does not currently produce -- Java called *from* Flix puts the Java frame on top, where this
+ * declines and the stack is left alone.
  */
 class FlixAsyncStackTraceProvider : AsyncStackTraceProvider {
 
     override fun getAsyncStackTrace(frame: JavaStackFrame, context: SuspendContextImpl): List<StackFrameItem>? {
-        // Only for a frame that is Flix. The platform asks every provider about every frame of every
-        // JVM language, and one that answered for all of them would staple a Flix chain onto a Java
-        // stack.
+        // Only the topmost frame, and only when it is Flix: the platform asks every provider about
+        // every frame of every JVM language, and what is returned replaces the frames below it.
+        if (runCatching { frame.stackFrameProxy.frameIndex }.getOrNull() != 0) {
+            return null
+        }
         val location = runCatching { frame.descriptor.location }.getOrNull()
         if (!isFlixSource(location)) {
             return null

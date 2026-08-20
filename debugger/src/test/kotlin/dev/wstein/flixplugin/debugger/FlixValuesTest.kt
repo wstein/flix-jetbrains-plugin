@@ -1,7 +1,9 @@
 package dev.wstein.flixplugin.debugger
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -80,5 +82,79 @@ class FlixValuesTest {
         // Better a raw name than a fabricated one: the reader can still tell what they are looking
         // at, and nothing claims more than is known.
         assertEquals("Tag\$Bool", FlixValues.formatTagged("Tag\$Bool", emptyList(), ordinal = null))
+    }
+
+    // --- qualified names, which is all JDI ever hands over ------------------------------------
+
+    @Test
+    fun `a tag is read from the simple name, not the qualified one`() {
+        // The defect these assertions exist for. Every name in this suite used to be unqualified,
+        // so every rule passed here and none of them fired in a debugger: JDI reports
+        // `dev.flix.gen.Tag$Obj$Obj`, whose last `$` segment is `Obj` -- a representation, not a
+        // tag. The variables view would have reported `Obj` for every shared value.
+        assertNull(FlixValues.tagNameOf("dev.flix.gen.Tag\$Obj\$Obj"))
+        assertNull(FlixValues.tagNameOf("dev.flix.gen.Tagged\$"))
+        assertEquals("InvaderBlast", FlixValues.tagNameOf("dev.flix.gen.BlastKind\$InvaderBlast"))
+    }
+
+    @Test
+    fun `an unnameable tag degrades to the simple name`() {
+        assertEquals(
+            "Tag\$Obj\$Obj",
+            FlixValues.formatTagged("dev.flix.gen.Tag\$Obj\$Obj", emptyList(), ordinal = null),
+        )
+    }
+
+    @Test
+    fun `a qualified shared representation still falls back to its ordinal`() {
+        assertEquals("#1", FlixValues.formatTagged("dev.flix.gen.Tag\$Obj\$Obj", emptyList(), ordinal = 1))
+    }
+
+    @Test
+    fun `the simple name is taken at the package boundary, not at the first dollar`() {
+        // A package is separated by `.` and a nested class by `$`, so a tag name survives.
+        assertEquals("BlastKind\$InvaderBlast", FlixValues.simpleNameOf("dev.flix.gen.BlastKind\$InvaderBlast"))
+        assertEquals("Record\$", FlixValues.simpleNameOf("dev.flix.gen.Record\$"))
+        assertEquals("Record\$", FlixValues.simpleNameOf("Record\$"))
+    }
+
+    // --- applicability --------------------------------------------------------------------------
+
+    @Test
+    fun `a record is recognised through its interface, whatever the package`() {
+        // The hierarchies are the real ones, read from a compiled project:
+        //   dev.flix.gen.RecordExtend$Obj implements dev.flix.gen.Record$
+        //   dev.flix.gen.Tag$Obj$Obj     extends    dev.flix.gen.Tagged$
+        val record = sequenceOf("dev.flix.gen.RecordExtend\$Obj", "dev.flix.gen.Record\$", "java.lang.Object")
+        assertTrue(FlixValues.isA(record, FlixValues.RECORD_TYPE))
+        assertFalse(FlixValues.isA(record, FlixValues.TAGGED_TYPE))
+    }
+
+    @Test
+    fun `a tagged value is recognised through its superclass`() {
+        val tagged = sequenceOf("dev.flix.gen.Tag\$Obj\$Obj", "dev.flix.gen.Tagged\$", "java.lang.Object")
+        assertTrue(FlixValues.isA(tagged, FlixValues.TAGGED_TYPE))
+        assertFalse(FlixValues.isA(tagged, FlixValues.RECORD_TYPE))
+    }
+
+    @Test
+    fun `matching survives the compiler moving its package`() {
+        // Why the match is on the simple name at all. These renderers were written when generated
+        // classes sat in the unnamed package; codegen moved them to `dev.flix.gen` and both
+        // renderers silently stopped applying, because the platform compares the qualified name
+        // verbatim. A package change must not be able to do that again.
+        for (pkg in listOf("", "dev.flix.gen.", "some.future.package.")) {
+            assertTrue(
+                "a record in package '$pkg' must still be recognised",
+                FlixValues.isA(sequenceOf("${pkg}RecordExtend\$Obj", "${pkg}Record\$"), FlixValues.RECORD_TYPE),
+            )
+        }
+    }
+
+    @Test
+    fun `an unrelated class is not a Flix value`() {
+        val other = sequenceOf("java.lang.String", "java.lang.Object")
+        assertFalse(FlixValues.isA(other, FlixValues.RECORD_TYPE))
+        assertFalse(FlixValues.isA(other, FlixValues.TAGGED_TYPE))
     }
 }

@@ -13,14 +13,39 @@ package dev.wstein.flixplugin.debugger
  */
 internal object FlixValues {
 
-    /** Interface implemented by every compiled Flix record. */
+    /**
+     * The package the compiler emits generated classes into.
+     *
+     * Used only where the platform insists on a qualified name. Every *match* in this file is made
+     * on the simple name instead, because this package has already moved once: the renderers were
+     * written when root-namespace classes were in the unnamed package, and when codegen moved them
+     * here both renderers silently stopped applying. JDI reports fully qualified names, and
+     * `DebuggerUtils.instanceOf` compares them verbatim, so `"Record$"` could never match
+     * `dev.flix.gen.Record$` -- the variables view went back to showing `{RecordExtend$Obj@1234}`
+     * and nothing said why.
+     */
+    const val GEN_PACKAGE: String = "dev.flix.gen."
+
+    /** Interface implemented by every compiled Flix record. Simple name; see [GEN_PACKAGE]. */
     const val RECORD_TYPE: String = "Record\$"
 
-    /** Superclass of every compiled Flix tagged-union value. */
+    /** Superclass of every compiled Flix tagged-union value. Simple name; see [GEN_PACKAGE]. */
     const val TAGGED_TYPE: String = "Tagged\$"
 
-    /** The empty record, which terminates the `rest` chain. */
+    /** The empty record, which terminates the `rest` chain. Simple name; see [GEN_PACKAGE]. */
     const val RECORD_EMPTY_TYPE: String = "RecordEmpty\$"
+
+    /**
+     * The class name without its package, which is what every rule here is written against.
+     *
+     * A package is separated by `.` and a nested class by `$`, so this cannot truncate a name that
+     * carries tags: `dev.flix.gen.BlastKind$InvaderBlast` becomes `BlastKind$InvaderBlast`.
+     */
+    fun simpleNameOf(className: String): String = className.substringAfterLast('.')
+
+    /** Whether any type in `hierarchy` -- a class and its supertypes -- is [simpleName]. */
+    fun isA(hierarchy: Sequence<String>, simpleName: String): Boolean =
+        hierarchy.any { simpleNameOf(it) == simpleName }
 
     /**
      * How many record fields to render before giving up.
@@ -51,7 +76,7 @@ internal object FlixValues {
      * @param ordinal the value's `ordinal` field, used only when the class name carries no tag
      */
     fun formatTagged(className: String, payload: List<String>, ordinal: Int?): String {
-        val tag = tagNameOf(className) ?: ordinal?.let { "#$it" } ?: return className
+        val tag = tagNameOf(className) ?: ordinal?.let { "#$it" } ?: return simpleNameOf(className)
         return if (payload.isEmpty()) tag else "$tag(${payload.joinToString(", ")})"
     }
 
@@ -67,8 +92,12 @@ internal object FlixValues {
      * synthetic segment like `…$400074`.
      */
     fun tagNameOf(className: String): String? {
-        if (className == TAGGED_TYPE || className.startsWith("Tag\$")) return null
-        val last = className.substringAfterLast('$')
+        // On the simple name: JDI hands over `dev.flix.gen.Tag$Obj$Obj`, whose last `$` segment is
+        // `Obj` -- a representation, not a tag. Reading the qualified name directly reported `Obj`
+        // as the tag of every shared value.
+        val simple = simpleNameOf(className)
+        if (simple == TAGGED_TYPE || simple.startsWith("Tag\$")) return null
+        val last = simple.substringAfterLast('$')
         return last.takeIf { it.isNotEmpty() && it.first().isUpperCase() }
     }
 }

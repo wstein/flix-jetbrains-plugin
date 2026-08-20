@@ -6,10 +6,18 @@ import com.intellij.debugger.ui.tree.render.CompoundRendererProvider
 import com.intellij.debugger.ui.tree.render.DescriptorLabelListener
 import com.intellij.debugger.ui.tree.render.Renderer
 import com.intellij.debugger.ui.tree.render.ValueLabelRenderer
+import com.sun.jdi.ClassNotPreparedException
+import com.sun.jdi.ClassType
+import com.sun.jdi.InterfaceType
 import com.sun.jdi.ObjectReference
+import com.sun.jdi.ReferenceType
 import com.sun.jdi.StringReference
+import com.sun.jdi.Type
 import com.sun.jdi.Value
 import org.jdom.Element
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletableFuture.completedFuture
+import java.util.function.Function
 
 /**
  * A [ValueLabelRenderer] that only has to compute a label.
@@ -40,6 +48,38 @@ internal abstract class FlixLabelRenderer(private val id: String) : ValueLabelRe
 }
 
 /**
+ * `type` and every supertype above it, by JDI name.
+ *
+ * Breadth-first over both superclasses and interfaces, because a Flix record reaches `Record$`
+ * through an interface while a tagged value reaches `Tagged$` through its superclass. Names are
+ * deduplicated: the interface graph is a DAG, and a diamond would otherwise be walked twice.
+ *
+ * A class that is not prepared yet contributes what is known and stops. Its supertypes cannot be
+ * read, and a renderer that threw here would break the whole variables view rather than one node.
+ */
+internal fun supertypesOf(type: Type?): Sequence<String> = sequence {
+    val queue = ArrayDeque<ReferenceType>()
+    (type as? ReferenceType)?.let { queue += it }
+    val seen = mutableSetOf<String>()
+    while (queue.isNotEmpty()) {
+        val current = queue.removeFirst()
+        val name = current.name()
+        if (!seen.add(name)) continue
+        yield(name)
+        val parents = try {
+            when (current) {
+                is ClassType -> listOfNotNull(current.superclass()) + current.interfaces()
+                is InterfaceType -> current.superinterfaces()
+                else -> emptyList()
+            }
+        } catch (_: ClassNotPreparedException) {
+            emptyList()
+        }
+        queue += parents
+    }
+}
+
+/**
  * Renders a Flix record as `{ name = "Ada", age = 36 }` rather than `{RecordExtend$Obj@1234}`.
  *
  * A record compiles to a linked list: each node carries `label`, `value` and `rest`, ending at
@@ -53,7 +93,18 @@ class FlixRecordRenderer : CompoundRendererProvider() {
 
     override fun getName(): String = "Flix record"
 
-    override fun getClassName(): String = FlixValues.RECORD_TYPE
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.RECORD_TYPE
+
+    /**
+     * Matches on the simple name, anywhere in the hierarchy.
+     *
+     * [getClassName] alone would not: the platform compares JDI's fully qualified name verbatim
+     * (`DebuggerUtils.typeEquals`), so a renderer named for a package the compiler later moves stops
+     * applying and says nothing. That is exactly what happened when generated classes moved into
+     * `dev.flix.gen`. The name is still declared above because the settings UI shows it.
+     */
+    override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type -> completedFuture(FlixValues.isA(supertypesOf(type), FlixValues.RECORD_TYPE)) }
 
     override fun isEnabled(): Boolean = true
 
@@ -69,7 +120,7 @@ class FlixRecordRenderer : CompoundRendererProvider() {
         var truncated = false
 
         while (node != null) {
-            if (node.referenceType().name() == FlixValues.RECORD_EMPTY_TYPE) break
+            if (FlixValues.simpleNameOf(node.referenceType().name()) == FlixValues.RECORD_EMPTY_TYPE) break
             if (fields.size == FlixValues.MAX_RECORD_FIELDS) {
                 truncated = true
                 break
@@ -95,7 +146,11 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
 
     override fun getName(): String = "Flix tagged union"
 
-    override fun getClassName(): String = FlixValues.TAGGED_TYPE
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.TAGGED_TYPE
+
+    /** Matches on the simple name; see [FlixRecordRenderer.getIsApplicableChecker]. */
+    override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type -> completedFuture(FlixValues.isA(supertypesOf(type), FlixValues.TAGGED_TYPE)) }
 
     override fun isEnabled(): Boolean = true
 

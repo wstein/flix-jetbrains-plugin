@@ -202,6 +202,132 @@ class FlixDebugSessionTest {
         stop.virtualMachine().allClasses().firstOrNull { it.name() == "dev.flix.gen.Def\$one" }
 
     /**
+     * A program whose `println` pulls code in from another file of the standard library, which is
+     * what makes a class draw on two sources and therefore carry SMAP.
+     *
+     * It spins afterwards so that it is still running while its classes are inspected. Without that
+     * the program is a `println` and a JVM exit, and the scan raced it: the same test passed and
+     * then reported that the program had exited before a class with SMAP loaded. The process is
+     * killed in `finally` either way.
+     */
+    private val inliningFixture = """
+        def main(): Unit \ IO =
+            println(21 + 21);
+            spin(2000000000)
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a class built with the optimizer on resolves through the Flix stratum`() {
+        // The SMAP branch, against a class that actually carries one.
+        //
+        // A class has SMAP only when it holds code from more than one file, which only inlining
+        // produces -- and `--Xdebug` turns the optimizer off, so a build the plugin launches never
+        // has any. Measured: one class in an optimized two-file build declares
+        // `SourceDebugExtension`, and **zero** do in the same build with `--Xdebug`. The branch is
+        // therefore reachable only when attaching to a program built normally, and this is that.
+        val compiler = compilerJar()
+        assumeTrue("No compiler jar: set FLIX_JAR, or put flix.jar in the repository root.", compiler != null)
+
+        val project = Files.createTempDirectory("flix-smap-session")
+        val source = project.resolve("src/Main.flix")
+        source.parent.createDirectories()
+        source.writeText(inliningFixture)
+        buildOptimized(compiler!!, project)
+
+        val spec = FlixBuildSpec.read(project)
+        val port = FlixLaunchCommand.findFreePort()
+        val command = FlixLaunchCommand.debugProgram(
+            spec.java(), spec.classpath(), requireNotNull(spec.mainClass()), emptyList(), emptyList(), port, true,
+        )
+        val debuggee = ProcessBuilder(command).directory(project.toFile()).redirectErrorStream(true).start()
+        try {
+            val vm = attach(port)
+            try {
+                val inlined = awaitInlinedLocation(vm)
+
+                // What the SMAP is for. The `LineNumberTable` holds a *synthetic* line, allocated
+                // in a flat output space above the primary file's last line -- a line that exists
+                // in no file -- and the class's `SourceFile` names the file it was declared in, not
+                // the file the inlined code came from. The Java stratum is that raw space.
+                val rawLine = inlined.lineNumber(RAW_STRATUM)
+                val rawSource = inlined.sourceName(RAW_STRATUM)
+                val flixLine = FlixSourceLocations.lineNumberOf(inlined)
+                val flixSource = FlixSourceLocations.sourceNameOf(inlined)
+
+                assertEquals(FlixSourceLocations.FLIX_STRATUM, FlixSourceLocations.stratumOf(inlined))
+                assertTrue("the location should be Flix", FlixSourceLocations.isFlixLocation(inlined))
+                assertTrue("no line resolved for $inlined", flixLine != null)
+                assertTrue("no source resolved for $inlined", flixSource != null)
+
+                // The raw line is not a line of any file, and the raw source is the wrong file.
+                assertTrue(
+                    "the mapped line should differ from the raw one, but both are $rawLine",
+                    flixLine != rawLine,
+                )
+                assertEquals("the raw source should be the class's own file", rawSource, inlined.declaringType().sourceName())
+                assertTrue(
+                    "the inlined code should name its own file, got $flixSource for a class whose " +
+                        "SourceFile is $rawSource",
+                    flixSource != rawSource,
+                )
+
+                // Worth recording: JDI would have resolved this one without being asked, because an
+                // SMAP names its own default stratum and the compiler writes `Flix` there -- so
+                // `lineNumber()` already answers 69. The stratum handling in the plugin is therefore
+                // a *dispatcher*: a class without SMAP has no `Flix` stratum at all, and asking for
+                // one throws rather than falling back.
+                assertEquals(flixLine, inlined.lineNumber())
+            } finally {
+                runCatching { vm.dispose() }
+            }
+        } finally {
+            debuggee.destroyForcibly()
+            debuggee.waitFor(10, TimeUnit.SECONDS)
+        }
+    }
+
+    /** Phase one without `--Xdebug`, so the optimizer runs and inlining happens. */
+    private fun buildOptimized(jar: Path, project: Path) {
+        val command = FlixLaunchCommand.task(javaExecutable(), jar, "build", emptyList(), listOf("--yes"))
+        val process = ProcessBuilder(command).directory(project.toFile()).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        assertTrue("the build did not finish", process.waitFor(BUILD_TIMEOUT_MINUTES, TimeUnit.MINUTES))
+        assertEquals("the fixture did not compile:\n$output", 0, process.exitValue())
+    }
+
+    /**
+     * Runs the program until a class carrying SMAP prepares, and returns a location of the code
+     * that was inlined into it.
+     *
+     * The inlined lines are the ones the SMAP allocated above the primary file's line count, so
+     * they are exactly the locations whose Flix source name differs from the class's own.
+     */
+    private fun awaitInlinedLocation(vm: VirtualMachine): Location {
+        val prepare = vm.eventRequestManager().createClassPrepareRequest()
+        prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+        prepare.enable()
+        vm.resume()
+
+        val deadline = System.currentTimeMillis() + HIT_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            val events = vm.eventQueue().remove(POLL_MS) ?: continue
+            for (event in events) {
+                if (event is VMDisconnectEvent) throw AssertionError("the program exited before a class with SMAP loaded")
+                val type = (event as? ClassPrepareEvent)?.referenceType() ?: continue
+                if (runCatching { type.availableStrata().contains(FlixSourceLocations.FLIX_STRATUM) }.getOrDefault(false)) {
+                    val inlined = runCatching { type.allLineLocations() }.getOrDefault(emptyList())
+                        .firstOrNull { FlixSourceLocations.sourceNameOf(it) != type.sourceName() }
+                    if (inlined != null) return inlined
+                }
+            }
+            events.resume()
+        }
+        throw AssertionError("no class carrying SMAP prepared")
+    }
+
+    /**
      * Compiles `fixture`, launches it under a debugger, stops at the line carrying `marker`, and
      * runs `assertions` there.
      */
@@ -417,5 +543,8 @@ class FlixDebugSessionTest {
         private const val HIT_TIMEOUT_MS = 60_000L
         private const val POLL_MS = 200L
         private const val SESSION_TIMEOUT_MS = 15 * 60 * 1000L
+
+        /** JDI's name for the unmapped line space -- what the `LineNumberTable` literally holds. */
+        private const val RAW_STRATUM = "Java"
     }
 }

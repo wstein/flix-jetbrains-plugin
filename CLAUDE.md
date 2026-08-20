@@ -206,7 +206,11 @@ Non-obvious rules about the invocation itself, all encoded in `FlixLaunchCommand
 tests:
 
 - Options go **after** the subcommand. `flix --Xdebug run` fails with an error naming neither.
-- `--Xdebug` also turns the **optimizer off**. Inlining and debugging cannot both be served by one
+- `--Xdebug` also turns the **optimizer off**, which has a second consequence: nothing is inlined
+  across files, so no generated class draws on two sources and **no class carries SMAP** in a debug
+  build (measured: 1 SMAP class optimized, 0 with `--Xdebug`). `FlixSourceLocations`'s stratum
+  handling is reachable only when attaching to a program built normally, which is what
+  `FlixDebugSessionTest` now covers. Inlining and debugging cannot both be served by one
   build: a folded-in function gets no class of its own and its line survives nowhere, so every
   single-expression helper would be unbreakpointable. Debug sessions therefore run unoptimized.
 - `--Xdebug` is not only a JDWP switch: `Let`, `ApplyDef`, `ApplyClo`, `IfThenElse` and `Stm` emit

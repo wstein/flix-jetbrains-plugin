@@ -15,6 +15,18 @@ subprojects {
     apply(plugin = "rpc")
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
+
+    // `FLIX_JAR` is the documented way to point the plugin at a compiler, so a machine that exports
+    // it silently changes what several tests assert -- `FlixForkTest` and `FlixRunConfigurationTest`
+    // both pin what happens when *no* compiler can be found, and both passed for the opposite
+    // reason on a developer's shell. The absence is the fixture; it is removed here rather than
+    // worked around in each test.
+    //
+    // `debugger` is the exception and keeps it: its live session compiles and launches a real
+    // program, so without a compiler there is nothing to run and the test skips.
+    if (name != "debugger") {
+        tasks.withType<Test>().configureEach { environment.remove("FLIX_JAR") }
+    }
 }
 
 // UI smoke test -- see src/integrationTest and docs/phase-8-verification.md.
@@ -114,12 +126,8 @@ dependencies {
 tasks.test {
     useJUnit()
 
-    // `FlixRunConfigurationTest` asserts what a configuration says when *no* compiler can be found,
-    // and `FLIX_JAR` is the documented way to supply one -- so on a machine where it is exported,
-    // that test asserted the opposite of what it says. It is removed here rather than worked around
-    // in the test: the absence is the fixture, and a fixture that depends on the developer's shell
-    // is not one. The debugger module keeps the variable, because its live session needs a real
-    // compiler to run at all.
+    // See the `subprojects` block: the absence of a compiler is a fixture, not a property of the
+    // developer's shell. This is the same removal for the assembled-plugin tests.
     environment.remove("FLIX_JAR")
 }
 

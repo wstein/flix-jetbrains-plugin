@@ -17,6 +17,20 @@
         <module name="flix.jetbrains.plugin.language"/>
         <module name="flix.jetbrains.plugin.shared"/>
         <plugin id="com.intellij.java"/>
+
+        <!-- The Java plugin's own content modules, which the plugin dependency above does NOT bring
+             with it. Each has a classloader of its own, and a module that has not asked for one
+             cannot see its classes: com.intellij.execution.configurations.RemoteConnection lives
+             in intellij.java.execution, and without this line a Debug launch died with
+             NoClassDefFoundError at the first line of FlixLaunch that mentions it. It reproduced
+             only in an installed 2026.2 IDE: the Plugin Verifier reports the plugin compatible,
+             because the class *is* in the distribution, and the sandbox resolved it too.
+
+             The debugger modules are listed for the same reason even though they happen to
+             resolve today: nothing about them differs from the one that did not. -->
+        <module name="intellij.java.execution"/>
+        <module name="intellij.java.debugger"/>
+        <module name="intellij.java.debugger.impl"/>
     </dependencies>
 
     <extensions defaultExtensionNs="com.intellij">

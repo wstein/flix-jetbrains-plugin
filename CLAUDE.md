@@ -137,6 +137,13 @@ The run configuration must satisfy **two** `GenericDebuggerRunner` gates on **di
 (`createContentDescriptor`). Failing either produces the same silent nothing. `FlixDebuggerRunnerGatesTest`
 pins both.
 
+A plugin dependency does **not** bring the depended-on plugin's content modules with it. Each has a
+classloader of its own, so `<plugin id="com.intellij.java"/>` gives the Java plugin's *main* module
+and nothing else — `com.intellij.execution.configurations.RemoteConnection` lives in
+`intellij.java.execution` and threw `NoClassDefFoundError` on Debug in an installed IDE while
+compiling, verifying and running in the sandbox without complaint. `FlixPlatformDependenciesTest`
+checks every module descriptor against the jars its imports actually come from.
+
 ## Working with the platform
 
 When platform behaviour is in question, **decompile it** rather than reasoning from the API or from

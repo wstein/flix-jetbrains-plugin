@@ -13,8 +13,12 @@ import com.intellij.execution.configurations.RemoteConnection
 import com.intellij.execution.configurations.RemoteConnectionCreator
 import com.intellij.execution.configurations.RunProfileState
 import com.intellij.execution.configurations.RuntimeConfigurationError
+import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.KillableColoredProcessHandler
+import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.execution.process.ProcessListener
+import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.execution.process.ProcessTerminatedListener
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.openapi.module.Module
@@ -153,6 +157,7 @@ class FlixRunConfiguration(
                 debug = executor.id == DefaultDebugExecutor.EXECUTOR_ID,
                 inheritedJavaToolOptions = envs[FlixLaunch.JAVA_TOOL_OPTIONS]
                     ?: System.getenv(FlixLaunch.JAVA_TOOL_OPTIONS).takeIf { isPassParentEnvs },
+                projectRoot = project.basePath?.let(Path::of),
             ),
             workingDirectory,
             envs.toMap(),
@@ -191,11 +196,95 @@ class FlixRunConfiguration(
          * open the JDWP transport and bind the port, all after the process exists. Without polling
          * the first attempt loses that race and the session fails with what looks like a
          * configuration error.
+         *
+         * The poll is **30 seconds** — `GenericDebuggerRunner.attachVirtualMachine` passes
+         * `pollConnection ? 30000L : 0L` — which sounds far too short for a cold Flix build. It is
+         * not, and the reason is worth writing down rather than re-deriving. Decompiled from
+         * `DebugProcessImpl.attachVirtualMachine` in IU-2026.1.3:
+         *
+         * ```java
+         * if (!(myConnection instanceof RemoteConnectionStub) && … && myConnection.isServerMode()) {
+         *    createVirtualMachine(environment);          // connect BEFORE the process is started
+         * }
+         * executionResult = environment.createExecutionResult();   // ← calls startProcess()
+         * …
+         * else if (… && !myConnection.isServerMode()) {
+         *    createVirtualMachine(environment);          // connect AFTER
+         * }
+         * ```
+         *
+         * `isServerMode()` describes the *IDE's* role, and ours is `false` — the debuggee listens.
+         * So the clock starts only once [startProcess] has returned, which is after the build has
+         * finished and the program JVM has been launched with `suspend=y`. What the 30 seconds has
+         * to cover is a JVM binding a socket, not a compile.
+         *
+         * Had the connection been the other way round, the build would have had to fit in 30
+         * seconds and a cold project would have failed every time.
          */
         override fun isPollConnection(): Boolean = true
 
         override fun startProcess(): ProcessHandler {
-            val commandLine = GeneralCommandLine(launch.command)
+            if (launch.debugPort == null) {
+                return handlerFor(commandLineOf(launch.command))
+            }
+
+            // Phase one. Synchronous, and on this thread: `startProcess` is already called off the
+            // EDT, and the program must not exist until the build that describes it does.
+            val built = buildPhase()
+
+            // Phase two. Everything about this JVM -- its `java`, its classpath, its main class --
+            // comes from the manifest the build just wrote, so the process the agent is on is the
+            // process the program runs in. That identity is the whole fix; see FlixLaunch.
+            val spec = try {
+                launch.buildSpec()
+            } catch (e: IllegalStateException) {
+                throw ExecutionException(e.message, e)
+            }
+            val handler = handlerFor(commandLineOf(launch.programCommand(spec)))
+            // The build's output, replayed into the program's console once there is one to replay it
+            // into. It cannot be streamed: the console attaches to the handler returned from here,
+            // which does not exist while the build is running. Emitted on `startNotified` rather than
+            // now, because a listener added before the console attaches would write into nothing.
+            // ProcessListener, not ProcessAdapter: the adapter is @Deprecated, and `verifyPlugin`
+            // fails the build on a deprecated platform API. The interface's methods are all
+            // defaulted, so the adapter buys nothing.
+            handler.addProcessListener(object : ProcessListener {
+                override fun startNotified(event: ProcessEvent) {
+                    if (built.isNotBlank()) {
+                        handler.notifyTextAvailable(built, ProcessOutputTypes.SYSTEM)
+                    }
+                }
+            })
+            ProcessTerminatedListener.attach(handler, environment.project)
+            return handler
+        }
+
+        /**
+         * Builds, and returns what the compiler printed.
+         *
+         * A failed build fails the *launch*: the alternative is starting whatever the previous build
+         * left behind, which is a debug session over code that is not the code on screen -- and the
+         * only symptom is breakpoints landing on the wrong lines.
+         *
+         * No timeout. A cold project resolves dependencies and compiles the whole program, which
+         * takes minutes on the first run; a bound short enough to catch a hung compiler would fail
+         * every honest first build, and there is a Stop button either way.
+         */
+        private fun buildPhase(): String {
+            val process = CapturingProcessHandler(commandLineOf(launch.buildCommand))
+            val output = process.runProcess()
+            if (output.exitCode != 0) {
+                throw ExecutionException(
+                    "The Flix build failed, so there is nothing to debug " +
+                        "(exit code ${output.exitCode}).\n\n" +
+                        (output.stderr.takeIf { it.isNotBlank() } ?: output.stdout).takeLast(4000),
+                )
+            }
+            return output.stdout + output.stderr
+        }
+
+        private fun commandLineOf(command: List<String>): GeneralCommandLine =
+            GeneralCommandLine(command)
                 .withWorkDirectory(workingDirectory?.takeIf { it.isNotBlank() } ?: environment.project.basePath)
                 .withEnvironment(envs)
                 .withParentEnvironmentType(
@@ -203,6 +292,8 @@ class FlixRunConfiguration(
                     else GeneralCommandLine.ParentEnvironmentType.NONE,
                 )
                 .withCharset(Charsets.UTF_8)
+
+        private fun handlerFor(commandLine: GeneralCommandLine): KillableColoredProcessHandler {
             val handler = KillableColoredProcessHandler(commandLine)
             // Prints the exit code, which is the difference between "it stopped" and "it failed"
             // for a compiler that reports errors by exiting non-zero.

@@ -1,5 +1,6 @@
 package dev.wstein.flixplugin.run
 
+import dev.wstein.flixplugin.FlixBuildSpec
 import dev.wstein.flixplugin.FlixJar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -21,10 +22,13 @@ class FlixLaunchTest {
     private val jar = Path.of("/opt/flix/flix-vendor.jar")
 
     @Test
-    fun `the connection port is the port on the command line`() {
-        val launch = FlixLaunch(FlixJar.DEFAULT_JAVA, jar, "Main.main", debugPort = 5005)
+    fun `the connection port is the port on the program's command line`() {
+        // The program's, not the compiler's. The two phases of a debug launch put the agent on the
+        // second one, and the connection has to name that one -- see FlixDebuggeeIdentityTest.
+        val root = FlixTestProject.withManifest()
+        val launch = FlixLaunch(FlixJar.DEFAULT_JAVA, jar, "Main.main", debugPort = 5005, projectRoot = root)
 
-        val onCommandLine = launch.command.single { it.startsWith("-agentlib:jdwp") }
+        val onCommandLine = launch.programCommand(FlixBuildSpec.read(root)).single { it.startsWith("-agentlib:jdwp") }
         assertTrue(
             "the agent must carry the port the connection names, got $onCommandLine",
             onCommandLine.endsWith("address=*:5005"),
@@ -35,8 +39,9 @@ class FlixLaunchTest {
     @Test
     fun `a debug launch asks the compiler for debug information`() {
         // --Xdebug is not merely a JDWP switch: without it the compiler emits no line numbers for
-        // let, calls, if or statement sequences, so breakpoints on those lines can never bind.
-        assertTrue(FlixLaunch(FlixJar.DEFAULT_JAVA, jar, null, debugPort = 5005).command.contains("--Xdebug"))
+        // let, calls, if or statement sequences, so breakpoints on those lines can never bind. It
+        // goes on the build phase, which is the phase the compiler runs in.
+        assertTrue(FlixLaunch(FlixJar.DEFAULT_JAVA, jar, null, debugPort = 5005).buildCommand.contains("--Xdebug"))
     }
 
     @Test
@@ -73,7 +78,7 @@ class FlixLaunchTest {
         assertTrue("two concurrent sessions must not share a port", first.debugPort != second.debugPort)
         // ...and the port must be stable across reads, not re-derived on each one.
         assertEquals(first.debugPort.toString(), first.remoteConnection!!.debuggerAddress)
-        assertEquals(first.command, first.command)
+        assertEquals(first.buildCommand, first.buildCommand)
     }
 
     @Test
@@ -85,7 +90,23 @@ class FlixLaunchTest {
     }
 
     @Test
-    fun `VM and program options are placed on their respective sides of the jar`() {
+    fun `on a Run, VM and program options sit on their respective sides of the jar`() {
+        val launch = FlixLaunch(
+            FlixJar.DEFAULT_JAVA,
+            jar,
+            "Main.main",
+            vmOptions = "-Xmx2g -Dflix.mode=test",
+            programParameters = "one \"two words\"",
+            debugPort = null,
+        )
+
+        assertEquals(listOf("java", "-Xmx2g", "-Dflix.mode=test", "-jar"), launch.command.take(4))
+        assertEquals(listOf("one", "two words"), launch.command.takeLast(2))
+    }
+
+    @Test
+    fun `on a Debug, VM and program options sit on their respective sides of the main class`() {
+        val root = FlixTestProject.withManifest()
         val launch = FlixLaunch(
             FlixJar.DEFAULT_JAVA,
             jar,
@@ -93,12 +114,20 @@ class FlixLaunchTest {
             vmOptions = "-Xmx2g -Dflix.mode=test",
             programParameters = "one \"two words\"",
             debugPort = 5005,
+            projectRoot = root,
         )
 
+        val command = launch.programCommand(FlixBuildSpec.read(root))
         assertEquals(
-            listOf("java", "-Xmx2g", "-Dflix.mode=test", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005", "-jar"),
-            launch.command.take(5),
+            listOf(
+                "/opt/jdk/bin/java",
+                "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005",
+                "-Xmx2g",
+                "-Dflix.mode=test",
+                "-cp",
+            ),
+            command.take(5),
         )
-        assertEquals(listOf("one", "two words"), launch.command.takeLast(2))
+        assertEquals(listOf("one", "two words"), command.takeLast(2))
     }
 }

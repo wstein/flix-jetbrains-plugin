@@ -28,22 +28,22 @@ public class FlixLaunchCommandTest {
     private static final String JAVA = FlixJar.DEFAULT_JAVA;
 
     @Test
-    public void runIsTheSubcommandAndComesBeforeAnyOption() {
+    public void theSubcommandComesBeforeAnyOption() {
         // The rule that matters most. An option seen before the subcommand is parsed as global and
-        // stops command parsing, so `flix --Xdebug run` reports `Unrecognized file extension:
-        // 'run'` -- an error that names neither the flag nor the real problem.
-        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, null);
-        assertEquals("run", command.get(3));
+        // stops command parsing, so `flix --Xdebug build` reports `Unrecognized file extension:
+        // 'build'` -- an error that names neither the flag nor the real problem.
+        List<String> command = FlixLaunchCommand.buildForDebug(JAVA, JAR, null);
+        assertEquals("build", command.get(3));
         assertTrue(
                 "every option must follow the subcommand",
-                command.indexOf("--Xdebug") > command.indexOf("run"));
+                command.indexOf("--Xdebug") > command.indexOf("build"));
     }
 
     @Test
-    public void debugPassesXdebugExactlyOnce() {
+    public void theBuildPhasePassesXdebugExactlyOnce() {
         // A second --Xdebug after the subcommand is rejected as `Unknown option --Xdebug`, so a
         // wrapper that injects one and a caller that also passes one combine into a failure.
-        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, "Main.main");
+        List<String> command = FlixLaunchCommand.buildForDebug(JAVA, JAR, "Main.main");
         assertEquals(1, command.stream().filter("--Xdebug"::equals).count());
     }
 
@@ -55,33 +55,48 @@ public class FlixLaunchCommandTest {
     }
 
     @Test
-    public void theJdwpAgentGoesBeforeTheJarNotAfterIt() {
-        // Everything after -jar is the Flix compiler's own argument list, where a JVM option is
-        // ignored or rejected. Only the JVM sees arguments placed before it.
-        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, "Main.main", 5005, true);
+    public void theJdwpAgentGoesBeforeTheClasspathNotAfterIt() {
+        // Everything from the main class on is the program's own argument list. Only the JVM sees
+        // arguments placed before `-cp`.
+        List<String> command = FlixLaunchCommand.debugProgram(
+                "/opt/jdk/bin/java", "/p/class:/p/x.jar", "Main", List.of(), List.of(), 5005, true);
         int agent = indexOfPrefix(command, "-agentlib:jdwp");
         assertTrue("the agent must be present", agent > 0);
-        assertTrue("the agent must precede -jar", agent < command.indexOf("-jar"));
-        assertEquals("java", command.get(0));
+        assertTrue("the agent must precede -cp", agent < command.indexOf("-cp"));
+        assertEquals("/opt/jdk/bin/java", command.get(0));
     }
 
     @Test
     public void theJdwpArgumentCarriesThePortAndSuspendPolicy() {
-        assertTrue(FlixLaunchCommand.debug(JAVA, JAR, null, 5005, true).contains(
+        assertTrue(FlixLaunchCommand.debugProgram(JAVA, "/p", "Main", List.of(), List.of(), 5005, true).contains(
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"));
-        assertTrue(FlixLaunchCommand.debug(JAVA, JAR, null, 6006, false).contains(
+        assertTrue(FlixLaunchCommand.debugProgram(JAVA, "/p", "Main", List.of(), List.of(), 6006, false).contains(
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:6006"));
     }
 
     @Test
-    public void theAgentOverloadKeepsEveryRuleOfThePlainDebugCommand() {
-        // It delegates rather than rebuilding, so subcommand ordering, a single --Xdebug, --yes and
-        // the entry point must all survive -- the rules a second construction path would drift from.
-        List<String> command = FlixLaunchCommand.debug(JAVA, JAR, "Foo.Bar.demo", 5005, true);
+    public void theBuildPhaseCarriesTheEntryPointAndNoAgent() {
+        // --entrypoint decides which definition the generated `Main` calls, which the compiler
+        // settles at build time -- so it belongs on this half and not on the program's.
+        List<String> command = FlixLaunchCommand.buildForDebug(JAVA, JAR, "Foo.Bar.demo");
         assertEquals(1, command.stream().filter("--Xdebug"::equals).count());
-        assertTrue(command.indexOf("--Xdebug") > command.indexOf("run"));
+        assertTrue(command.indexOf("--Xdebug") > command.indexOf("build"));
         assertTrue(command.contains("--yes"));
         assertEquals("Foo.Bar.demo", command.get(command.indexOf("--entrypoint") + 1));
+        assertTrue("the compiler is not the debuggee", command.stream().noneMatch(a -> a.startsWith("-agentlib")));
+    }
+
+    @Test
+    public void theProgramCommandNamesNoCompilerAndKeepsBothOptionListsApart() {
+        // The failure the two-phase launch exists to remove: `-jar <compiler>` means the JVM under
+        // the agent is the one that *builds* the program and never loads a class of it.
+        List<String> command = FlixLaunchCommand.debugProgram(
+                "/opt/jdk/bin/java", "/p/class", "Main", List.of("-Xmx2g"), List.of("a"), 5005, true);
+
+        assertTrue("the debuggee must not be the compiler", !command.contains("-jar"));
+        assertTrue("a JVM option must precede -cp", command.indexOf("-Xmx2g") < command.indexOf("-cp"));
+        assertTrue("a program argument must follow the main class",
+                command.indexOf("a") > command.indexOf("Main"));
     }
 
     @Test
@@ -104,7 +119,7 @@ public class FlixLaunchCommandTest {
     @Test
     public void debugAnswersTheDependencyPrompt() {
         // Nobody is watching a terminal for a launch started from the IDE.
-        assertTrue(FlixLaunchCommand.debug(JAVA, JAR, null).contains("--yes"));
+        assertTrue(FlixLaunchCommand.buildForDebug(JAVA, JAR, null).contains("--yes"));
     }
 
     @Test

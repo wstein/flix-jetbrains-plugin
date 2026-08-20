@@ -49,49 +49,86 @@ public final class FlixLaunchCommand {
      */
     public static @NotNull List<String> run(
             @NotNull String javaExecutable, @NotNull Path jar, @Nullable String entryPoint) {
-        return build(javaExecutable, jar, entryPoint, false);
+        return build(javaExecutable, jar, entryPoint);
     }
 
     /**
-     * {@code <java> -jar <jar> run --Xdebug --yes [--entrypoint <symbol>]}.
+     * {@code <java> -jar <jar> build --Xdebug --yes [--entrypoint <symbol>]} — the first half of a
+     * debug session.
+     *
+     * <p>A debug session is two phases because {@code flix run} is not one process. It compiles and
+     * then starts the program in a JVM <em>of its own</em>, so an agent on this command line lands on
+     * the compiler and the program runs unwatched one process further down. The plugin therefore
+     * builds here and starts the program itself, from what the build recorded — see
+     * {@link FlixBuildSpec} and {@link #debugProgram}.
+     *
+     * <p>{@code build} rather than {@code run} for exactly that reason: this phase must stop once the
+     * class files and the manifest exist. It leaves both behind, so the second phase has something to
+     * start and something to read.
+     *
+     * <p>{@code --entrypoint} belongs here and not on the program's command line: it is what decides
+     * which definition the generated {@code Main} calls, and that decision is made by the compiler at
+     * build time. Passing it in the second phase would pass it to the program as an argument.
      *
      * <p>{@code --yes} answers the dependency-resolution prompt, which would otherwise block a
      * launch nobody is watching a terminal for.
      */
-    public static @NotNull List<String> debug(
+    public static @NotNull List<String> buildForDebug(
             @NotNull String javaExecutable, @NotNull Path jar, @Nullable String entryPoint) {
-        return build(javaExecutable, jar, entryPoint, true);
+        List<String> arguments = new ArrayList<>(List.of("--Xdebug", "--yes"));
+        String symbol = normalizeEntryPoint(entryPoint);
+        if (symbol != null) {
+            arguments.add("--entrypoint");
+            arguments.add(symbol);
+        }
+        return task(javaExecutable, jar, FlixTask.BUILD.command(), List.of(), arguments);
     }
 
     /**
-     * {@code java -agentlib:jdwp=… -jar <jar> run --Xdebug --yes [--entrypoint <symbol>]}.
+     * {@code <java> -agentlib:jdwp=… <vmOptions> -cp <classpath> <mainClass> <arguments>} — the
+     * second half.
      *
-     * <p>Puts the agent on the command line rather than in {@code JAVA_TOOL_OPTIONS}. Both work --
-     * the gate was run with the environment variable -- but an argument is visible in the run
-     * console, which matters when the question is "which debugger am I actually on"; the variable
-     * is invisible once the process has started.
+     * <p>This is the JVM the debugger attaches to, and it is also the JVM the program runs in. That
+     * identity is the whole point, and it is what the previous design did not have: the agent and the
+     * program have to be on <em>one</em> command line, or the session attaches to a process in which
+     * none of the user's classes will ever load. Nothing reports that; the breakpoints simply never
+     * bind. {@code FlixDebuggerRunnerGatesTest} pins it.
      *
-     * <p>It must sit before {@code -jar}: everything after the jar is the Flix compiler's own
-     * argument list, where a JVM option is either ignored or rejected.
+     * <p>{@code java}, {@code classpath} and {@code mainClass} come from the build manifest rather
+     * than from anything computed here. {@link FlixBuildSpec} says why, and the {@code java} in
+     * particular is the compiler's JVM, not {@link FlixJar#javaExecutable}.
      *
-     * <p>Does not remove the caller's obligation to check {@code JAVA_TOOL_OPTIONS} with
-     * {@link #findJdwpAgent}: an inherited agent would still start a second JDWP server in the same
-     * JVM, which is the state ADR 0002 forbids.
-     *
-     * @param suspend whether the debuggee waits for the debugger before running any user code
+     * @param suspend whether the program waits for the debugger before running any of its own code
      */
-    public static @NotNull List<String> debug(
+    public static @NotNull List<String> debugProgram(
             @NotNull String javaExecutable,
-            @NotNull Path jar,
-            @Nullable String entryPoint,
+            @NotNull String classpath,
+            @NotNull String mainClass,
+            @NotNull List<String> vmOptions,
+            @NotNull List<String> arguments,
             int jdwpPort,
             boolean suspend) {
-        List<String> command = new ArrayList<>(build(javaExecutable, jar, entryPoint, true));
-        command.add(1, jdwpAgent(jdwpPort, suspend));
+        List<String> command = new ArrayList<>();
+        command.add(javaExecutable);
+        command.add(jdwpAgent(jdwpPort, suspend));
+        command.addAll(vmOptions);
+        command.add("-cp");
+        command.add(classpath);
+        command.add(mainClass);
+        command.addAll(arguments);
         return command;
     }
 
-    /** The {@code -agentlib:jdwp} argument for [jdwpPort]. */
+    /**
+     * The {@code -agentlib:jdwp} argument for [jdwpPort].
+     *
+     * <p>On the command line rather than in {@code JAVA_TOOL_OPTIONS}. Both reach a JVM the plugin
+     * starts, but an argument is visible in the run console, which matters when the question is
+     * "which debugger am I actually on". The variable has a second problem here that decides it: a
+     * child process inherits it, so a compiler started with it hands the same agent to the program it
+     * forks, and the second JVM dies with {@code transport error 202: bind failed} on a port the
+     * first already holds. Measured, not reasoned.
+     */
     public static @NotNull String jdwpAgent(int port, boolean suspend) {
         return JDWP_AGENT.formatted(suspend ? "y" : "n", port);
     }
@@ -133,12 +170,8 @@ public final class FlixLaunchCommand {
         return command;
     }
 
-    private static List<String> build(String javaExecutable, Path jar, String entryPoint, boolean debug) {
+    private static List<String> build(String javaExecutable, Path jar, String entryPoint) {
         List<String> arguments = new ArrayList<>();
-        if (debug) {
-            arguments.add("--Xdebug");
-            arguments.add("--yes");
-        }
         String symbol = normalizeEntryPoint(entryPoint);
         if (symbol != null) {
             arguments.add("--entrypoint");

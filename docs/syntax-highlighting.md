@@ -6,10 +6,34 @@ Two layers paint a `.flix` buffer, and they are not interchangeable.
 | --- | --- | --- | --- |
 | `FlixSyntaxHighlighter` | `language` | nothing | one token at a time |
 | `FlixControlFlowAnnotator` | `language` | the parser | which production a token belongs to |
+| `FlixSemanticFallbackAnnotator` | `language` | the parser | which names a file *declares* |
 | LSP semantic tokens | `backend`, via LSP4IJ | the language server | what a *symbol* means |
 
-The first two must work in an IDE with no LSP4IJ, and before the server has answered anything. That
-is the whole reason the `language` module exists, and it is the case that was broken.
+The first three must work in an IDE with no LSP4IJ, and before the server has answered anything.
+That is the whole reason the `language` module exists, and it is the case that was broken.
+
+## Roles the lexer cannot see
+
+A token has a kind; a name has a *role*. `greet` is a token of kind `NAME_LOWERCASE` whether it is a
+function, a parameter or a local, so the lexical layer leaves every name the colour of plain text.
+`FlixSemanticFallbackAnnotator` colours the ones the **parser** already knows: the name a `def`
+declares, a parameter, a `let` or `match` binding, an `enum`, its cases, a `struct` and its fields,
+a `trait`, an `eff`, a type alias and a type parameter.
+
+Declarations only. A *use* — `f(x)`, or a type named in a signature — needs resolution to classify,
+and a fallback that guessed would be confidently wrong in ordinary Flix code. A wrong colour is read
+as information, which is worse than no colour. Uses stay the server's.
+
+Its keys are not chosen: `SemanticTokensProvider` was asked what it emits for one of each
+declaration, and each key carries the platform attribute LSP4IJ maps that answer to
+(`SemanticTokensHighlightingColors`). The handover from this layer to the server's is meant to be
+invisible; a fallback with a palette of its own would make every file flicker through a second
+colour scheme on open. The table is in the annotator's docs and pinned by
+`FlixSemanticFallbackAnnotatorTest`.
+
+One row has no counterpart: `Effect` is a semantic token type Flix invented, and LSP4IJ's default
+colours provider answers `null` for anything outside the standard set — so an effect name is
+**uncoloured in the server's layer too**, and `FLIX_EFFECT_NAME` is the only colour it gets.
 
 ## The bug the tests exist for
 
@@ -147,8 +171,10 @@ Registering an extension means editing the module descriptor **and** `flix-integ
 language module's extension points and must be updated too.
 
 One trap in that XML: **`--` is not permitted inside an XML comment.** The surrounding comments use
-an en-dash for exactly this reason. Getting it wrong makes the descriptor unparseable, which fails
-seven tests in `FlixPluginDescriptorTest` and cascades into every test that assembles the plugin.
+an en-dash for exactly this reason. Getting it wrong makes the descriptor unparseable, and the
+platform's report is one `WARN … Cannot load …/flix.jetbrains.plugin-0.1.0.jar` with the whole
+plugin absent — no language, no run configuration type, no position manager. `checkIntegrationGlue`
+now parses every descriptor, so this fails in milliseconds instead of via a full IDE fixture.
 
 ## Testing
 

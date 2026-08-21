@@ -156,6 +156,48 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
         val CONDITION: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_CONDITION")
 
+        /**
+         * The roles the parser can name, assigned by [FlixSemanticFallbackAnnotator].
+         *
+         * Each carries the platform attribute LSP4IJ maps the server's own answer to, so the moment
+         * the semantic tokens arrive nothing changes colour. Measured against
+         * `SemanticTokensProvider` rather than chosen; the table is in the annotator's docs.
+         *
+         * They are keys of this plugin's rather than LSP4IJ's `LSP_*` because they must work in an
+         * IDE with no LSP4IJ at all, and because a Flix reader who wants parameters to stand out
+         * should find that setting under Flix.
+         */
+        val FUNCTION_NAME: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_FUNCTION_NAME", DefaultLanguageHighlighterColors.FUNCTION_CALL)
+        val PARAMETER: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_PARAMETER", DefaultLanguageHighlighterColors.PARAMETER)
+        val TYPE_PARAMETER: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_TYPE_PARAMETER", DefaultLanguageHighlighterColors.PARAMETER)
+        val LOCAL_VARIABLE: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey(
+                "FLIX_LOCAL_VARIABLE",
+                DefaultLanguageHighlighterColors.REASSIGNED_LOCAL_VARIABLE,
+            )
+        val TYPE_NAME: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_TYPE_NAME", DefaultLanguageHighlighterColors.CLASS_NAME)
+        val ENUM_CASE: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_ENUM_CASE", DefaultLanguageHighlighterColors.STATIC_FIELD)
+        val FIELD_NAME: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_FIELD_NAME", DefaultLanguageHighlighterColors.INSTANCE_FIELD)
+        val TRAIT_NAME: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_TRAIT_NAME", DefaultLanguageHighlighterColors.INTERFACE_NAME)
+
+        /**
+         * An effect's name.
+         *
+         * The one role with no counterpart in the semantic-token standard: `Effect` is a token type
+         * Flix invented, and LSP4IJ's default colours provider answers `null` for anything outside
+         * the standard set -- so an effect name is uncoloured in the server's layer as well as this
+         * one. Given the colour of a type here, which is what an effect is.
+         */
+        val EFFECT_NAME: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey("FLIX_EFFECT_NAME", DefaultLanguageHighlighterColors.CLASS_NAME)
+
         val STRING: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_STRING", DefaultLanguageHighlighterColors.STRING)
         val NUMBER: TextAttributesKey =

@@ -35,7 +35,11 @@ registrations:
     # Tells apart the four productions `IF_KW` appears in, one of which -- the Datalog constraint --
     # is not a conditional. Language, not backend: it reads this plugin's own PSI, so it must keep
     # working in an IDE with no LSP4IJ and before the server has answered.
-    com.intellij.annotator: org.flixlang.intellij.lang.highlighting.FlixControlFlowAnnotator
+    com.intellij.annotator.controlFlow: org.flixlang.intellij.lang.highlighting.FlixControlFlowAnnotator
+    # Colours the names a file declares -- function, parameter, type, enum case -- which are roles
+    # rather than token kinds and so are invisible to the lexer. Declarations only: a use needs
+    # resolution, which is the server's job.
+    com.intellij.annotator.semanticFallback: org.flixlang.intellij.lang.highlighting.FlixSemanticFallbackAnnotator
     com.intellij.lang.braceMatcher: org.flixlang.intellij.lang.editor.FlixBraceMatcher
     com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
     com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler

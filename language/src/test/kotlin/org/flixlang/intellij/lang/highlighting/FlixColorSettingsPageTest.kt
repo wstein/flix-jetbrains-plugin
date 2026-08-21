@@ -31,6 +31,15 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
             FlixSyntaxHighlighter.DOC_COMMENT,
             FlixSyntaxHighlighter.ANNOTATION,
             FlixSyntaxHighlighter.BAD_CHARACTER,
+            FlixSyntaxHighlighter.FUNCTION_NAME,
+            FlixSyntaxHighlighter.PARAMETER,
+            FlixSyntaxHighlighter.TYPE_PARAMETER,
+            FlixSyntaxHighlighter.LOCAL_VARIABLE,
+            FlixSyntaxHighlighter.TYPE_NAME,
+            FlixSyntaxHighlighter.ENUM_CASE,
+            FlixSyntaxHighlighter.FIELD_NAME,
+            FlixSyntaxHighlighter.TRAIT_NAME,
+            FlixSyntaxHighlighter.EFFECT_NAME,
         )
 
         assertEquals(defined, offered)
@@ -58,6 +67,23 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
     }
 
     /**
+     * Every role the fallback annotator assigns appears in the demo, tagged.
+     *
+     * The preview is lexed rather than parsed, so a role that exists only in the PSI shows up there
+     * only if the demo marks it. A key that is offered in the list but never demonstrated leaves a
+     * reader choosing a colour for something they cannot see.
+     */
+    fun testTheDemoShowsEveryRoleTheParserAssigns() {
+        val declared = page.getAdditionalHighlightingTagToDescriptorMap().orEmpty()
+        val used = Regex("<([A-Za-z]+)>").findAll(page.demoText).map { it.groupValues[1] }.toSet()
+
+        listOf("fn", "param", "tparam", "local", "type", "case", "field", "trait", "eff").forEach { tag ->
+            assertTrue("the demo never shows <$tag>", tag in used)
+            assertTrue("<$tag> is used but not declared", tag in declared)
+        }
+    }
+
+    /**
      * The demo carries all four grammatical roles of `if`, plus the `case` that is not control flow.
      *
      * That is the page's whole argument: `IF_KW` appears in four separate productions
@@ -70,8 +96,11 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
         assertTrue("no conditional expression", demo.contains("if <condition>(t <= 9)</condition>"))
         assertTrue("no match guard", demo.contains("<guard>if</guard> <condition>wait > 30</condition>"))
         assertTrue("no Datalog constraint", demo.contains("<datalogGuard>if</datalogGuard>"))
-        assertTrue("no comprehension guard", demo.contains("foreach (leg <- legs)"))
-        assertTrue("no enum case, which is the counter-example", demo.contains("case Direct(Station, Station)"))
+        assertTrue("no comprehension guard", demo.contains("foreach (<local>leg</local> <- legs)"))
+        assertTrue(
+            "no enum case, which is the counter-example",
+            demo.contains("case <case>Direct</case>(<type>Station</type>, <type>Station</type>)"),
+        )
     }
 
     /**

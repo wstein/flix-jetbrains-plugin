@@ -56,6 +56,16 @@
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.highlighting.FlixControlFlowAnnotator"/>
 
+        <!-- Colours the names a file declares, before the language server has said anything. The
+             lexer can only see token kinds, so which name is a function and which is a parameter is
+             invisible to it; the parser already knows. Declarations only – a use needs resolution,
+             and the server does that. The keys carry the same platform attributes LSP4IJ maps the
+             server's own answers to, so the handover is invisible. Here, not in backend, for the
+             same reason as the annotator above: no LSP4IJ, no server. -->
+        <annotator
+                language="Flix"
+                implementationClass="org.flixlang.intellij.lang.highlighting.FlixSemanticFallbackAnnotator"/>
+
         <lang.braceMatcher
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.editor.FlixBraceMatcher"/>

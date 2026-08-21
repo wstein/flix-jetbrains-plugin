@@ -109,9 +109,13 @@ class FlixPluginDescriptorTest {
                 // platform default, so a key changes nothing on screen until someone picks
                 // one -- and without this page there is nowhere to pick.
                 "colorSettingsPage",
-                // Tells the four productions `IF_KW` appears in apart, one of which -- the
-                // Datalog constraint -- is not a conditional. Reads this plugin's own PSI, so
-                // it belongs wherever the parser loads rather than beside the LSP client.
+                // Two annotators, and the count is the assertion. Both read this plugin's own PSI,
+                // so they belong wherever the parser loads rather than beside the LSP client:
+                //   - control flow: tells the four productions `IF_KW` appears in apart, one of
+                //     which -- the Datalog constraint -- is not a conditional;
+                //   - semantic fallback: colours the names a file declares, which are roles rather
+                //     than token kinds and so are invisible to the lexer.
+                "annotator",
                 "annotator",
                 "lang.braceMatcher",
                 "lang.commenter",

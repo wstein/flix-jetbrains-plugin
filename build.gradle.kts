@@ -220,3 +220,6 @@ listOf("runIde", "runIdeSplitMode", "runIdeBackend", "runIdeFrontend").forEach {
 
 // Phase 5: the cross-module wiring contract and its checker.
 apply(from = "gradle/integration-glue.gradle.kts")
+
+// The opt-in preview channel's feed. Marketplace stays the stable one.
+apply(from = "gradle/beta-plugin-repo.gradle.kts")

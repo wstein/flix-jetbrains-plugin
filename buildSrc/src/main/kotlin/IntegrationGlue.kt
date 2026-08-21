@@ -1,6 +1,7 @@
 import org.yaml.snakeyaml.Yaml
 import java.io.File
 import java.security.MessageDigest
+import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * The cross-module wiring contract, and the check that the committed registrations still match it.
@@ -68,11 +69,36 @@ object IntegrationGlue {
             problems += "unknown top-level key '$it' — a typo here would otherwise be ignored silently"
         }
 
+        problems += verifyDescriptorsParse(root)
         problems += verifyIdentity(root, manifest)
         problems += verifyRegistrations(root, manifest)
         problems += verifyDebugger(manifest)
         problems += verifyExclusions(root, manifest)
         return problems
+    }
+
+    /**
+     * That every descriptor is well-formed XML, including `plugin.xml`.
+     *
+     * The platform does not report a malformed one as an error in it. `PluginManager` logs a single
+     * `WARN … Cannot load …/flix.jetbrains.plugin-0.1.0.jar` and carries on with the plugin absent,
+     * so every symptom is about something else: no Flix language, no run configuration type, no
+     * position manager. It happened here for a double hyphen inside an XML comment, which XML
+     * forbids and which nothing else in the build objected to.
+     *
+     * Checked with a real parser rather than by looking for that one mistake: what matters is that
+     * the file parses, and the parser already knows every way it might not.
+     */
+    private fun verifyDescriptorsParse(root: File): List<String> {
+        val descriptors = MODULES.map { descriptorOf(root, it) } +
+            File(root, "src/main/resources/META-INF/plugin.xml")
+        val factory = DocumentBuilderFactory.newInstance()
+        return descriptors.filter { it.exists() }.mapNotNull { descriptor ->
+            runCatching { factory.newDocumentBuilder().parse(descriptor) }.exceptionOrNull()?.let {
+                "${descriptor.name} is not well-formed XML, so the whole plugin fails to load: " +
+                    "${it.message}"
+            }
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -71,6 +71,21 @@
         <runConfigurationProducer
                 implementation="dev.wstein.flixplugin.run.FlixRunConfigurationProducer"/>
 
+        <!-- Debug, sequenced. A debug launch is two phases – a debug build, then the program JVM
+             the agent is on – and everything that reaches startProcess is on the EDT, where a build
+             that takes minutes is a freeze and a logged error. This runner does phase one on a
+             background thread and then hands the launch back to the platform's debugger runner.
+
+             order="first" is load-bearing: GenericDebuggerRunner.canRun accepts this configuration
+             too, since it asks only for ModuleRunProfile, and the platform takes the first runner
+             that answers. Losing that race puts the build back on the EDT with nothing to say so.
+
+             (Written with en dashes: an XML comment may not contain a double hyphen, and one here
+             stopped the whole plugin from loading once.) -->
+        <programRunner
+                order="first"
+                implementation="dev.wstein.flixplugin.run.FlixDebuggerRunner"/>
+
         <!-- Flix values carry their shape in a form the Java debugger cannot read: a record is a
              linked list of label/value/rest nodes, and a tagged union is a class whose name ends in
              the tag. Unrendered they show as {RecordExtend$Obj@1234}, which says nothing. Both are

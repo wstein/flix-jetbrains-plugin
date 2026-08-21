@@ -70,6 +70,10 @@ registrations:
     com.intellij.debugger.jvmSteppingCommandProvider: dev.wstein.flixplugin.debugger.FlixSteppingCommands
     com.intellij.configurationType: dev.wstein.flixplugin.run.FlixRunConfigurationType
     com.intellij.runConfigurationProducer: dev.wstein.flixplugin.run.FlixRunConfigurationProducer
+    # Debug's first phase -- `flix build --Xdebug` -- on a background thread. Registered
+    # order="first": GenericDebuggerRunner accepts this configuration as well, and the platform
+    # takes the first runner that answers.
+    com.intellij.programRunner: dev.wstein.flixplugin.run.FlixDebuggerRunner
     # Flix value presentation. Registered against the shared supertypes (Record$, Tagged$), so
     # every compiled specialisation is covered without naming it.
     com.intellij.debugger.compoundRendererProvider.record: dev.wstein.flixplugin.debugger.FlixRecordRenderer

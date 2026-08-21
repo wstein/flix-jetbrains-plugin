@@ -13,7 +13,6 @@ import com.intellij.execution.configurations.RemoteConnection
 import com.intellij.execution.configurations.RemoteConnectionCreator
 import com.intellij.execution.configurations.RunProfileState
 import com.intellij.execution.configurations.RuntimeConfigurationError
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.KillableColoredProcessHandler
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
@@ -228,9 +227,14 @@ class FlixRunConfiguration(
                 return handlerFor(commandLineOf(launch.command))
             }
 
-            // Phase one. Synchronous, and on this thread: `startProcess` is already called off the
-            // EDT, and the program must not exist until the build that describes it does.
-            val built = buildPhase()
+            // Phase one has already happened, on a background thread, in FlixDebuggerRunner. It
+            // cannot happen here: everything that reaches `startProcess` is on the EDT, and a Flix
+            // build takes minutes. Its output is on the environment, waiting for a console.
+            //
+            // Absent means this launch did not come through that runner -- which is a defect rather
+            // than a build to run late, because running it here is the freeze the runner exists to
+            // remove. Said plainly, since the alternative is debugging whatever the last build left.
+            val built = FlixDebuggerRunner.buildOutputOf(environment)
 
             // Phase two. Everything about this JVM -- its `java`, its classpath, its main class --
             // comes from the manifest the build just wrote, so the process the agent is on is the
@@ -260,28 +264,13 @@ class FlixRunConfiguration(
         }
 
         /**
-         * Builds, and returns what the compiler printed.
+         * The command phase one runs, built here and executed by [FlixDebuggerRunner].
          *
-         * A failed build fails the *launch*: the alternative is starting whatever the previous build
-         * left behind, which is a debug session over code that is not the code on screen -- and the
-         * only symptom is breakpoints landing on the wrong lines.
-         *
-         * No timeout. A cold project resolves dependencies and compiles the whole program, which
-         * takes minutes on the first run; a bound short enough to catch a hung compiler would fail
-         * every honest first build, and there is a Stop button either way.
+         * Here because everything it needs is here -- the working directory, the environment, and
+         * the [FlixLaunch] that chose the port -- and because a second assembly of the same command
+         * elsewhere is how the two halves of a launch drift apart.
          */
-        private fun buildPhase(): String {
-            val process = CapturingProcessHandler(commandLineOf(launch.buildCommand))
-            val output = process.runProcess()
-            if (output.exitCode != 0) {
-                throw ExecutionException(
-                    "The Flix build failed, so there is nothing to debug " +
-                        "(exit code ${output.exitCode}).\n\n" +
-                        (output.stderr.takeIf { it.isNotBlank() } ?: output.stdout).takeLast(4000),
-                )
-            }
-            return output.stdout + output.stderr
-        }
+        fun buildCommandLine(): GeneralCommandLine = commandLineOf(launch.buildCommand)
 
         private fun commandLineOf(command: List<String>): GeneralCommandLine =
             GeneralCommandLine(command)

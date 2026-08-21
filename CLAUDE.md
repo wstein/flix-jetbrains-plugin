@@ -64,6 +64,12 @@ Two consequences worth knowing before moving code:
 but unregistered, and registered but undeclared. It also enforces the ADR invariants: no
 `debugAdapterServer` while the backend is `intellijJvm`, no `setDefaultStratum` call, `.flix` only.
 
+It also parses every descriptor as XML. A malformed one is not reported as a descriptor problem:
+`PluginManager` logs a single `WARN … Cannot load …/flix.jetbrains.plugin-0.1.0.jar` and the plugin
+is simply absent, so the symptoms are "no Flix language", "no run configuration type", "no position
+manager". A double hyphen inside an XML comment did exactly that here — XML forbids it, and nothing
+else in the build objected.
+
 `docs/flix-integration-matrix.md` is generated from it and committed; a stale one fails the check.
 Logic lives in `buildSrc/` because Gradle's configuration cache cannot serialize script references.
 
@@ -246,7 +252,14 @@ A debug session therefore does the launching itself, and `FlixLaunch` splits int
 
 1. `flix build --Xdebug --yes [--entrypoint …]` — no agent; this JVM is the compiler. A failed build
    fails the *launch*, because the alternative is a session over whatever the last build left
-   behind, whose only symptom is breakpoints landing on the wrong lines.
+   behind, whose only symptom is breakpoints landing on the wrong lines. It runs in
+   `FlixDebuggerRunner`, on a background task, and **not** in `startProcess`: everything that
+   reaches `startProcess` is on the EDT — `ExecutionManagerImpl.doRun` hands the launch there, and
+   `GenericDebuggerRunner.doExecute` opens with `FileDocumentManager.saveAllDocuments()` — so a
+   build there froze the IDE for minutes and newer platforms log it as *Synchronous execution on
+   EDT*. The runner is registered `order="first"` because `GenericDebuggerRunner.canRun` accepts a
+   Flix configuration too, and losing that race puts the build back on the EDT silently. A launch
+   that reaches phase two without phase one's output is refused rather than built late.
 2. `<spec.java> <agent> -cp <spec.runtimeClasspath> <spec.mainClass>` — the JVM the debugger attaches
    to *and* the JVM the program runs in. That identity is the whole point; `FlixDebuggeeIdentityTest`
    pins it.

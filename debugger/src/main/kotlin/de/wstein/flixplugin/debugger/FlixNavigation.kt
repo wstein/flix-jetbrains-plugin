@@ -31,8 +31,12 @@ internal sealed interface FlixNavigation {
     /** A frame variable, and the record fields to project out of it in order. */
     data class Path(val name: String, val fields: List<String>) : FlixNavigation
 
-    /** Outside the grammar. [reason] is shown to the user verbatim. */
-    data class Unsupported(val reason: String) : FlixNavigation
+    /**
+     * Outside the grammar. [reason] is shown to the user verbatim, unless the compiler has
+     * something better to say about [text] -- which is why the original text is kept rather than
+     * only the explanation of why it was refused.
+     */
+    data class Unsupported(val text: String, val reason: String) : FlixNavigation
 }
 
 internal object FlixExpressions {
@@ -59,7 +63,7 @@ internal object FlixExpressions {
     fun parse(text: String): FlixNavigation {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) {
-            return FlixNavigation.Unsupported("Nothing to evaluate.")
+            return FlixNavigation.Unsupported(trimmed, "Nothing to evaluate.")
         }
         // Split before validating, so that `at#dir` with a bad field names the field rather than
         // reporting the whole expression as unrecognisable.
@@ -77,6 +81,7 @@ internal object FlixExpressions {
 
     private fun unsupported(text: String, because: String): FlixNavigation.Unsupported =
         FlixNavigation.Unsupported(
+            text,
             "Cannot evaluate `$text`: $because. A Flix debug session evaluates $LIMIT. " +
                 "Anything else has to be compiled and run in the debuggee, which is not implemented yet.",
         )

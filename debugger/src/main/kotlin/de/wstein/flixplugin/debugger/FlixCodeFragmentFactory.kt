@@ -22,6 +22,8 @@ import com.intellij.testFramework.LightVirtualFile
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.StringReference
 import com.sun.jdi.Value
+import org.flixlang.intellij.eval.FlixDebugEval
+import org.flixlang.intellij.eval.FlixDebugEvalAnswer
 import org.flixlang.intellij.lang.FlixFileType
 import org.flixlang.intellij.lang.FlixLanguage
 
@@ -101,14 +103,37 @@ internal object FlixEvaluatorBuilder : EvaluatorBuilder {
  * Nothing here runs code in the debuggee. That is what keeps it outside the question of effects: a
  * read cannot change the program, so there is no policy to apply, no confirmation to ask for and no
  * way for the answer to differ from what the program holds.
+ *
+ * ## What the compiler is asked, and when
+ *
+ * Only when this cannot answer. An expression it *can* read is read: a watch is re-evaluated on
+ * every step, and asking the language server to type `at` again on each one would spend a
+ * compilation to confirm something already in hand.
+ *
+ * When the expression is outside what a read can do, the compiler is asked what it *is* -- see
+ * [FlixDebugEval] -- and the refusal becomes an answer rather than a shrug:
+ *
+ * | The compiler says | The watch shows |
+ * | --- | --- |
+ * | the expression is ill-typed | its own diagnostics, in its own words |
+ * | it is well-typed | the type and effect, and that running it is not implemented |
+ * | it cannot say | the local limit, and why the compiler was no help |
+ *
+ * The middle row is the one worth the wiring. "`List.length(xs)` is `Int32 \ Pure`, and running it
+ * needs an evaluator in the debuggee" tells a reader that their expression is right and the tool is
+ * incomplete. Before this the same expression got a sentence about record projections, which reads
+ * as though the expression were wrong.
  */
-internal class FlixExpressionEvaluator(private val expression: FlixNavigation) : ExpressionEvaluator {
+internal class FlixExpressionEvaluator(
+    private val expression: FlixNavigation,
+    private val compiler: (Project) -> FlixDebugEval? = { FlixDebugEval.getInstance(it) },
+) : ExpressionEvaluator {
 
     override fun getModifier(): Modifier? = null
 
     override fun evaluate(context: EvaluationContext?): Value? {
         val path = when (expression) {
-            is FlixNavigation.Unsupported -> throw EvaluateException(expression.reason)
+            is FlixNavigation.Unsupported -> throw EvaluateException(explain(expression, context))
             is FlixNavigation.Path -> expression
         }
         val frame = context?.frameProxy?.stackFrame
@@ -139,6 +164,59 @@ internal class FlixExpressionEvaluator(private val expression: FlixNavigation) :
         val match = fields.firstOrNull { it.first == field }
             ?: throw EvaluateException(FlixExpressions.noSuchField(expressionSoFar, field, fields.map { it.first }))
         return match.second
+    }
+
+    /**
+     * What to say about an expression this evaluator cannot read.
+     *
+     * Falls back to the local refusal whenever the compiler is not there to ask or has nothing to
+     * add. A message about record projections is a poor answer for `List.length(xs)`, but it is a
+     * better one than a message about a language server the user never asked about.
+     */
+    private fun explain(unsupported: FlixNavigation.Unsupported, context: EvaluationContext?): String {
+        val answer = ask(context, unsupported.text) ?: return unsupported.reason
+        return when (answer) {
+            // The compiler's own words about the expression. It has resolved names, checked types
+            // and knows the scope; nothing here could say it better.
+            is FlixDebugEvalAnswer.Invalid ->
+                answer.diagnostics.joinToString("\n").ifBlank { unsupported.reason }
+
+            // The expression is right and the tool is incomplete, which is a different thing to be
+            // told and the reason this path exists.
+            is FlixDebugEvalAnswer.Typed ->
+                "`${unsupported.text}` is `${answer.type}` with effect `${answer.effect}`, and this session " +
+                    "can only read values out of the paused frame. Running it needs an evaluator in " +
+                    "the debuggee, which is not implemented yet."
+
+            // Asked and got nothing: no debug build, no server, a frame it cannot place. Not a
+            // verdict on the expression, so it must not replace one.
+            is FlixDebugEvalAnswer.Unavailable ->
+                unsupported.reason + " (the compiler could not help: " + answer.reason + ")"
+        }
+    }
+
+    /**
+     * The compiler's verdict on the whole expression, or `null` if there is nobody to ask.
+     *
+     * `null` in an IDE without LSP4IJ, in a frame with no location, and before a project has a
+     * service -- every one of which is an ordinary state rather than a fault. Blocking, on the
+     * debugger thread, and only on a path that has already failed.
+     */
+    private fun ask(context: EvaluationContext?, unsupportedText: String): FlixDebugEvalAnswer? {
+        val project = context?.project ?: return null
+        val location = runCatching { context.frameProxy?.location() }.getOrNull() ?: return null
+        val service = compiler(project) ?: return null
+        return runCatching {
+            service.compile(
+                unsupportedText,
+                location.declaringType().name(),
+                location.method().name(),
+                // Typing an expression runs nothing, so the widest policy is the right one here:
+                // refusing to *type* an effectful expression would hide what it is, and what it is
+                // is exactly what the message needs to say.
+                FlixDebugEval.Policy.ALLOW_EFFECTS,
+            )
+        }.getOrNull()
     }
 
     /** How a value is described when it turns out not to be a record. */

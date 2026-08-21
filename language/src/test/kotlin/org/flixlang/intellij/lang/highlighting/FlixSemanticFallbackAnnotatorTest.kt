@@ -112,16 +112,78 @@ class FlixSemanticFallbackAnnotatorTest : BasePlatformTestCase() {
         assertEquals(listOf("FLIX_FUNCTION_NAME"), keysFor("eff Ask { def ask(): String }", "ask"))
     }
 
-    fun testACallSiteIsLeftToTheServer() {
-        // The boundary this annotator is drawn at. `String.toUpperCase` is a function here, but the
-        // same shape is a constructor, an enum case or a local of function type elsewhere, and only
-        // resolution can say which. Nothing is claimed.
-        val roles = rolesIn("def f(who: String): String = String.toUpperCase(who)")
+    fun testACallIsColouredLikeTheDefinitionItCalls() {
+        // The one *use* this layer settles on its own, because the grammar settles it: `postfixExpr`
+        // is a head followed by suffixes, and an argument list is one of them.
+        assertEquals(
+            listOf("FLIX_FUNCTION_NAME"),
+            keysFor("def f(): Int32 = helper(1)", "helper"),
+        )
+    }
+
+    fun testAQualifiedCallIsColouredOnItsLastSegment() {
+        // `List.length` is one name; what a reader looks for is `length`, and colouring the module
+        // as well would say the module is a function.
+        val roles = rolesIn("def f(xs: List[Int32]): Int32 = List.length(xs)")
+
+        assertTrue("the call is not coloured: $roles", "FLIX_FUNCTION_NAME" to "length" in roles)
+        assertTrue("the module was coloured too: $roles", roles.none { it.second == "List" })
+    }
+
+    fun testAHeadThatIsNotCalledIsNotColoured() {
+        // A postfix expression can carry several suffixes, and only a call counts. `r#fn(1)` selects
+        // a field and *then* calls it: the argument list belongs to the selection, not to `r`.
+        // Asking merely whether the expression has an argument list somewhere colours `r`.
+        //
+        // Note `s.length()` cannot make this point: `qualifiedName` is `ident (DOT ident)*`, so
+        // `s.length` parses as one name and the call really is on its last segment. Measured, after
+        // the first version of this test passed with the next-sibling test removed.
+        val roles = rolesIn("def f(): Int32 = let r = { fn = x -> x + 1 }; r#fn(1)")
 
         assertTrue(
-            "a use must not be coloured by the fallback: $roles",
-            roles.none { it.second == "String.toUpperCase" || it.second == "toUpperCase" },
+            "a head that is selected from, not called, was coloured: $roles",
+            roles.none { it.second == "r" && it.first == "FLIX_FUNCTION_NAME" },
         )
+    }
+
+    fun testAnEnumCaseWithArgumentsIsLeftToTheServer() {
+        // Measured: the server calls `Some(4)` an EnumMember, not a Function. Flix names cases with
+        // a capital and definitions without, so the first letter separates them with no resolution
+        // -- and being wrong here would colour a constructor as a call.
+        val roles = rolesIn("def f(): Option[Int32] = Some(4)")
+
+        assertTrue("an enum case was coloured as a call: $roles", roles.none { it.second == "Some" })
+    }
+
+    fun testAnAppliedParameterIsLeftToTheServer() {
+        // Also measured: the server calls `f(n)` a Parameter when `f` is one, because where a name
+        // is *bound* outranks what is done with it. The enclosing parameter lists are in the PSI, so
+        // this can agree without resolving anything.
+        val roles = rolesIn("def apply(g: Int32 -> Int32, n: Int32): Int32 = g(n)")
+
+        assertTrue(
+            "an applied parameter was coloured as a call: $roles",
+            roles.none { it.second == "g" && it.first == "FLIX_FUNCTION_NAME" },
+        )
+    }
+
+    fun testAnAppliedLambdaBinderIsLeftToTheServer() {
+        // A lambda's binder is a parameter too -- `lambdaExpr` is a parameter list, and the bare
+        // form binds an ident -- and the server calls it Parameter for the same reason.
+        val roles = rolesIn("def f(): Int32 = (h -> h(1))(x -> x)")
+
+        assertTrue(
+            "an applied lambda binder was coloured as a call: $roles",
+            roles.none { it.second == "h" && it.first == "FLIX_FUNCTION_NAME" },
+        )
+    }
+
+    fun testAnAppliedLocalIsColouredLikeACall() {
+        // And the other way: the server calls an applied *local* a Function, so this must too --
+        // the exclusion is about parameters, not about everything that is not a definition.
+        val roles = rolesIn("def f(): Int32 = let g = x -> x + 1; g(1)")
+
+        assertTrue("an applied local was not coloured: $roles", "FLIX_FUNCTION_NAME" to "g" in roles)
     }
 
     fun testATypeReferenceIsLeftToTheServer() {

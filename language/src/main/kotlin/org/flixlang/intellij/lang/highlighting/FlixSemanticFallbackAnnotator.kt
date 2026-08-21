@@ -6,11 +6,19 @@ import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiWhiteSpace
+import com.intellij.psi.util.PsiTreeUtil
 import org.flixlang.intellij.lang.psi.FlixDefDecl
 import org.flixlang.intellij.lang.psi.FlixEffectDecl
 import org.flixlang.intellij.lang.psi.FlixEffectOperation
 import org.flixlang.intellij.lang.psi.FlixEnumCase
+import org.flixlang.intellij.lang.FlixFile
 import org.flixlang.intellij.lang.psi.FlixParameter
+import org.flixlang.intellij.lang.psi.FlixUnaryLambdaExpr
+import org.flixlang.intellij.lang.psi.FlixQualifiedName
+import org.flixlang.intellij.lang.psi.FlixPostfixExpr
+import org.flixlang.intellij.lang.psi.FlixParameterList
+import org.flixlang.intellij.lang.psi.FlixArgumentList
 import org.flixlang.intellij.lang.psi.FlixPlainEnumDecl
 import org.flixlang.intellij.lang.psi.FlixRestrictableEnumDecl
 import org.flixlang.intellij.lang.psi.FlixSignatureDecl
@@ -139,8 +147,72 @@ class FlixSemanticFallbackAnnotator : Annotator {
         is FlixTraitDecl -> named(element.ident, FlixSyntaxHighlighter.TRAIT_NAME)
         is FlixEffectDecl -> named(element.ident, FlixSyntaxHighlighter.EFFECT_NAME)
 
+        // The one *use* this colours, and the only one the parser can settle on its own.
+        is FlixPostfixExpr -> callee(element)
+
         else -> null
     }
+
+    /**
+     * The name being called in [expr], when it is one this layer can be sure of.
+     *
+     * ## What makes a call
+     *
+     * Not adjacency of tokens: the grammar says a call outright. `postfixExpr` is a head followed by
+     * suffixes, and one of those suffixes is an argument list -- so a call is a head whose *next*
+     * sibling is a [FlixArgumentList]. The next-sibling test is what tells `f(x)` from `e.f(x)`,
+     * where the argument list belongs to `f` and the head is `e`.
+     *
+     * ## What it refuses, and why each one is measured
+     *
+     * `SemanticTokensProvider` was asked what the server says for every shape of call, and this
+     * agrees with it or says nothing:
+     *
+     * | Call | Server | Here |
+     * | --- | --- | --- |
+     * | `helper(n)`, `List.length(xs)` | `Function` | the same |
+     * | `g(n)`, where `g` is a local | `Function` | the same |
+     * | `f(n)`, where `f` is a parameter | `Parameter` | nothing |
+     * | `Some(4)`, `Colour.Shade(3)` | `EnumMember` | nothing |
+     *
+     * An enum case is refused by its capital: Flix names cases `Some` and definitions `length`, so
+     * the first letter separates them without resolving anything. A parameter is refused by looking
+     * for the name in the enclosing parameter lists, which the PSI has -- and which covers a lambda's
+     * binders as well, since `lambdaExpr` is a parameter list too.
+     *
+     * Both refusals leave the name uncoloured rather than colouring it differently. A wrong colour is
+     * read as information; an absent one is read as "not yet", which is what it is.
+     */
+    private fun callee(expr: FlixPostfixExpr): Role? {
+        val head = expr.exprDelimited ?: return null
+        if (head.nextSibling.skipWhitespace() !is FlixArgumentList) return null
+
+        // The head must *be* a name, not merely contain one. Searching inside it colours the first
+        // name in a parenthesised head -- `(h -> h(1))(x)` reported `h`, which is a lambda's binder
+        // and not what is being called.
+        val name = head.qualifiedName?.identList?.lastOrNull() ?: return null
+        val text = name.text
+        if (text.isEmpty() || !text.first().isLowerCase()) return null
+        if (isParameter(expr, text)) return null
+
+        return Role(name.textRange, FlixSyntaxHighlighter.FUNCTION_NAME)
+    }
+
+    /** Whether [name] is bound by a parameter list enclosing [element] -- a definition's or a lambda's. */
+    private fun isParameter(element: PsiElement, name: String): Boolean =
+        generateSequence(element.parent) { it.parent }
+            .takeWhile { it !is FlixFile }
+            .flatMap { PsiTreeUtil.getChildrenOfTypeAsList(it, FlixParameterList::class.java).asSequence() }
+            .flatMap { it.parameterList.asSequence() }
+            .any { it.ident?.text == name } ||
+            generateSequence(element.parent) { it.parent }
+                .takeWhile { it !is FlixFile }
+                .filterIsInstance<FlixUnaryLambdaExpr>()
+                .any { it.ident.text == name }
+
+    /** The next element that is not whitespace, which is what "immediately followed by" means here. */
+    private fun PsiElement?.skipWhitespace(): PsiElement? =
+        generateSequence(this) { it.nextSibling }.firstOrNull { it !is PsiWhiteSpace }
 
     /** [ident]'s range with [key], or nothing if the declaration has no name yet. */
     private fun named(ident: PsiElement?, key: TextAttributesKey): Role? =

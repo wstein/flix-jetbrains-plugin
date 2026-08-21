@@ -20,9 +20,26 @@ function, a parameter or a local, so the lexical layer leaves every name the col
 declares, a parameter, a `let` or `match` binding, an `enum`, its cases, a `struct` and its fields,
 a `trait`, an `eff`, a type alias and a type parameter.
 
-Declarations only. A *use* — `f(x)`, or a type named in a signature — needs resolution to classify,
-and a fallback that guessed would be confidently wrong in ordinary Flix code. A wrong colour is read
-as information, which is worse than no colour. Uses stay the server's.
+Declarations, and one kind of use: a **call**. The grammar settles that one without resolution —
+`postfixExpr` is a head followed by suffixes, and an argument list is one of them, so a call is a
+head whose *next sibling* is an argument list. The next-sibling part is load-bearing: `r#fn(1)`
+selects a field and then calls it, and the argument list does not belong to `r`.
+
+Two calls are deliberately left uncoloured, because the server disagrees and it is right:
+
+| Call | Server | Here |
+| --- | --- | --- |
+| `helper(n)`, `List.length(xs)`, `g(n)` where `g` is a local | `Function` | the same |
+| `Some(4)`, `Colour.Shade(3)` | `EnumMember` | nothing |
+| `f(n)` where `f` is a parameter | `Parameter` | nothing |
+
+An enum case is told apart by its capital, since Flix names cases `Some` and definitions `length`.
+A parameter is found in the enclosing parameter lists, which the PSI has — including a lambda's,
+since `lambdaExpr` is a parameter list too. Both are left uncoloured rather than coloured
+differently: a wrong colour is read as information, an absent one as "not yet".
+
+Every other use — a bare name, a type in a signature — still needs resolution and stays the
+server's.
 
 Its keys are not chosen: `SemanticTokensProvider` was asked what it emits for one of each
 declaration, and each key carries the platform attribute LSP4IJ maps that answer to

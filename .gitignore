@@ -54,3 +54,8 @@ out/ide-tests/
 
 # Local, per-machine agent settings. The shared ones live in .claude/settings.json.
 .claude/settings.local.json
+
+# JetBrains Starter writes an Allure result per IDE exception seen during testIdeUi, at the
+# repository root rather than under build/. They are a record of one run on one machine -- a
+# failed `flixUiSmoke` here is a stack trace from the IDE under test, not a fixture.
+/allure-results/

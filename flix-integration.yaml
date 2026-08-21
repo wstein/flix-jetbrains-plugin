@@ -57,6 +57,12 @@ registrations:
 
   backend:
     com.redhat.devtools.lsp4ij.server: de.wstein.flixplugin.FlixLanguageServerFactory
+    # Types an expression against a paused frame, by asking the language server. Two entries
+    # because the registration names two classes, and the split is the point: the interface is
+    # in the language module, which both backend and debugger can see, and the implementation
+    # is here, because only this module may speak LSP4IJ.
+    com.intellij.projectService.debugEvalInterface: org.flixlang.intellij.eval.FlixDebugEval
+    com.intellij.projectService.debugEvalImplementation: de.wstein.flixplugin.FlixDebugEvalClient
     # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor

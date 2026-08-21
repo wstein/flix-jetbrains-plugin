@@ -59,6 +59,16 @@
              typeHierarchy/callHierarchy provider). Registering them would add menu entries that
              can never resolve. Revisit if the server starts advertising them. -->
     <extensions defaultExtensionNs="com.intellij">
+        <!-- Types an expression against the frame a debugger is paused in, by asking the language
+             server. The interface lives in `language` because the two halves of the question sit in
+             modules that cannot see each other: the frame comes from `debugger`, which needs the
+             Java plugin, and the answer comes through LSP4IJ, which lives here. In an IDE without
+             LSP4IJ this module is absent and the debugger's lookup finds nothing – which is the
+             right answer rather than a failure. -->
+        <projectService
+                serviceInterface="org.flixlang.intellij.eval.FlixDebugEval"
+                serviceImplementation="de.wstein.flixplugin.FlixDebugEvalClient"/>
+
         <!-- The gutter run arrow beside `def main`.
              Registered here, not in the always-loaded language module, because line markers are
              produced by the highlighting pass and resolved through ExecutorAction against

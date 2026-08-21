@@ -32,6 +32,16 @@ import java.util.List;
  */
 final class FlixLanguageServer extends OSProcessStreamConnectionProvider {
 
+    /**
+     * The id this server is registered under, in {@code flix.jetbrains.plugin.backend.xml}.
+     *
+     * <p>Named here because a second place that spells it is a second place to get it wrong:
+     * {@code LanguageServerManager} looks a server up by exactly this string and answers with
+     * nothing when it does not match, which reads as a server that is not running.
+     */
+    static final String SERVER_ID = "flixLanguageServer";
+
+
     FlixLanguageServer(Project project) {
         Path jar = FlixFork.resolveJar(project);
         FlixSettings settings = FlixSettings.Companion.getInstance(project);

@@ -282,7 +282,16 @@ tests:
   recorded types are monomorphised (`Option$AxNJjn6TiM2`, arguments gone), so anything needing a
   real type looks the definition up in the typed AST instead. That join is what
   `flix/debugEval/compile` does — a custom LSP request that types an expression against the frame a
-  debugger is paused in, and runs nothing. Nothing in the plugin sends it yet.
+  debugger is paused in. `FlixCodeFragmentFactory` sends it for any expression the frame cannot be
+  read for directly, so a watch and a breakpoint condition both arrive here.
+
+  Its failures are **answers, not errors**, and that is not stylistic. A throw out of the handler
+  reaches the client as `ResponseErrorException: Internal error`, which names neither the expression
+  nor the phase — observed in a real session as a watch that failed silently. The handler answers
+  `rejected` carrying the exception and the frame it threw from, and the plugin puts whatever is
+  particular to the failure **first**: a watch cell is one line wide and truncates, so a message
+  that opens with the general grammar limit shows the reader everything except the part that says
+  what to do.
 - **`flix run` does not run the program.** It builds and then starts the program in a JVM of its
   own, so an agent on that command line lands on the *compiler* and the program runs unwatched one
   process further down — with no error and no bound breakpoint. Never put the agent there.

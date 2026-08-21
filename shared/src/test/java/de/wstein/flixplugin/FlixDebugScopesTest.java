@@ -26,15 +26,27 @@ public class FlixDebugScopesTest {
     @Rule
     public final TemporaryFolder projectRoot = new TemporaryFolder();
 
-    /** Two classes, one with two methods, with the escapes and nesting a real file has. */
+    /**
+     * Two classes, one with two methods, with the escapes and nesting a real file has.
+     *
+     * <p>The {@code def}, {@code source} and {@code sourceAt} keys are here because a real file has
+     * them, not because this reader wants them: it takes types out of the table and leaves the
+     * definition's identity to the compiler, which is the side that can act on it. They are still
+     * the shape this must survive -- a string-valued key beside the method arrays -- and the lifted
+     * lambda carries no source at all, which is the other shape.
+     */
     private static final String SCOPES = """
             {
-              "formatVersion":1,
+              "formatVersion":2,
               "classes":{
                 "dev.flix.gen.Clo$main$626ZYxrpg1N": {
+                  "def": "main$626ZYxrpg1N",
                   "staticApply": [{"name":"prefix","type":"String"},{"name":"x","type":"Int32"}]
                 },
                 "dev.flix.gen.Def$describe": {
+                  "def": "describe",
+                  "source": "describe",
+                  "sourceAt": "Main.flix:1:5",
                   "applyFrame": [{"name":"at","type":"Option[String]"}],
                   "staticApply": [{"name":"at","type":"Option[String]"},{"name":"pair","type":"(Int32, Bool)"}]
                 }
@@ -106,7 +118,7 @@ public class FlixDebugScopesTest {
     public void aTableFromAnotherFormatIsIgnored() {
         // Rather than parsed as though it were this one. A reader that guessed would report types
         // from a shape it does not understand.
-        FlixDebugScopes scopes = write(SCOPES.replace("\"formatVersion\":1", "\"formatVersion\":2"));
+        FlixDebugScopes scopes = write(SCOPES.replace("\"formatVersion\":2", "\"formatVersion\":3"));
 
         assertTrue(scopes.isEmpty());
     }

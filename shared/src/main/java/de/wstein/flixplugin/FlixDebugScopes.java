@@ -48,7 +48,7 @@ public final class FlixDebugScopes {
     public static final String SCOPES_PATH = "build/development/debug-scopes.json";
 
     /** The shape this reader understands. A file that says anything else is ignored. */
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
 
     private static final Pattern VERSION = Pattern.compile("\"formatVersion\"\\s*:\\s*(\\d+)");
 

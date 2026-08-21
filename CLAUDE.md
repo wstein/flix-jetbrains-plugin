@@ -278,9 +278,26 @@ tests:
   name bound twice in one method with two types — only possible in sibling branches, since Flix
   rejects nested shadowing — is dropped rather than guessed at, because the table is keyed by name
   and either answer would be wrong half the time.
-  The table also records each class's **defining symbol**, which is what makes it joinable: its own
-  recorded types are monomorphised (`Option$AxNJjn6TiM2`, arguments gone), so anything needing a
-  real type looks the definition up in the typed AST instead. That join is what
+  The table records **two** names per class, and the difference is the whole join. The *generated*
+  symbol identifies the frame, because that is what a debugger has. The *source* symbol is where its
+  types live, because monomorphisation renames as it specialises — `println$Gupt94MLFJw` — and a
+  typed AST holds only what somebody wrote. Inverting the name is not an option: `specializedDefnSym`
+  and `generatedDefnSym` build the same shape (owner, `$`, stable hash), so `println$Gupt94MLFJw` (a
+  specialisation, whose source definition is `println`) and `main$UrwfM2BNyW6` (a lambda lifted out
+  of `main`, whose scope is the lambda's and emphatically not `main`'s) are indistinguishable by
+  name — and `$` is a legal user operator character besides. `Symbol.DefnSym` therefore carries what
+  it was specialised from, outside its `equals`/`hashCode`, and a lifted definition records **no**
+  source at all, which becomes a refusal rather than types read out of the wrong definition. That it
+  is lifted is read from `loc.isReal`, since `LambdaLift` builds it with `loc.asSynthetic` — and not
+  from the `Clo$` class name, which misses a lifted definition with no captures (`isClosure` is
+  `cparams.nonEmpty`; the standard library's `List.length` lifts one).
+
+  A **location** is recorded beside the name because a name is not always enough: an instance
+  definition's symbol carries an id from a per-compilation counter (`ToString.toString$17313`), so
+  the build and the server's own snapshot disagree on it. Dropping the id would merge the two
+  instances of one trait method, whose parameter types differ. The recorded types are monomorphised
+  (`Option$AxNJjn6TiM2`, arguments gone), so anything needing a real type looks the definition up in
+  the typed AST — under `root.defs` and `root.instances` both. That join is what
   `flix/debugEval/compile` does — a custom LSP request that types an expression against the frame a
   debugger is paused in. `FlixCodeFragmentFactory` sends it for any expression the frame cannot be
   read for directly, so a watch and a breakpoint condition both arrive here.

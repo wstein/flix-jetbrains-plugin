@@ -184,17 +184,17 @@ intellijPlatform {
 // backend process, and the setting lives in sandbox state that a clean wipes. A system property is
 // deterministic and survives both.
 //
-// Scoped to `dev.wstein.flixplugin` -- only this plugin's own categories, and only in a development
+// Scoped to `de.wstein.flixplugin` -- only this plugin's own categories, and only in a development
 // sandbox. `LOG.isDebugEnabled` still guards the expensive call sites, so an unused category costs
 // a branch.
 //
 // Read the output with:
-//   tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep dev.wstein
+//   tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep de.wstein
 listOf("runIde", "runIdeSplitMode", "runIdeBackend", "runIdeFrontend").forEach { name ->
     tasks.matching { it.name == name }.configureEach {
         (this as? JavaForkOptions)?.systemProperty(
             "idea.log.debug.categories",
-            "#dev.wstein.flixplugin.debugger,#dev.wstein.flixplugin.run",
+            "#de.wstein.flixplugin.debugger,#de.wstein.flixplugin.run",
         )
     }
 }

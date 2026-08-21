@@ -31,7 +31,7 @@ Sandbox IDEs come up with this plugin's own debug logging already on
 (`idea.log.debug.categories`, wired in the root build). Read it with:
 
 ```console
-tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep dev.wstein
+tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep de.wstein
 ```
 
 ## Module layout and why it is split

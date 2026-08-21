@@ -17,7 +17,7 @@
 
         <server id="flixLanguageServer"
                 name="Flix Language Server"
-                factoryClass="dev.wstein.flixplugin.FlixLanguageServerFactory">
+                factoryClass="de.wstein.flixplugin.FlixLanguageServerFactory">
             <description><![CDATA[
             The Flix "Plain-LSP" server (<code>flix lsp</code>), resolved from the open project's
             <code>flix.jar</code> (or <code>$FLIX_JAR</code>).
@@ -110,12 +110,12 @@
              This one edits every occurrence in the open file at once and hands back to LSP4IJ's
              dialog for anything it cannot serve, so nothing is lost by being asked first. -->
         <renameHandler id="FlixInplaceRenameHandler" order="first"
-                       implementation="dev.wstein.flixplugin.ui.FlixInplaceRenameHandler"/>
+                       implementation="de.wstein.flixplugin.ui.FlixInplaceRenameHandler"/>
 
         <toolWindow id="Flix Diagrams"
                     anchor="right"
                     icon="com.intellij.icons.AllIcons.Toolwindows.ToolWindowPalette"
-                    factoryClass="dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory"/>
+                    factoryClass="de.wstein.flixplugin.ui.FlixDiagramToolWindowFactory"/>
 
         <!-- Where a problem with the project's own configuration is reported. The one message that
              uses it today is "no compiler could be resolved", which is why the language server was
@@ -130,7 +130,7 @@
 
     <actions>
         <action id="Flix.ShowDiagram"
-                class="dev.wstein.flixplugin.ui.FlixShowDiagramAction"
+                class="de.wstein.flixplugin.ui.FlixShowDiagramAction"
                 text="Show Flix Diagram"
                 description="Renders the structure of the trait or module at the caret in the Flix Diagrams tool window">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
@@ -140,14 +140,14 @@
              it goes to the language server; in Tools > Flix beside the tasks, because that is where
              a whole-project action belongs rather than in the editor's context menu. -->
         <action id="Flix.ShowAst"
-                class="dev.wstein.flixplugin.ui.FlixShowAstAction"
+                class="de.wstein.flixplugin.ui.FlixShowAstAction"
                 text="Show AST"
                 description="Recompile with phase printing on and open the ASTs the compiler writes">
             <add-to-group group-id="Flix.Tasks" anchor="last"/>
         </action>
 
         <action id="flix.runMain"
-                class="dev.wstein.flixplugin.FlixRunMainAction"
+                class="de.wstein.flixplugin.FlixRunMainAction"
                 text="Flix: Run Entry Point"
                 description="Runs the entry point the &quot;Run&quot; CodeLens sits above, via `flix run --entrypoint`; falls back to the project default when the server sends no symbol"/>
     </actions>

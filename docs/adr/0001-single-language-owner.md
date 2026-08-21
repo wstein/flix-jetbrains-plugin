@@ -9,7 +9,7 @@ Two IntelliJ plugins for Flix existed side by side:
 
 | | `flix-jetbrains-plugin` (this repo) | `intellij-flix` |
 | --- | --- | --- |
-| Plugin id | `dev.wstein.flix-jetbrains-plugin` | `org.flixlang.intellij` |
+| Plugin id | `de.wstein.flix-jetbrains-plugin` | `org.flixlang.intellij` |
 | Language / PSI | none — TextMate coloring only | `Language("Flix")`, Grammar-Kit + JFlex, full PSI |
 | Gutter run marker | none | `FlixRunLineMarkerContributor` |
 | LSP client | LSP4IJ | native `com.intellij.platform.lsp` (optional) |

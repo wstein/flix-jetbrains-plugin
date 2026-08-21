@@ -163,7 +163,7 @@ there, turn on the plugin's own logging -- sandbox IDEs launched by `runIde`/`ru
 already have it enabled -- and read which step declined:
 
 ```console
-tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep dev.wstein
+tail -f .intellijPlatform/sandbox/*/IU-*/system*/log/idea.log | grep de.wstein
 ```
 
 The [gate runbook](docs/native-debugger-gate.md) has a table mapping each log line to its cause.

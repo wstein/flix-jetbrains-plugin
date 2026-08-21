@@ -3,7 +3,7 @@ package org.flixlang.intellij.run
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
-import dev.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.FlixTask
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ListCellRenderer

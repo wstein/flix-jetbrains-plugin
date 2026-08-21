@@ -9,7 +9,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.project.Project
-import dev.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.FlixTask
 
 /**
  * The Flix subcommands, as menu items.

@@ -14,7 +14,7 @@ import javax.swing.JPanel
  *
  * Two fields, matching the two the VS Code extension has that mean anything here. The compiler jar
  * is not among them on purpose: it is resolved from the project root or `$FLIX_JAR`
- * ([dev.wstein.flixplugin.FlixJar]), so that a shared `.idea` directory carries no absolute paths
+ * ([de.wstein.flixplugin.FlixJar]), so that a shared `.idea` directory carries no absolute paths
  * and every process the plugin starts agrees on one compiler.
  */
 class FlixSettingsConfigurable(private val project: Project) : Configurable {

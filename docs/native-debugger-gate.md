@@ -287,7 +287,7 @@ The gutter looks the same whichever step failed, so turn on the position manager
 than guessing. **Help → Diagnostic Tools → Debug Log Settings**, add:
 
 ```text
-#dev.wstein.flixplugin.debugger
+#de.wstein.flixplugin.debugger
 ```
 
 Then reproduce and read `idea.log`. Each line names one step:

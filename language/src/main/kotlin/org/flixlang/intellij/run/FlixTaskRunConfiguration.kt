@@ -17,9 +17,9 @@ import com.intellij.execution.ui.ConsoleView
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.util.execution.ParametersListUtil
-import dev.wstein.flixplugin.FlixJar
-import dev.wstein.flixplugin.FlixLaunchCommand
-import dev.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.FlixJar
+import de.wstein.flixplugin.FlixLaunchCommand
+import de.wstein.flixplugin.FlixTask
 import org.flixlang.intellij.settings.FlixSettings
 import java.nio.file.Path
 

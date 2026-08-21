@@ -1,7 +1,7 @@
 package org.flixlang.intellij.settings
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import dev.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.FlixTask
 import org.flixlang.intellij.run.FlixTaskRunConfiguration
 import org.flixlang.intellij.run.FlixTaskRunConfigurationType
 import java.nio.file.Path

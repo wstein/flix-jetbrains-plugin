@@ -1,7 +1,7 @@
 package org.flixlang.intellij.run
 
 import com.intellij.execution.configurations.LocatableRunConfigurationOptions
-import dev.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.FlixTask
 
 /**
  * The persisted state of a Flix task configuration.
@@ -9,7 +9,7 @@ import dev.wstein.flixplugin.FlixTask
  * The task is stored as its **command** rather than its enum name, because that string is the one
  * the compiler defines: an enum constant could be renamed without changing what runs, and a saved
  * configuration would then quietly follow the rename. The compiler jar is resolved rather than
- * stored, for the reason [dev.wstein.flixplugin.FlixJar] gives.
+ * stored, for the reason [de.wstein.flixplugin.FlixJar] gives.
  */
 class FlixTaskRunConfigurationOptions : LocatableRunConfigurationOptions() {
 

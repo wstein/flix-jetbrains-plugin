@@ -38,10 +38,10 @@
              JavaLineBreakpointTypeBase.canPutAtElement refuses the file outright and the position
              manager below is never consulted, because nothing asks it to resolve anything. -->
         <debugger.javaDebugAware
-                implementation="dev.wstein.flixplugin.debugger.FlixJavaDebugAware"/>
+                implementation="de.wstein.flixplugin.debugger.FlixJavaDebugAware"/>
 
         <debugger.positionManagerFactory
-                implementation="dev.wstein.flixplugin.debugger.FlixPositionManagerFactory"/>
+                implementation="de.wstein.flixplugin.debugger.FlixPositionManagerFactory"/>
 
         <!-- Where a step may stop, which the position manager has no say in. Flix's CPS output puts
              one source line in each continuation frame and none at all in the generated invoke()
@@ -49,7 +49,7 @@
              in bytecode with no source. This carries the step on to the next Flix line. Scoped to
              Flix's own frames, so Java, Kotlin and Scala stepping is untouched. -->
         <debugger.extraSteppingFilter
-                implementation="dev.wstein.flixplugin.debugger.FlixSteppingFilter"/>
+                implementation="de.wstein.flixplugin.debugger.FlixSteppingFilter"/>
 
         <!-- Carries the Step Over / Step Into distinction into the step. CPS invokes every
              continuation from one trampoline loop, so successive Flix lines sit at the same JVM
@@ -57,19 +57,19 @@
              beforeSteppingStarted is the one point that knows both the chosen action and the
              position it was chosen from. -->
         <debugger.jvmSteppingCommandProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixSteppingCommands"/>
+                implementation="de.wstein.flixplugin.debugger.FlixSteppingCommands"/>
 
         <!-- The canonical Flix run/debug configuration (ADR 0002, plan Phase 4). Registered here
              rather than in the backend module because Debug attaches IntelliJ's own Java debugger,
              which lives in the Java plugin. One type covers Run and Debug: they differ only in the
              compiler invocation and whether a JDWP agent is attached. -->
         <configurationType
-                implementation="dev.wstein.flixplugin.run.FlixRunConfigurationType"/>
+                implementation="de.wstein.flixplugin.run.FlixRunConfigurationType"/>
 
         <!-- Turns a `def` in the editor into that configuration, which is what the gutter arrow and
              the context menu act on. Scoped to .flix files. -->
         <runConfigurationProducer
-                implementation="dev.wstein.flixplugin.run.FlixRunConfigurationProducer"/>
+                implementation="de.wstein.flixplugin.run.FlixRunConfigurationProducer"/>
 
         <!-- Debug, sequenced. A debug launch is two phases – a debug build, then the program JVM
              the agent is on – and everything that reaches startProcess is on the EDT, where a build
@@ -84,7 +84,7 @@
              stopped the whole plugin from loading once.) -->
         <programRunner
                 order="first"
-                implementation="dev.wstein.flixplugin.run.FlixDebuggerRunner"/>
+                implementation="de.wstein.flixplugin.run.FlixDebuggerRunner"/>
 
         <!-- Flix values carry their shape in a form the Java debugger cannot read: a record is a
              linked list of label/value/rest nodes, and a tagged union is a class whose name ends in
@@ -93,23 +93,23 @@
              naming it. Value$ is deliberately not rendered: it is a union struct with nine fields
              and no discriminator, so no reader could say which one is live. -->
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixRecordRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixRecordRenderer"/>
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixTaggedRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixTaggedRenderer"/>
 
         <!-- A tuple is the one Flix value whose compiled class says everything about it: each arity
              and component typing gets a class of its own, `Tuple$Int32$Int32`, with `field0` and
              `field1`. Unrendered it shows as {Tuple$Int32$Int32@3405}, which names the shape and
              not the value; the language writes a tuple as (1, 2) and so does this. -->
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixTupleRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixTupleRenderer"/>
 
         <!-- A struct's class is shared by every struct of the same erased shape and names its
              fields by position, so it says how many there are and nothing else: a channel read as
              field0 through field5. An Xdebug build records the struct's name and its field names in
              the value, and this pairs them up. -->
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixStructRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixStructRenderer"/>
 
         <!-- A function value and a lazy one. A lifted lambda is a class named after the definition
              it came out of, holding its captures in clo0, clo1 and its calling state in pc and
@@ -117,15 +117,15 @@
              unevaluated expression until it is forced, and clears it then, so which of the two it
              is can be read without running anything. -->
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixClosureRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixClosureRenderer"/>
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixLazyRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixLazyRenderer"/>
 
         <!-- An anonymous object. Its own class name is an id, so what identifies it is the Java
              type it implements and the methods it defines; each method's body is the closure held
              beside it, which renders as itself. -->
         <debugger.compoundRendererProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixAnonymousRenderer"/>
+                implementation="de.wstein.flixplugin.debugger.FlixAnonymousRenderer"/>
 
         <!-- Lets a watch be written in Flix rather than in Java. IntelliJ's Java debugger still owns
              the session (ADR 0002); this only supplies the front end for a .flix context, so Java,
@@ -141,7 +141,7 @@
              else by naming the limit. Anything larger has to be resolved, typed and lowered by the
              compiler and run in the debuggee. -->
         <debugger.codeFragmentFactory
-                implementation="dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory"/>
+                implementation="de.wstein.flixplugin.debugger.FlixCodeFragmentFactory"/>
 
         <!-- The Flix call chain, which the JVM stack does not contain. Under CPS the trampoline
              invokes every continuation from one loop, so one Flix frame is live at a time and the
@@ -156,6 +156,6 @@
              is why this answers only for the topmost frame, and only when it is Flix: the platform
              asks every provider about every frame of every JVM language. -->
         <debugger.asyncStackTraceProvider
-                implementation="dev.wstein.flixplugin.debugger.FlixAsyncStackTraceProvider"/>
+                implementation="de.wstein.flixplugin.debugger.FlixAsyncStackTraceProvider"/>
     </extensions>
 </idea-plugin>

@@ -2,7 +2,7 @@ package org.flixlang.intellij.run
 
 import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import dev.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.FlixTask
 
 /**
  * What a Flix task configuration stores, and what it refuses.

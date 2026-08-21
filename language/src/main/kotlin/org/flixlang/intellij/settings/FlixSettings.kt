@@ -21,7 +21,7 @@ import com.intellij.util.execution.ParametersListUtil
  * The language server and every task -- `build`, `check`, `test` and the rest. **Not** the Flix
  * run/debug configuration, which has its own VM options and program arguments fields. That is not
  * an oversight: a debug launch already passes `--Xdebug`, and
- * [dev.wstein.flixplugin.FlixLaunchCommand] documents that a second occurrence is rejected outright
+ * [de.wstein.flixplugin.FlixLaunchCommand] documents that a second occurrence is rejected outright
  * as `Unknown option --Xdebug`. A global "extra Flix arguments" applied there would turn one
  * plausible setting into a launch that cannot start, and the error names neither the setting nor
  * the duplicate.

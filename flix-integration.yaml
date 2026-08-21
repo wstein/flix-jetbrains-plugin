@@ -56,48 +56,48 @@ registrations:
     com.intellij.liveTemplateContext: org.flixlang.intellij.editor.FlixTemplateContextType
 
   backend:
-    com.redhat.devtools.lsp4ij.server: dev.wstein.flixplugin.FlixLanguageServerFactory
+    com.redhat.devtools.lsp4ij.server: de.wstein.flixplugin.FlixLanguageServerFactory
     # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor
     # Backend, not frontend: the diagram is fetched through LSP4IJ, which declares no content
     # modules and therefore runs host-side under split mode -- as must anything calling it.
-    com.intellij.toolWindow: dev.wstein.flixplugin.ui.FlixDiagramToolWindowFactory
+    com.intellij.toolWindow: de.wstein.flixplugin.ui.FlixDiagramToolWindowFactory
     # In-place rename. LSP4IJ's own handler has no in-place mode, so this is asked first and
     # delegates back to it for a symbol used in more than one file.
-    com.intellij.renameHandler: dev.wstein.flixplugin.ui.FlixInplaceRenameHandler
+    com.intellij.renameHandler: de.wstein.flixplugin.ui.FlixInplaceRenameHandler
 
   debugger:
-    com.intellij.debugger.javaDebugAware: dev.wstein.flixplugin.debugger.FlixJavaDebugAware
-    com.intellij.debugger.positionManagerFactory: dev.wstein.flixplugin.debugger.FlixPositionManagerFactory
-    com.intellij.debugger.extraSteppingFilter: dev.wstein.flixplugin.debugger.FlixSteppingFilter
-    com.intellij.debugger.jvmSteppingCommandProvider: dev.wstein.flixplugin.debugger.FlixSteppingCommands
-    com.intellij.configurationType: dev.wstein.flixplugin.run.FlixRunConfigurationType
-    com.intellij.runConfigurationProducer: dev.wstein.flixplugin.run.FlixRunConfigurationProducer
+    com.intellij.debugger.javaDebugAware: de.wstein.flixplugin.debugger.FlixJavaDebugAware
+    com.intellij.debugger.positionManagerFactory: de.wstein.flixplugin.debugger.FlixPositionManagerFactory
+    com.intellij.debugger.extraSteppingFilter: de.wstein.flixplugin.debugger.FlixSteppingFilter
+    com.intellij.debugger.jvmSteppingCommandProvider: de.wstein.flixplugin.debugger.FlixSteppingCommands
+    com.intellij.configurationType: de.wstein.flixplugin.run.FlixRunConfigurationType
+    com.intellij.runConfigurationProducer: de.wstein.flixplugin.run.FlixRunConfigurationProducer
     # Debug's first phase -- `flix build --Xdebug` -- on a background thread. Registered
     # order="first": GenericDebuggerRunner accepts this configuration as well, and the platform
     # takes the first runner that answers.
-    com.intellij.programRunner: dev.wstein.flixplugin.run.FlixDebuggerRunner
+    com.intellij.programRunner: de.wstein.flixplugin.run.FlixDebuggerRunner
     # Flix value presentation. Registered against the shared supertypes (Record$, Tagged$), so
     # every compiled specialisation is covered without naming it.
-    com.intellij.debugger.compoundRendererProvider.record: dev.wstein.flixplugin.debugger.FlixRecordRenderer
-    com.intellij.debugger.compoundRendererProvider.tagged: dev.wstein.flixplugin.debugger.FlixTaggedRenderer
+    com.intellij.debugger.compoundRendererProvider.record: de.wstein.flixplugin.debugger.FlixRecordRenderer
+    com.intellij.debugger.compoundRendererProvider.tagged: de.wstein.flixplugin.debugger.FlixTaggedRenderer
     # A tuple needs no shared supertype: each arity and component typing has a class of its own.
-    com.intellij.debugger.compoundRendererProvider.tuple: dev.wstein.flixplugin.debugger.FlixTupleRenderer
+    com.intellij.debugger.compoundRendererProvider.tuple: de.wstein.flixplugin.debugger.FlixTupleRenderer
     # A struct's field names are recorded in the value under --Xdebug; the class carries only types.
-    com.intellij.debugger.compoundRendererProvider.struct: dev.wstein.flixplugin.debugger.FlixStructRenderer
+    com.intellij.debugger.compoundRendererProvider.struct: de.wstein.flixplugin.debugger.FlixStructRenderer
     # A function value, named after the definition its lambda was lifted out of.
-    com.intellij.debugger.compoundRendererProvider.closure: dev.wstein.flixplugin.debugger.FlixClosureRenderer
+    com.intellij.debugger.compoundRendererProvider.closure: de.wstein.flixplugin.debugger.FlixClosureRenderer
     # A lazy value, which says whether it has been forced without forcing it.
-    com.intellij.debugger.compoundRendererProvider.lazy: dev.wstein.flixplugin.debugger.FlixLazyRenderer
+    com.intellij.debugger.compoundRendererProvider.lazy: de.wstein.flixplugin.debugger.FlixLazyRenderer
     # An anonymous object, named by the Java type it implements rather than by its generated id.
-    com.intellij.debugger.compoundRendererProvider.anonymous: dev.wstein.flixplugin.debugger.FlixAnonymousRenderer
+    com.intellij.debugger.compoundRendererProvider.anonymous: de.wstein.flixplugin.debugger.FlixAnonymousRenderer
     # Flix expressions in a watch. Scoped by `isContextAccepted` to a .flix context, so the Java,
     # Kotlin and Scala evaluators are untouched -- the platform asks every registered factory.
-    com.intellij.debugger.codeFragmentFactory: dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory
+    com.intellij.debugger.codeFragmentFactory: de.wstein.flixplugin.debugger.FlixCodeFragmentFactory
     # The Flix call chain, rebuilt from the continuation objects. Under CPS it is not on the JVM
     # stack at all, so nothing the frames view can be configured to show would reveal it.
-    com.intellij.debugger.asyncStackTraceProvider: dev.wstein.flixplugin.debugger.FlixAsyncStackTraceProvider
+    com.intellij.debugger.asyncStackTraceProvider: de.wstein.flixplugin.debugger.FlixAsyncStackTraceProvider
 
 lsp4ij:
   languageServerId: flixLanguageServer
@@ -128,11 +128,11 @@ debugger:
 # the class must exist. Declared because the widened attribute scan now sees `class="..."`, and an
 # undeclared registration is a failure by design.
 actions:
-  flix.runMain: dev.wstein.flixplugin.FlixRunMainAction
+  flix.runMain: de.wstein.flixplugin.FlixRunMainAction
   # Deliberately not named `flix.showDiagram`: LSP4IJ resolves a command server-side first and only
   # then looks for an IntelliJ action of the same id, so sharing the name would let the action
   # invoke the command that invokes the action.
-  Flix.ShowDiagram: dev.wstein.flixplugin.ui.FlixShowDiagramAction
+  Flix.ShowDiagram: de.wstein.flixplugin.ui.FlixShowDiagramAction
   # The Tools > Flix menu. One group; its items are built from FlixTask, so the menu cannot come to
   # offer a different set of subcommands than the run configuration does.
   Flix.Tasks: org.flixlang.intellij.run.FlixTaskActionGroup
@@ -142,7 +142,7 @@ actions:
   flix.cmdTests: org.flixlang.intellij.run.FlixRunTestsAction
   # Show AST. ShowAstProvider was implemented in the compiler and reachable only through
   # `lsp/showAst` on Flix's VS Code protocol; the server now serves it as a real LSP command.
-  Flix.ShowAst: dev.wstein.flixplugin.ui.FlixShowAstAction
+  Flix.ShowAst: de.wstein.flixplugin.ui.FlixShowAstAction
 
 # Registrations that must NOT exist. Each was removed for a stated reason; the check fails if one
 # comes back, because each would reintroduce a defect rather than merely add a feature.

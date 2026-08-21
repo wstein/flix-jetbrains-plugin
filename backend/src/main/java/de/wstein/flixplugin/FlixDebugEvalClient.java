@@ -6,6 +6,7 @@ import com.redhat.devtools.lsp4ij.LanguageServerItem;
 import com.redhat.devtools.lsp4ij.LanguageServerManager;
 import org.flixlang.intellij.eval.FlixDebugEval;
 import org.flixlang.intellij.eval.FlixDebugEvalAnswer;
+import org.flixlang.intellij.eval.FlixDebugEvalArtifact;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -62,13 +63,15 @@ final class FlixDebugEvalClient implements FlixDebugEval {
             @NotNull String expression,
             @NotNull String className,
             @NotNull String methodName,
-            @NotNull Policy policy) {
+            @NotNull Policy policy,
+            boolean withArtifact) {
 
         FlixDebugEvalRequest request = new FlixDebugEvalRequest();
         request.setExpression(expression);
         request.setClassName(className);
         request.setMethodName(methodName);
         request.setPolicy(policy.getWireName());
+        request.setWithArtifact(withArtifact);
 
         try {
             LanguageServerItem server = LanguageServerManager.getInstance(project)
@@ -113,13 +116,34 @@ final class FlixDebugEvalClient implements FlixDebugEval {
         return switch (response.getStatus()) {
             case "ok" -> new FlixDebugEvalAnswer.Typed(
                     orEmpty(response.getTpe()),
-                    orEmpty(response.getEff()));
+                    orEmpty(response.getEff()),
+                    artifactOf(response));
             case "failed" -> new FlixDebugEvalAnswer.Invalid(
                     response.getDiagnostics() == null ? List.of() : List.copyOf(response.getDiagnostics()));
             case "rejected" -> new FlixDebugEvalAnswer.Unavailable(orEmpty(response.getReason()));
             default -> new FlixDebugEvalAnswer.Unavailable(
                     "the language server answered '" + response.getStatus() + "', which this plugin does not understand");
         };
+    }
+
+    /**
+     * The artifact, or {@code null} when only typing was asked for.
+     *
+     * All-or-nothing: an artifact missing its entry class is not half an artifact, it is a reply
+     * this build cannot act on, and pretending otherwise would surface as a failure inside the
+     * debuggee rather than here.
+     */
+    private static @org.jetbrains.annotations.Nullable FlixDebugEvalArtifact artifactOf(FlixDebugEvalResponse response) {
+        if (response.getArtifact() == null || response.getEntryClass() == null
+                || response.getEntryMethod() == null || response.getValueField() == null) {
+            return null;
+        }
+        return new FlixDebugEvalArtifact(
+                response.getArtifact(),
+                response.getEntryClass(),
+                response.getEntryMethod(),
+                response.getValueField(),
+                response.getParameters() == null ? List.of() : List.copyOf(response.getParameters()));
     }
 
     private static String orEmpty(String s) {

@@ -242,7 +242,12 @@ tests:
   a closure class belongs to one lambda, so there the names are the same for every instance. It also
   writes two side files beside the build manifest: `debug-index.json` (source → classes) and
   `debug-scopes.json`, which records the **Flix type** of every parameter and capture by class and
-  method. The `LocalVariableTable` already carries names, slots and ranges; what it cannot carry is
+  method, and delivers `dev.flix.runtime.DebugEvalHost` — the class that defines and runs a compiled
+  expression inside a paused program, in a child loader whose parent is the program's own. The
+  plugin reaches it through `FlixRemoteEval`: the artifact crosses as one string, each primitive is
+  boxed by invoking the debuggee's own `valueOf` (an `Object[]` element cannot hold one), and the
+  call is `INVOKE_SINGLE_THREADED` so it does not resume the rest of the program under the user. The
+  `LocalVariableTable` already carries names, slots and ranges; what it cannot carry is
   the type, because the back end erases — an `Option[String]` and a `Result[Int32, Bool]` have the
   same descriptor. Slots stay the table's business and are deliberately not repeated. Locals are
   **not** covered: they are named where `GenExpression` compiles them and their slots allocated

@@ -133,7 +133,7 @@ internal class FlixExpressionEvaluator(
 
     override fun evaluate(context: EvaluationContext?): Value? {
         val path = when (expression) {
-            is FlixNavigation.Unsupported -> throw EvaluateException(explain(expression, context))
+            is FlixNavigation.Unsupported -> return run(expression, context)
             is FlixNavigation.Path -> expression
         }
         val frame = context?.frameProxy?.stackFrame
@@ -167,14 +167,56 @@ internal class FlixExpressionEvaluator(
     }
 
     /**
+     * Compiles the expression, runs it in the debuggee, and returns what it produced.
+     *
+     * The order is the whole design. The compiler is asked what the expression *is*, because whether
+     * it may be run is a question about its effect and that cannot be asked before it is typed; only
+     * a pure expression is then run, because running anything else would perform the program's own
+     * effects while it is stopped. Everything that is not run falls back to [explain], which says
+     * what it is instead of what is missing.
+     */
+    private fun run(unsupported: FlixNavigation.Unsupported, context: EvaluationContext?): Value? {
+        val answer = ask(context, unsupported.text, withArtifact = true)
+            ?: throw EvaluateException(unsupported.reason)
+        val typed = answer as? FlixDebugEvalAnswer.Typed
+            ?: throw EvaluateException(explain(unsupported, answer))
+        val artifact = typed.artifact
+
+        if (!typed.isPure) {
+            // Typed, and refused: running it would perform the program's own effects in a program
+            // that is stopped. The message says what it is, which is more use than a refusal alone.
+            throw EvaluateException(
+                "`${unsupported.text}` is `${typed.type}` with effect `${typed.effect}`. Only an " +
+                    "expression the compiler proves pure is run, because running this one would " +
+                    "perform the program's effects while it is stopped.",
+            )
+        }
+        if (artifact == null) {
+            throw EvaluateException(
+                "`${unsupported.text}` is `${typed.type}`, but the compiler produced nothing to run. " +
+                    "The program has to be built with --Xdebug before an expression can be evaluated.",
+            )
+        }
+
+        if (context == null) {
+            throw EvaluateException("No frame is selected, so there is nothing to run the expression against.")
+        }
+
+        return try {
+            FlixRemoteEval.evaluate(artifact, context)
+        } catch (failed: FlixRemoteEvalException) {
+            throw EvaluateException(failed.message, failed)
+        }
+    }
+
+    /**
      * What to say about an expression this evaluator cannot read.
      *
      * Falls back to the local refusal whenever the compiler is not there to ask or has nothing to
      * add. A message about record projections is a poor answer for `List.length(xs)`, but it is a
      * better one than a message about a language server the user never asked about.
      */
-    private fun explain(unsupported: FlixNavigation.Unsupported, context: EvaluationContext?): String {
-        val answer = ask(context, unsupported.text) ?: return unsupported.reason
+    private fun explain(unsupported: FlixNavigation.Unsupported, answer: FlixDebugEvalAnswer): String {
         return when (answer) {
             // The compiler's own words about the expression. It has resolved names, checked types
             // and knows the scope; nothing here could say it better.
@@ -202,7 +244,11 @@ internal class FlixExpressionEvaluator(
      * service -- every one of which is an ordinary state rather than a fault. Blocking, on the
      * debugger thread, and only on a path that has already failed.
      */
-    private fun ask(context: EvaluationContext?, unsupportedText: String): FlixDebugEvalAnswer? {
+    private fun ask(
+        context: EvaluationContext?,
+        unsupportedText: String,
+        withArtifact: Boolean = false,
+    ): FlixDebugEvalAnswer? {
         val project = context?.project ?: return null
         val location = runCatching { context.frameProxy?.location() }.getOrNull() ?: return null
         val service = compiler(project) ?: return null
@@ -213,8 +259,10 @@ internal class FlixExpressionEvaluator(
                 location.method().name(),
                 // Typing an expression runs nothing, so the widest policy is the right one here:
                 // refusing to *type* an effectful expression would hide what it is, and what it is
-                // is exactly what the message needs to say.
+                // is exactly what the message needs to say. Whether it may be *run* is decided
+                // afterwards, from the effect this reports.
                 FlixDebugEval.Policy.ALLOW_EFFECTS,
+                withArtifact,
             )
         }.getOrNull()
     }

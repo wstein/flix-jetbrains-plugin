@@ -1,7 +1,9 @@
 package de.wstein.flixplugin.debugger
 
 import com.sun.jdi.Bootstrap
+import com.sun.jdi.ClassType
 import com.sun.jdi.Location
+import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.Value
 import com.sun.jdi.VirtualMachine
@@ -189,6 +191,47 @@ class FlixDebugSessionTest {
             assertTrue(
                 "the index saved almost nothing: $namedPrepareEvents of $loaded",
                 namedPrepareEvents * 20 < loaded,
+            )
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `the debuggee carries the evaluation host, with the signature this plugin calls`() {
+        // The half of debug evaluation that spans both repositories. The compiler delivers
+        // `DebugEvalHost` into every --Xdebug build -- a class that has to be loadable by the
+        // program's own loader must be on its classpath before it starts -- and this plugin invokes
+        // it by name and signature. Neither side can check the other, so the check belongs here,
+        // against a program a real build produced.
+        session(fixture, breakpointMarker) { vm, stop, _ ->
+            // The class-prepare requests have to go first, and this is the same hazard the product
+            // hit: loading a class fires a prepare event, the request that armed it carries
+            // SUSPEND_EVENT_THREAD, and the thread running the invocation is suspended *inside* it.
+            // The call then never returns -- measured, as a fifteen-minute hang in
+            // `JDWP$ClassType$InvokeMethod.waitForReply`. In the IDE the platform disables requests
+            // around an invocation; here, with a bare JDI session, it has to be done by hand.
+            vm.eventRequestManager().deleteEventRequests(vm.eventRequestManager().classPrepareRequests())
+
+            // Loaded on demand: nothing in the program refers to the host, so the VM has not loaded
+            // it, and `classesByName` reports only what is loaded. Asking the debuggee to load it by
+            // name is also the strongest form of the claim -- it proves the class is reachable from
+            // the *running* program's classpath rather than merely present on disk.
+            val classClass = vm.classesByName("java.lang.Class").filterIsInstance<ClassType>().single()
+            val forName = classClass.methodsByName("forName", "(Ljava/lang/String;)Ljava/lang/Class;").single()
+            val loaded = classClass.invokeMethod(
+                stop.thread(),
+                forName,
+                listOf(vm.mirrorOf("dev.flix.runtime.DebugEvalHost")),
+                ObjectReference.INVOKE_SINGLE_THREADED,
+            )
+            assertTrue("the debuggee could not load the evaluation host", loaded != null)
+
+            val host = vm.classesByName("dev.flix.runtime.DebugEvalHost").filterIsInstance<ClassType>().single()
+            val evaluate = host.methodsByName("evaluate")
+            assertEquals("the host must offer exactly one `evaluate`: $evaluate", 1, evaluate.size)
+            assertEquals(
+                "the signature this plugin calls has changed",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;",
+                evaluate.single().signature(),
             )
         }
     }

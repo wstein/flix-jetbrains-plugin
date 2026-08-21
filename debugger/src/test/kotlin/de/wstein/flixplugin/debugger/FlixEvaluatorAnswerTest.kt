@@ -31,27 +31,42 @@ import java.lang.reflect.Proxy
 class FlixEvaluatorAnswerTest {
 
     /** What was asked of the compiler, so a test can assert the question as well as the answer. */
-    private data class Asked(val expression: String, val className: String, val methodName: String, val policy: FlixDebugEval.Policy)
+    private data class Asked(
+        val expression: String,
+        val className: String,
+        val methodName: String,
+        val policy: FlixDebugEval.Policy,
+        val withArtifact: Boolean,
+    )
 
     private val asked = mutableListOf<Asked>()
 
     @Test
-    fun `a well-typed expression is reported as what it is, not as a mistake`() {
-        // The case this wiring exists for. The expression is right; the tool cannot run it yet, and
-        // saying so is a different message from "that is not a valid expression".
-        val message = refusalFor("List.length(xs)", FlixDebugEvalAnswer.Typed("Int32", "Pure"))
+    fun `an effectful expression is described rather than run`() {
+        // Typed, and refused on purpose: running it would perform the program's own effects in a
+        // program that is stopped. What it *is* is still worth saying -- that is the difference
+        // between "not allowed" and "that is not a valid expression".
+        val message = refusalFor("println(xs)", FlixDebugEvalAnswer.Typed("Unit", "IO"))
 
-        assertTrue("the type is missing: $message", message.contains("Int32"))
-        assertTrue("the effect is missing: $message", message.contains("Pure"))
-        assertTrue("the expression is missing: $message", message.contains("List.length(xs)"))
-        assertTrue(
-            "the message must say running it is what is missing: $message",
-            message.contains("not implemented"),
-        )
+        assertTrue("the type is missing: $message", message.contains("Unit"))
+        assertTrue("the effect is missing: $message", message.contains("IO"))
+        assertTrue("the expression is missing: $message", message.contains("println(xs)"))
+        assertTrue("the reason is missing: $message", message.contains("pure"))
         assertFalse(
             "a well-typed expression must not be answered with the local grammar: $message",
             message.contains(FlixExpressions.LIMIT),
         )
+    }
+
+    @Test
+    fun `a pure expression with nothing to run says what is missing`() {
+        // The compiler typed it and produced no classes, which happens when the program was not
+        // built with --Xdebug. That is a statement about the build, and telling a user their
+        // expression is at fault would be false.
+        val message = refusalFor("List.length(xs)", FlixDebugEvalAnswer.Typed("Int32", "Pure"))
+
+        assertTrue("the type is missing: $message", message.contains("Int32"))
+        assertTrue("what to do about it is missing: $message", message.contains("--Xdebug"))
     }
 
     @Test
@@ -95,6 +110,15 @@ class FlixEvaluatorAnswerTest {
         assertEquals("List.length(xs)", asked.single().expression)
         assertEquals("dev.flix.gen.Def\$describe", asked.single().className)
         assertEquals("staticApply", asked.single().methodName)
+    }
+
+    @Test
+    fun `an artifact is asked for, since the expression may have to be run`() {
+        // The request that makes a value possible at all. Asked once, with the type and the classes
+        // together: a second call to fetch the artifact would compile the project again.
+        refusalFor("println(xs)", FlixDebugEvalAnswer.Typed("Unit", "IO"))
+
+        assertTrue("no artifact was asked for", asked.single().withArtifact)
     }
 
     @Test
@@ -142,8 +166,9 @@ class FlixEvaluatorAnswerTest {
                     className: String,
                     methodName: String,
                     policy: FlixDebugEval.Policy,
+                    withArtifact: Boolean,
                 ): FlixDebugEvalAnswer {
-                    asked += Asked(expression, className, methodName, policy)
+                    asked += Asked(expression, className, methodName, policy, withArtifact)
                     return it
                 }
             }

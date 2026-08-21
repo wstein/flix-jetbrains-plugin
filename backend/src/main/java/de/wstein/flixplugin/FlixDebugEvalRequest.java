@@ -37,6 +37,22 @@ public class FlixDebugEvalRequest {
         this.expression = expression;
     }
 
+    /**
+     * Whether to ask for the classes that would run the expression, not only its type.
+     *
+     * Off unless asked: typing is one compilation and an artifact is a second one that also emits,
+     * and a watch asks the first on every step.
+     */
+    private boolean withArtifact;
+
+    public boolean isWithArtifact() {
+        return withArtifact;
+    }
+
+    public void setWithArtifact(boolean withArtifact) {
+        this.withArtifact = withArtifact;
+    }
+
     public String getPolicy() {
         return policy;
     }

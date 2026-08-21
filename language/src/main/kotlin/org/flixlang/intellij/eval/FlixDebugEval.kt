@@ -35,7 +35,13 @@ interface FlixDebugEval {
      * Blocking, and deliberately so: the caller is an evaluator that already has a paused debuggee
      * and a user waiting. It must not be called on the UI thread.
      */
-    fun compile(expression: String, className: String, methodName: String, policy: Policy): FlixDebugEvalAnswer
+    fun compile(
+        expression: String,
+        className: String,
+        methodName: String,
+        policy: Policy,
+        withArtifact: Boolean = false,
+    ): FlixDebugEvalAnswer
 
     /** What an evaluation is allowed to be, decided by the caller and enforced by the compiler. */
     enum class Policy(val wireName: String) {
@@ -73,7 +79,11 @@ interface FlixDebugEval {
  */
 sealed interface FlixDebugEvalAnswer {
 
-    data class Typed(val type: String, val effect: String) : FlixDebugEvalAnswer {
+    data class Typed(
+        val type: String,
+        val effect: String,
+        val artifact: FlixDebugEvalArtifact? = null,
+    ) : FlixDebugEvalAnswer {
         /** Whether the compiler proved it performs no effect, which is the only claim a watch needs. */
         val isPure: Boolean get() = effect == "Pure"
     }
@@ -82,3 +92,26 @@ sealed interface FlixDebugEvalAnswer {
 
     data class Unavailable(val reason: String) : FlixDebugEvalAnswer
 }
+
+/**
+ * What the debuggee needs in order to run the expression.
+ *
+ * Everything here is a string or a list of them, because the next thing that happens to it is a
+ * crossing into another process: over a debug connection every argument has to be built inside the
+ * debuggee one value at a time, so one string is one value to construct and a map of byte arrays is
+ * thousands.
+ *
+ * @property classes    the expression's classes, as `name=base64` entries separated by `;`, holding
+ *                      only what the running program does not already have
+ * @property entryClass the class carrying the expression, and [entryMethod] the static method on it
+ * @property valueField which field of the runtime's `Value` holds the result — it has one per erased
+ *                      type and no discriminator, so this is the compiler saying where to look
+ * @property parameters the frame variables to pass, in the order the entry method takes them
+ */
+data class FlixDebugEvalArtifact(
+    val classes: String,
+    val entryClass: String,
+    val entryMethod: String,
+    val valueField: String,
+    val parameters: List<String>,
+)

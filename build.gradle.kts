@@ -225,16 +225,17 @@ listOf("runIde", "runIdeSplitMode", "runIdeBackend", "runIdeFrontend").forEach {
 // Phase 5: the cross-module wiring contract and its checker.
 apply(from = "gradle/integration-glue.gradle.kts")
 
-// Signing credentials, when a release workflow supplies them as files.
+// Signing credentials for a build signed by hand, given as files.
 //
-// Files rather than the `CERTIFICATE_CHAIN` / `PRIVATE_KEY` environment variables the plugin also
-// accepts, and that is measured rather than preference: with the chain supplied as *content*,
-// `verifyPluginSignature` passes the PEM itself to the ZIP signer as an argument and dies with
-// `Invalid argument: -----BEGIN CERTIFICATE-----`. `signPlugin` accepts either. Files are the form
-// both tasks agree on.
+// Neither release channel passes these: Marketplace is signed by `publishPlugin`, from the
+// `CERTIFICATE_CHAIN` and `PRIVATE_KEY` environment variables the plugin reads by convention, and
+// the preview channel is deliberately unsigned (see the README). They are here because
+// `verifyPluginSignature` cannot be used at all without them -- measured: with the chain supplied as
+// *content*, it passes the PEM itself to the ZIP signer and dies with
+// `Invalid argument: -----BEGIN CERTIFICATE-----`. Files are the form both tasks agree on.
 //
-// Absent, the properties are simply not set: `signPlugin` is then SKIPPED, which is right for an
-// ordinary local build and is why the release job checks that a signed archive actually appeared.
+// Absent, the properties are simply not set and `signPlugin` is SKIPPED, which is right for an
+// ordinary local build.
 intellijPlatform {
     signing {
         providers.gradleProperty("certificateChainFile").orNull?.let {

@@ -105,12 +105,20 @@ class FlixReleaseWorkflowTest {
     }
 
     @Test
-    fun `a prerelease is signed`() {
-        // The feed advertises a plugin an IDE will install. Unsigned is a different thing to ship.
-        assertTrue("the beta job does not sign: ${body("beta")}", body("beta").contains("signPlugin"))
+    fun `a prerelease is deliberately not signed, and the stable channel still is`() {
+        // A decision, not an oversight: a custom plugin repository needs no Marketplace-issued
+        // certificate and this project has no signing identity. Pinned in both directions, because
+        // "unsigned" is the kind of thing that gets quietly reintroduced as "signed with what?" --
+        // and because the stable channel losing its signature would be a real regression.
+        //
+        // `publishPlugin` signs on the stable side; the beta side publishes what `buildPlugin`
+        // produced and says so in the README.
+        assertFalse("the beta job signs: ${body("beta")}", body("beta").contains("signPlugin"))
+        assertTrue("the beta job does not build the plugin", body("beta").contains("buildPlugin"))
+
         assertTrue(
-            "the beta job does not verify the signature",
-            body("beta").contains("verifyPluginSignature"),
+            "the stable job no longer signs, which publishPlugin does as part of publishing",
+            body("release").contains("CERTIFICATE_CHAIN"),
         )
     }
 

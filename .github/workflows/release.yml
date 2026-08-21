@@ -1,9 +1,10 @@
 # Two channels, two jobs, and deliberately no path between them.
 #
 #   - a published GitHub Release  -> signed upload to JetBrains Marketplace, plus the release assets;
-#   - a prereleased one           -> signed ZIP on the release and a GitHub Pages feed, and nothing
-#                                    else. It never runs publishPlugin, and it is never given
+#   - a prereleased one           -> a ZIP on the release and a GitHub Pages feed, and nothing else.
+#                                    It never runs publishPlugin, and it is never given
 #                                    PUBLISH_TOKEN, so a mistake in it cannot reach Marketplace.
+#                                    A preview build is unsigned; see the README for what that costs.
 #
 # Marketplace stays the stable, default install path. The Pages feed is opt-in: a user adds it under
 # Settings | Plugins | Manage Plugin Repositories, and the release asset remains the exact-build
@@ -175,62 +176,33 @@ jobs:
       - name: Verify Plugin
         run: ./gradlew verifyPlugin
 
-      # The credentials as *files*, and only one task asked for.
-      #
-      # Both shapes were measured with a throwaway key, and both alternatives fail:
-      #
-      #   - with the chain in `CERTIFICATE_CHAIN`, `signPlugin` works and
-      #     `verifyPluginSignature` passes the PEM itself to the ZIP signer, dying with
-      #     `Invalid argument: -----BEGIN CERTIFICATE-----`;
-      #   - asking for `signPlugin verifyPluginSignature` in one invocation fails validation --
-      #     the verify task does not declare the dependency -- and Gradle schedules the
-      #     verification first, where it finds no archive and reports NO-SOURCE. The build file
-      #     now wires the dependency, so asking for the verification alone signs first.
-      #
-      # Written under RUNNER_TEMP rather than the workspace so a key cannot reach a build output.
-      - name: Sign Plugin
-        env:
-          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -z "${CERTIFICATE_CHAIN:-}" ] || [ -z "${PRIVATE_KEY:-}" ]; then
-            echo "::error::CERTIFICATE_CHAIN and PRIVATE_KEY must be set. Without them signPlugin is" \
-                 "SKIPPED and verifyPluginSignature reports NO-SOURCE -- a green build that signs" \
-                 "nothing and verifies nothing."
-            exit 1
-          fi
-          umask 077
-          printf '%s' "$CERTIFICATE_CHAIN" > "$RUNNER_TEMP/chain.pem"
-          printf '%s' "$PRIVATE_KEY" > "$RUNNER_TEMP/key.pem"
-          ./gradlew verifyPluginSignature \
-            -PcertificateChainFile="$RUNNER_TEMP/chain.pem" \
-            -PprivateKeyFile="$RUNNER_TEMP/key.pem"
-          rm -f "$RUNNER_TEMP/chain.pem" "$RUNNER_TEMP/key.pem"
+      - name: Build Plugin
+        run: ./gradlew buildPlugin
 
-      # The signed archive under the name a user will download it as.
+      # The archive to publish, in a directory of its own.
       #
-      # `signPlugin` writes `<name>-signed.zip` beside the unsigned archive `buildPlugin` produced,
-      # and only the signed one may be published. It is staged under the plain versioned name because
-      # that name is what a rollback asks for; `-signed` is a fact about the build, not about the
-      # release. Staging it in a directory of its own also keeps "the archive to publish" a single
-      # unambiguous file.
-      - name: Stage The Signed Archive
+      # A preview build is **not signed**, and that is a decision rather than an oversight: a custom
+      # plugin repository does not require a Marketplace-issued certificate, and this project has no
+      # signing identity. What that costs is stated plainly in the README -- nothing attests that the
+      # ZIP came from this build, so the SHA-256 below and the release asset's own immutability are
+      # what a user has. Marketplace's stable channel is signed, by `publishPlugin`.
+      #
+      # Staged rather than published in place so that "the archive to publish" is a single
+      # unambiguous file: `build/distributions` also holds a `.tar`, and an earlier version's archive
+      # can survive an incremental build.
+      - name: Stage The Archive
         id: archive
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # Also the check that signing actually happened: with no credentials `signPlugin` is
-          # SKIPPED rather than failed, so "no signed archive" is how that arrives here.
-          SIGNED=(build/distributions/*-signed.zip)
-          if [ "${#SIGNED[@]}" -ne 1 ]; then
-            echo "::error::expected exactly one signed archive, found ${#SIGNED[@]}: ${SIGNED[*]-none}"
+          ARCHIVES=(build/distributions/*.zip)
+          if [ "${#ARCHIVES[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one archive, found ${#ARCHIVES[@]}: ${ARCHIVES[*]-none}"
             exit 1
           fi
-          NAME="$(basename "${SIGNED[0]}" -signed.zip).zip"
+          NAME="$(basename "${ARCHIVES[0]}")"
           mkdir -p build/beta-asset
-          cp "${SIGNED[0]}" "build/beta-asset/$NAME"
+          cp "${ARCHIVES[0]}" "build/beta-asset/$NAME"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "path=build/beta-asset/$NAME" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "build/beta-asset/$NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -258,8 +230,8 @@ jobs:
             echo "::error::the published asset hashes $ACTUAL and the signed archive hashes $EXPECTED"
             exit 1
           fi
-          # The signature was verified on these exact bytes by verifyPluginSignature above; equal
-          # hashes carry that verdict across. What remains is that the archive itself is intact.
+          # Equal hashes say the published bytes are the ones this job built. What remains is that
+          # the archive itself is intact rather than a truncated upload.
           unzip -t "build/beta-downloaded/$NAME" > /dev/null
           echo "published asset verified: $ACTUAL"
 

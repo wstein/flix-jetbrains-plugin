@@ -335,12 +335,20 @@ build that worked can always be reinstalled exactly, via Plugins → gear icon �
 Disk…**. `SHA256SUMS` beside the feed carries the checksum of the build the feed currently
 advertises.
 
-### What the channel guarantees
+### What the channel does and does not guarantee
 
-- the ZIP is signed, and its signature is verified before it is published;
-- the asset is downloaded back and compared by SHA-256 before the feed points at it;
+A preview build is **not signed**. This project has no code-signing identity, and a custom plugin
+repository does not require one -- so nothing cryptographically attests that a preview ZIP came from
+this build. Marketplace's stable channel *is* signed, by the same release workflow. If that matters
+to you, use the stable channel.
+
+What the channel does guarantee:
+
+- the asset is downloaded back and compared by SHA-256 before the feed is allowed to point at it,
+  and that checksum is published beside the feed as `SHA256SUMS`;
 - the feed's id, version and compatibility range are read out of the packaged descriptor rather than
-  written beside it;
+  written beside it, so they cannot drift from the plugin they describe;
+- a release asset is never replaced -- the job refuses a tag that already carries one;
 - a version with no prerelease part is refused, so a stable build cannot reach this channel.
 
 ## GitHub Actions / Qodana / Dependabot

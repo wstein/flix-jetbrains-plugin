@@ -34,6 +34,12 @@ import com.intellij.util.execution.ParametersListUtil
  *
  * Project-level rather than application-level: the arguments a project needs -- heap for a large
  * one, a `--github-token` for its dependencies -- are properties of that project.
+ *
+ * ## And one thing that is not an argument
+ *
+ * [allowEffectfulEvaluation] lives here too, because it is the same kind of thing: a decision about
+ * this project that has to be made before the moment it applies. See its own documentation for why
+ * it is a setting rather than a prompt.
  */
 @Service(Service.Level.PROJECT)
 @State(name = "FlixSettings", storages = [Storage("flix.xml")])
@@ -42,6 +48,7 @@ class FlixSettings : SimplePersistentStateComponent<FlixSettings.FlixState>(Flix
     class FlixState : BaseState() {
         var extraJvmArgs by string("")
         var extraFlixArgs by string("")
+        var allowEffectfulEvaluation by property(false)
     }
 
     /** Additional JVM arguments, separated by spaces, as typed. */
@@ -56,6 +63,37 @@ class FlixSettings : SimplePersistentStateComponent<FlixSettings.FlixState>(Flix
         get() = state.extraFlixArgs.orEmpty()
         set(value) {
             state.extraFlixArgs = value
+        }
+
+    /**
+     * Whether the debugger may run an expression that performs effects.
+     *
+     * ## What it permits
+     *
+     * A watch or a breakpoint condition is compiled and then *run inside the paused program*. An
+     * expression the compiler proves pure cannot change what the program does, so it is run without
+     * asking. One with an effect can: it writes files, prints, mutates, sends. Running it means the
+     * program a reader is inspecting is no longer only the program that was stopped.
+     *
+     * ## Why a setting rather than a prompt
+     *
+     * A prompt is the obvious design and the wrong one here. The decision has to be made on the
+     * debugger's own thread, with the debuggee suspended and the evaluation lock held; showing a
+     * modal dialog from there means waiting on the UI thread while holding what the UI thread may
+     * need, which is how a debugger deadlocks. A dialog would also arrive once per breakpoint hit
+     * for a condition, which is not a question anybody can answer sixty times.
+     *
+     * So consent is given deliberately, in advance, and it persists: the refusal names this setting,
+     * and turning it on is the gesture. Off by default, because the safe reading of an unset
+     * preference is that the program should not be disturbed.
+     *
+     * Project-level, like everything else here: whether it is acceptable to run effects while
+     * debugging is a property of what is being debugged.
+     */
+    var allowEffectfulEvaluation: Boolean
+        get() = state.allowEffectfulEvaluation
+        set(value) {
+            state.allowEffectfulEvaluation = value
         }
 
     /** [extraJvmArgs] split the way a command line splits it, honouring quotes. */

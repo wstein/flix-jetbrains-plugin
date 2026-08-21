@@ -25,6 +25,7 @@ import com.sun.jdi.Value
 import org.flixlang.intellij.eval.FlixDebugEval
 import org.flixlang.intellij.eval.FlixDebugEvalAnswer
 import org.flixlang.intellij.lang.FlixFileType
+import org.flixlang.intellij.settings.FlixSettings
 import org.flixlang.intellij.lang.FlixLanguage
 
 /**
@@ -176,19 +177,26 @@ internal class FlixExpressionEvaluator(
      * what it is instead of what is missing.
      */
     private fun run(unsupported: FlixNavigation.Unsupported, context: EvaluationContext?): Value? {
+        // Without a project there is nobody to ask and nothing to consent, so the local limit is the
+        // whole answer. Taken here rather than guarded for later: everything below needs a project,
+        // and a second check would be a branch no test could reach.
+        val project = context?.project ?: throw EvaluateException(unsupported.reason)
         val answer = ask(context, unsupported.text, withArtifact = true)
             ?: throw EvaluateException(unsupported.reason)
         val typed = answer as? FlixDebugEvalAnswer.Typed
             ?: throw EvaluateException(explain(unsupported, answer))
         val artifact = typed.artifact
 
-        if (!typed.isPure) {
-            // Typed, and refused: running it would perform the program's own effects in a program
-            // that is stopped. The message says what it is, which is more use than a refusal alone.
+        if (!typed.isPure && !FlixSettings.getInstance(project).allowEffectfulEvaluation) {
+            // Typed, and refused unless the user has said otherwise. Running it would perform the
+            // program's own effects in a program that is stopped, so the default is no -- and the
+            // message says what the expression *is*, which is more use than a refusal alone, and
+            // where to say yes, which is more use than either.
             throw EvaluateException(
-                "`${unsupported.text}` is `${typed.type}` with effect `${typed.effect}`. Only an " +
-                    "expression the compiler proves pure is run, because running this one would " +
-                    "perform the program's effects while it is stopped.",
+                "`${unsupported.text}` is `${typed.type}` with effect `${typed.effect}`, and running " +
+                    "it would perform the program's effects while it is stopped. Turn on " +
+                    "\"Allow the debugger to run expressions that perform effects\" in " +
+                    "Settings | Languages & Frameworks | Flix to allow it.",
             )
         }
         if (artifact == null) {
@@ -239,6 +247,13 @@ internal class FlixExpressionEvaluator(
 
     /**
      * The compiler's verdict on the whole expression, or `null` if there is nobody to ask.
+     *
+     * Whether an effectful answer may then be *run* is a separate question, asked of
+     * [FlixSettings.allowEffectfulEvaluation] at the moment it applies rather than remembered: a
+     * user who turns it on mid-session expects the next evaluation to obey, and one who turns it off
+     * expects the same. It is a setting rather than a prompt because this runs on the debugger's own
+     * thread with the debuggee suspended, and a modal dialog from there waits on the UI thread while
+     * holding what the UI thread may want.
      *
      * `null` in an IDE without LSP4IJ, in a frame with no location, and before a project has a
      * service -- every one of which is an ordinary state rather than a fault. Blocking, on the

@@ -257,6 +257,12 @@ tests:
   manifest's `fingerprint` instead of `sourcesDigest` and it will answer from before a rebuild;
   only the latter changes when a source file does.
 
+  An **effectful** expression is refused unless the project has consented, through a checkbox in
+  Settings | Languages & Frameworks | Flix that is off by default. A setting rather than a prompt:
+  the check runs on the debugger's own thread with the debuggee suspended, where a modal dialog
+  waits on the UI thread while holding what the UI thread may want — and a condition would ask once
+  per hit.
+
   A **breakpoint condition** is the same path, asked far more often — once per hit.
   `Breakpoint.evaluateCondition` offers it to the position manager first and, on `UNSURE`, builds an
   evaluator through `findAppropriateCodeFragmentFactory`, which picks this plugin's for a `.flix`
@@ -266,9 +272,12 @@ tests:
   no language server stalls for the full one. The
   `LocalVariableTable` already carries names, slots and ranges; what it cannot carry is
   the type, because the back end erases — an `Option[String]` and a `Result[Int32, Bool]` have the
-  same descriptor. Slots stay the table's business and are deliberately not repeated. Locals are
-  **not** covered: they are named where `GenExpression` compiles them and their slots allocated
-  there, so describing them would mean re-implementing slot allocation outside code generation.
+  same descriptor. Slots stay the `LocalVariableTable`'s business and are deliberately not repeated.
+  Locals **are** covered: `JvmAst.Def` already carries `lparams`, because the back end needs them
+  itself to re-narrow types after a resume, so no part of the table reaches into code generation. A
+  name bound twice in one method with two types — only possible in sibling branches, since Flix
+  rejects nested shadowing — is dropped rather than guessed at, because the table is keyed by name
+  and either answer would be wrong half the time.
   The table also records each class's **defining symbol**, which is what makes it joinable: its own
   recorded types are monomorphised (`Option$AxNJjn6TiM2`, arguments gone), so anything needing a
   real type looks the definition up in the typed AST instead. That join is what

@@ -10,6 +10,7 @@ import com.sun.jdi.ReferenceType
 import com.sun.jdi.StackFrame
 import org.flixlang.intellij.eval.FlixDebugEval
 import org.flixlang.intellij.eval.FlixDebugEvalAnswer
+import org.flixlang.intellij.settings.FlixSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -42,16 +43,58 @@ class FlixEvaluatorAnswerTest {
     private val asked = mutableListOf<Asked>()
 
     @Test
+    fun `consent to run effects is asked for in advance, and the refusal says where`() {
+        // Off by default, because the safe reading of an unset preference is that a stopped program
+        // should not be disturbed. The refusal names the setting, since a user told only "no" has
+        // nowhere to go.
+        val message = refusalFor("println(xs)", FlixDebugEvalAnswer.Typed("Unit", "IO"))
+
+        assertTrue("the refusal does not say where to allow it: $message", message.contains("Settings"))
+        assertTrue("the refusal does not name the setting: $message", message.contains("perform effects"))
+    }
+
+    @Test
+    fun `with consent given, an effectful expression is no longer refused for its effect`() {
+        // The gesture having been made, the expression takes the running path. It fails here for
+        // want of a debuggee -- these contexts have no VM -- and what is asserted is that it fails
+        // for that reason rather than for the effect.
+        val evaluator = FlixExpressionEvaluator(
+            FlixExpressions.parse("println(xs)"),
+            compilerThatAnswers(FlixDebugEvalAnswer.Typed("Unit", "IO", artifact("dev.flix.gen.Def\u0024w"))),
+        )
+        val message = runCatching {
+            evaluator.evaluate(contextIn("dev.flix.gen.Def\u0024describe", "staticApply", consent = true))
+        }.exceptionOrNull()?.message.orEmpty()
+
+        assertFalse("consent was given and the effect was still refused: $message", message.contains("Settings"))
+    }
+
+    @Test
+    fun `with no project there is nobody to ask and nothing to consent`() {
+        // Not a state a user can produce, and the reason the consent check needs no defensive
+        // branch of its own: an evaluation without a project never reaches one, because the
+        // compiler cannot be asked either. The local limit is the whole answer.
+        val evaluator = FlixExpressionEvaluator(
+            FlixExpressions.parse("println(xs)"),
+            compilerThatAnswers(FlixDebugEvalAnswer.Typed("Unit", "IO")),
+        )
+        val message = runCatching { evaluator.evaluate(contextWithoutProject()) }
+            .exceptionOrNull()?.message.orEmpty()
+
+        assertTrue("the local limit is missing: $message", message.contains(FlixExpressions.LIMIT))
+        assertEquals("the compiler must not have been asked", emptyList<Asked>(), asked)
+    }
+
+    @Test
     fun `an effectful expression is described rather than run`() {
-        // Typed, and refused on purpose: running it would perform the program's own effects in a
-        // program that is stopped. What it *is* is still worth saying -- that is the difference
-        // between "not allowed" and "that is not a valid expression".
+        // Refused without consent, and still described: what it *is* is the difference between
+        // "not allowed" and "that is not a valid expression".
         val message = refusalFor("println(xs)", FlixDebugEvalAnswer.Typed("Unit", "IO"))
 
         assertTrue("the type is missing: $message", message.contains("Unit"))
         assertTrue("the effect is missing: $message", message.contains("IO"))
         assertTrue("the expression is missing: $message", message.contains("println(xs)"))
-        assertTrue("the reason is missing: $message", message.contains("pure"))
+        assertTrue("the reason is missing: $message", message.contains("while it is stopped"))
         assertFalse(
             "a well-typed expression must not be answered with the local grammar: $message",
             message.contains(FlixExpressions.LIMIT),
@@ -221,7 +264,7 @@ class FlixEvaluatorAnswerTest {
      * No variables on purpose: every expression under test here is one the frame cannot answer, and
      * a frame that could answer it would take a different path.
      */
-    private fun contextIn(className: String, methodName: String): EvaluationContext {
+    private fun contextIn(className: String, methodName: String, consent: Boolean = false): EvaluationContext {
         val type = proxy(ReferenceType::class.java) { m, _ -> if (m.name == "name") className else null }
         val method = proxy(Method::class.java) { m, _ -> if (m.name == "name") methodName else null }
         val location = proxy(Location::class.java) { m, _ ->
@@ -239,11 +282,31 @@ class FlixEvaluatorAnswerTest {
                 else -> null
             }
         }
-        val project = proxy(Project::class.java) { m, _ -> if (m.returnType == java.lang.Boolean.TYPE) false else null }
+        val settings = FlixSettings().apply { allowEffectfulEvaluation = consent }
+        val project = proxy(Project::class.java) { m, args ->
+            when {
+                // The one service this evaluator asks a project for. Real rather than stubbed: it is
+                // a plain state holder, and a stub would only restate its getter.
+                m.name == "getService" && args?.firstOrNull() == FlixSettings::class.java -> settings
+                m.returnType == java.lang.Boolean.TYPE -> false
+                else -> null
+            }
+        }
         return proxy(EvaluationContext::class.java) { m, _ ->
             when (m.name) {
                 "getFrameProxy" -> frameProxy
                 "getProject" -> project
+                else -> null
+            }
+        }
+    }
+
+    /** A context paused in a frame, with no project behind it. */
+    private fun contextWithoutProject(): EvaluationContext {
+        val frameProxy = proxy(StackFrameProxy::class.java) { _, _ -> null }
+        return proxy(EvaluationContext::class.java) { m, _ ->
+            when (m.name) {
+                "getFrameProxy" -> frameProxy
                 else -> null
             }
         }

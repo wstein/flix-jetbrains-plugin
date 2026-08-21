@@ -81,4 +81,22 @@ class FlixSettingsTest : BasePlatformTestCase() {
             configuration.commandFor(Path.of("/flix.jar")),
         )
     }
+
+    fun testAProjectHasNotConsentedToEffectfulEvaluationUntilItSaysSo() {
+        // The default is the whole of the safety here. A watch or a breakpoint condition is run
+        // inside the paused program, and an effectful one can write, print or mutate it -- so an
+        // unset preference has to read as "do not disturb the program", not as "go ahead".
+        assertFalse(FlixSettings().allowEffectfulEvaluation)
+    }
+
+    fun testConsentIsRememberedOnceItIsGiven() {
+        // Given in advance and persisted, rather than asked for at the moment it applies: the
+        // decision is made on the debugger's own thread with the debuggee suspended, where a modal
+        // dialog waits on the UI thread while holding what the UI thread may want.
+        val settings = FlixSettings()
+        settings.allowEffectfulEvaluation = true
+
+        assertTrue(settings.allowEffectfulEvaluation)
+        assertTrue("the decision must survive being written out", settings.state.allowEffectfulEvaluation)
+    }
 }

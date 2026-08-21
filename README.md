@@ -297,17 +297,64 @@ No JetBrains Marketplace listing currently -- consistent with `flix-lab`'s VS Co
 `"private": true` / sideloaded. Install the built zip manually via Settings/Preferences → Plugins →
 gear icon → Install Plugin from Disk...
 
+Marketplace remains the intended **stable** channel: the release workflow publishes there for a
+published GitHub Release, and nowhere else does. The preview channel below is opt-in and separate.
+
 You'll also need [LSP4IJ][lsp4ij] installed from the Marketplace (it's a `<plugin>` dependency of
 the backend module; IntelliJ should prompt for it).
 
+## Preview builds
+
+Prereleases are published to an opt-in plugin repository. **Stable builds are not** -- those go to
+JetBrains Marketplace, which stays the default way to install this plugin. A preview build is
+whatever was ready at the time: expect breakage, and expect to report it.
+
+### Adding the repository
+
+Settings/Preferences → Plugins → gear icon → **Manage Plugin Repositories…** → `+`, and add:
+
+```
+https://wstein.github.io/flix-jetbrains-plugin/updatePlugins-beta.xml
+```
+
+The plugin then appears in Marketplace search and updates like any other. The feed carries only the
+**latest** prerelease.
+
+### Leaving it
+
+Remove that URL from the same dialog. Removing the repository does **not** downgrade anything: the
+prerelease you have stays installed until you replace it, and that is a manual step. Uninstall the
+plugin and install the stable build from Marketplace, or install a specific ZIP from disk.
+
+### Going back to an exact build
+
+Every prerelease's signed ZIP stays attached to its
+[GitHub Release](https://github.com/wstein/flix-jetbrains-plugin/releases) under its own version,
+and those assets are never replaced -- the release job refuses a tag that already carries one. So a
+build that worked can always be reinstalled exactly, via Plugins → gear icon → **Install Plugin from
+Disk…**. `SHA256SUMS` beside the feed carries the checksum of the build the feed currently
+advertises.
+
+### What the channel guarantees
+
+- the ZIP is signed, and its signature is verified before it is published;
+- the asset is downloaded back and compared by SHA-256 before the feed points at it;
+- the feed's id, version and compatibility range are read out of the packaged descriptor rather than
+  written beside it;
+- a version with no prerelease part is refused, so a stable build cannot reach this channel.
+
 ## GitHub Actions / Qodana / Dependabot
 
-Generator-provided scaffolding, unmodified: [Build](.github/workflows/build.yml) and
-[Release](.github/workflows/release.yml) workflows, [issue templates](.github/ISSUE_TEMPLATE/),
+Generator-provided scaffolding, [issue templates](.github/ISSUE_TEMPLATE/),
 [Dependabot config](.github/dependabot.yml), and a Qodana inspections profile
 (`.qodana/profiles/plugin.yaml`, run locally via `./gradlew qodanaScan`, requires Docker). None of
 these have been exercised yet (no CI run, no Qodana scan) -- they're present and should work per
 the generator's defaults, but that's unverified.
+
+[Build](.github/workflows/build.yml) is unmodified. [Release](.github/workflows/release.yml) is not:
+it carries the two-channel split described under *Preview builds*, and
+`FlixReleaseWorkflowTest` pins that a prerelease never publishes to Marketplace and a stable release
+never touches the preview feed.
 
 ## Direction: one language owner, native JVM debugging
 

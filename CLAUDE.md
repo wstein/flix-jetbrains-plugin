@@ -318,22 +318,14 @@ This suite has a history of tests that passed while proving nothing. When adding
 against the broken code — mutating the implementation and rerunning is cheap and has caught real
 gaps here.
 
-One failure in `:test` is **not** yours and cannot be fixed here:
-
-```
-Cannot create extension (class=org.jetbrains.vuejs.…lsp.VueLspServerSupportProvider)
-  … Could not initialize class …VueLspServerActivationRule
-  … java.lang.ExceptionInInitializerError [in thread "ApplicationImpl pooled thread 1"]
-```
-
-IU bundles the Vue plugin, whose LSP activation rule fails to initialise in a headless test IDE.
-`LspOpenedFilesService` enumerates every `LspServerSupportProvider` when a file is opened, so any
-`BasePlatformTestCase` triggers it; the error is logged on a pooled thread, and `TestLoggerFactory`
-turns a logged error into a failure of whichever test happens to be running. That is why it lands on
-a different test each time and why rerunning the named test alone passes. Nothing in this plugin
-touches the platform LSP API — it uses LSP4IJ (ADR 0001) — and the platform offers only an
-*allowlist* (`idea.load.plugins.id`) for what a test IDE loads, no way to drop one bundled plugin.
-Rerun; do not chase it.
+The test IDE runs **without IU's bundled Vue plugin**, disabled in `prepareTestSandbox`. Its LSP
+activation rule fails to initialise headless, `LspOpenedFilesService` enumerates every
+`LspServerSupportProvider` when a file is opened, and `TestLoggerFactory` turns the resulting
+pooled-thread error into a failure of whichever test happened to be running — a different one each
+time. Nothing here touches the platform LSP API (ADR 0001), so the plugin has no business being
+loaded; `FlixTestSandboxTest` asserts it is gone, because an id that stopped matching would leave
+the flake to come back as an unrelated failure once a fortnight. Only the *test* sandbox is
+affected: `runIde`, `runIdeSplitMode` and `testIdeUi` keep every bundled plugin.
 
 ## Where things are recorded
 

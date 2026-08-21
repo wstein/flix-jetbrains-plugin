@@ -131,6 +131,25 @@ tasks.test {
     environment.remove("FLIX_JAR")
 }
 
+tasks.named<org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask>("prepareTestSandbox") {
+    // IU bundles the Vue plugin, whose LSP activation rule fails to initialise in a headless test
+    // IDE. `LspOpenedFilesService` enumerates every `LspServerSupportProvider` when a file is
+    // opened, so any BasePlatformTestCase triggers it; the failure is logged on a pooled thread and
+    // `TestLoggerFactory` turns a logged error into a failure of whichever test happens to be
+    // running. That is why it landed on a different test each time and why rerunning the named test
+    // alone passed.
+    //
+    // Nothing in this plugin touches the platform LSP API -- it uses LSP4IJ (ADR 0001) -- so the
+    // Vue plugin has no business being loaded here at all. Disabling it in the *test* sandbox is
+    // the platform's own mechanism (`disabled_plugins.txt`), and it is scoped to that sandbox: the
+    // IDEs launched by `runIde` and `testIdeUi` are untouched, because a developer looking at a
+    // real IDE should see the real set of plugins.
+    //
+    // `FlixTestSandboxTest` asserts the plugin is actually absent, since a plugin id that stops
+    // matching would leave this silently doing nothing.
+    disabledPlugins.add("org.jetbrains.plugins.vue")
+}
+
 val testIdeUi by intellijPlatformTesting.testIdeUi.registering {
     // Split mode is how this plugin actually ships, but the driver selects a different runner for a
     // frontend/backend pair and that path is unproven here. The gutter and breakpoint gestures being

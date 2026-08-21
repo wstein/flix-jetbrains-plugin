@@ -36,21 +36,36 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>The caller is an evaluator with a suspended debuggee and a user waiting on a watch, so it has
  * to have the answer before it can return one. It runs on a debugger thread, never the UI thread.
- * The timeout exists because the alternative to a slow answer is a frozen Variables view: a server
+ * The timeouts exist because the alternative to a slow answer is a frozen Variables view: a server
  * that is compiling a large project can take seconds, and one that has wedged takes forever.
+ *
+ * <p>There are two of them, and the difference matters most where the question is asked most often.
+ * A breakpoint condition is evaluated on every hit of its breakpoint, so in a project with no
+ * language server the wait for one is paid over and over — which is why finding a server is given
+ * seconds and waiting for its answer is given half a minute.
  */
 final class FlixDebugEvalClient implements FlixDebugEval {
 
     private static final Logger LOG = Logger.getInstance(FlixDebugEvalClient.class);
 
     /**
-     * How long to wait for the server.
+     * How long to wait for the compiler to answer.
      *
      * <p>Generous rather than snappy: the server may be part-way through a compilation when the
-     * question arrives, and an answer that came too late is indistinguishable from no answer at all
-     * only in the second case is the user better off being told.
+     * question arrives, and typing an expression means compiling the project it belongs to.
      */
-    private static final long TIMEOUT_SECONDS = 30;
+    static final long ANSWER_TIMEOUT_SECONDS = 30;
+
+    /**
+     * How long to wait for there to <em>be</em> a server.
+     *
+     * <p>Short, and deliberately not the same number. "Is one running" is answered immediately when
+     * one is, so a long wait here buys nothing and costs everything in the case that matters: a
+     * breakpoint condition is evaluated on <em>every hit</em> of that breakpoint, and in a project
+     * with no language server each hit would otherwise stall for the full answer timeout. A debugger
+     * that pauses for half a minute per breakpoint hit reads as one that has hung.
+     */
+    static final long SERVER_TIMEOUT_SECONDS = 2;
 
     private final Project project;
 
@@ -76,7 +91,7 @@ final class FlixDebugEvalClient implements FlixDebugEval {
         try {
             LanguageServerItem server = LanguageServerManager.getInstance(project)
                     .getLanguageServer(FlixLanguageServer.SERVER_ID)
-                    .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    .get(SERVER_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (server == null) {
                 return new FlixDebugEvalAnswer.Unavailable(
                         "the Flix language server is not running, so nothing can type this expression");
@@ -88,7 +103,7 @@ final class FlixDebugEvalClient implements FlixDebugEval {
                 return new FlixDebugEvalAnswer.Unavailable(
                         "this language server does not offer flix/debugEval/compile");
             }
-            return answerOf(api.debugEvalCompile(request).get(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+            return answerOf(api.debugEvalCompile(request).get(ANSWER_TIMEOUT_SECONDS, TimeUnit.SECONDS));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return new FlixDebugEvalAnswer.Unavailable("the request was interrupted");

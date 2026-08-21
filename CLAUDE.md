@@ -255,7 +255,15 @@ tests:
   an artifact is code and reads `n` the same way whatever `n` holds. That is what makes a watch
   affordable: it is re-evaluated on every step and asks the same question each time. Key it on the
   manifest's `fingerprint` instead of `sourcesDigest` and it will answer from before a rebuild;
-  only the latter changes when a source file does. The
+  only the latter changes when a source file does.
+
+  A **breakpoint condition** is the same path, asked far more often — once per hit.
+  `Breakpoint.evaluateCondition` offers it to the position manager first and, on `UNSURE`, builds an
+  evaluator through `findAppropriateCodeFragmentFactory`, which picks this plugin's for a `.flix`
+  context; there is deliberately no second registration. The value needs no conversion, because
+  `evaluateBoolean` unboxes before it tests. The client waits seconds for a server and half a minute
+  for its answer, and the difference is load-bearing: with one timeout, every hit in a project with
+  no language server stalls for the full one. The
   `LocalVariableTable` already carries names, slots and ranges; what it cannot carry is
   the type, because the back end erases — an `Option[String]` and a `Result[Int32, Bool]` have the
   same descriptor. Slots stay the table's business and are deliberately not repeated. Locals are

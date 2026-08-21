@@ -113,6 +113,32 @@ class FlixEvaluatorAnswerTest {
     }
 
     @Test
+    fun `a boolean condition is passed through as the debuggee produced it`() {
+        // A breakpoint condition is an expression of type Bool, and it reaches this evaluator by the
+        // same route a watch does -- the platform picks a code-fragment factory by the context, and
+        // a `.flix` context is ours. What the platform then does with the answer is unbox it and
+        // test it, so nothing here may convert, coerce or second-guess it.
+        //
+        // The value itself comes from the debuggee, so what is pinned here is that a pure Bool with
+        // an artifact takes the running path rather than one of the refusals.
+        val message = runCatching {
+            evaluatorFor(
+                "n > 0",
+                FlixDebugEvalAnswer.Typed("Bool", "Pure", artifact("dev.flix.gen.Def\u0024flixDebugEvalWrapper")),
+            )
+        }.exceptionOrNull()?.message.orEmpty()
+
+        assertFalse(
+            "a pure boolean expression must not be refused for want of something to run: $message",
+            message.contains("--Xdebug"),
+        )
+        assertFalse(
+            "a pure boolean expression must not be refused as effectful: $message",
+            message.contains("perform the program"),
+        )
+    }
+
+    @Test
     fun `an artifact is asked for, since the expression may have to be run`() {
         // The request that makes a value possible at all. Asked once, with the type and the classes
         // together: a second call to fetch the artifact would compile the project again.
@@ -145,6 +171,20 @@ class FlixEvaluatorAnswerTest {
 
         assertEquals("the compiler was consulted about a readable expression", emptyList<Asked>(), asked)
     }
+
+    /** An artifact with nothing in it, for a test that only cares which path is taken. */
+    private fun artifact(entryClass: String) = org.flixlang.intellij.eval.FlixDebugEvalArtifact(
+        classes = "",
+        entryClass = entryClass,
+        entryMethod = "staticApply",
+        valueField = "b",
+        parameters = listOf("n"),
+    )
+
+    /** Evaluates [text] against a frame that holds nothing, so only the decision is exercised. */
+    private fun evaluatorFor(text: String, answer: FlixDebugEvalAnswer) =
+        FlixExpressionEvaluator(FlixExpressions.parse(text), compilerThatAnswers(answer))
+            .evaluate(contextIn("dev.flix.gen.Def\u0024describe", "staticApply"))
 
     /** The message a watch would show for [text], given what the compiler says about it. */
     private fun refusalFor(text: String, answer: FlixDebugEvalAnswer?): String {

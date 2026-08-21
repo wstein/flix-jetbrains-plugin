@@ -130,6 +130,58 @@ class FlixSemanticFallbackAnnotatorTest : BasePlatformTestCase() {
         assertTrue("the module was coloured too: $roles", roles.none { it.second == "List" })
     }
 
+    fun testARecordLabelIsColouredWhereItIsRead() {
+        // `#` has one meaning in the grammar -- `#{`, `#(`, `#|` and `Array#` are each their own
+        // token -- so whatever the receiver turns out to be, the name after it is a label.
+        val roles = rolesIn("def f(w: {alive = Bool}): Bool = w#alive")
+
+        assertTrue(
+            "the label was not coloured as a field: $roles",
+            roles.contains("FLIX_FIELD_NAME" to "alive"),
+        )
+    }
+
+    fun testEveryLabelInAChainIsColoured() {
+        // `inv#pos#x` is two labels, and the suffix rule is private, so both are bare tokens under
+        // one postfix expression. A rule matching the expression would colour one of them.
+        val roles = rolesIn("def f(inv: {pos = {x = Int32}}): Int32 = inv#pos#x")
+        val fields = roles.filter { it.first == "FLIX_FIELD_NAME" }.map { it.second }
+
+        assertEquals("not every label in the chain was coloured: $roles", listOf("pos", "x"), fields)
+    }
+
+    fun testALabelWrittenInARecordOperationIsColoured() {
+        // The three forms `recordOp` has: update, extend and restrict.
+        val roles = rolesIn("def f(r: {b = Int32}): Bool = { a = 1, +b = 2, -c | r }")
+        val fields = roles.filter { it.first == "FLIX_FIELD_NAME" }.map { it.second }.sorted()
+
+        assertEquals("a written label was missed: $roles", listOf("a", "b", "c"), fields)
+    }
+
+    fun testALowercaseNameThatIsNotALabelIsNotColouredAsOne() {
+        // The rule is "a name preceded by `#`", not "a name". Without the token test every
+        // lowercase name in the file would come back as a field.
+        val roles = rolesIn("def f(): Int32 = let total = 1; total")
+
+        assertTrue(
+            "a plain name was coloured as a field: $roles",
+            roles.none { it.first == "FLIX_FIELD_NAME" },
+        )
+    }
+
+    fun testARecordPatternsLabelIsLeftToTheServer() {
+        // Deliberate. The server emits `Property` for a record pattern's label too, but over
+        // `RecordLabelPattern`'s own location -- which `Weeder2` sets to the whole `x = p`, the
+        // sub-pattern included. Colouring the label alone would be right and would still not match;
+        // colouring the wider span would spread a field colour across a binding.
+        val roles = rolesIn("def f(r: {x = Int32}): Int32 = match r { case {x = v | _} => v }")
+
+        assertTrue(
+            "a pattern label was coloured: $roles",
+            roles.none { it.first == "FLIX_FIELD_NAME" },
+        )
+    }
+
     fun testAHeadThatIsNotCalledIsNotColoured() {
         // A postfix expression can carry several suffixes, and only a call counts. `r#fn(1)` selects
         // a field and *then* calls it: the argument list belongs to the selection, not to `r`.

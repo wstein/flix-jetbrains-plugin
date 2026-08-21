@@ -38,6 +38,22 @@ A parameter is found in the enclosing parameter lists, which the PSI has — inc
 since `lambdaExpr` is a parameter list too. Both are left uncoloured rather than coloured
 differently: a wrong colour is read as information, an absent one as "not yet".
 
+A **record label** is the second use, and the grammar settles it even more cleanly: `#` appears in
+exactly one production, `postfixSuffix ::= HASH NAME_LOWERCASE`. Every other `#` in Flix is a token
+of its own — `#{`, `#(`, `#|`, `Array#` — so a `HASH` followed by a name is a label whatever the
+receiver turns out to be. It is read off the **leaves**, because that suffix is a private rule and
+`inv#pos#x` is two labels under one postfix expression; a rule matching the expression would colour
+one. Labels being *written* (`{ a = 1, +b = 2, -c | r }`) come from `recordOp`, which is a node.
+
+Two label positions are deliberately left alone:
+
+- a **record pattern**'s. The server emits `Property` there too, but over `RecordLabelPattern`'s own
+  location, which `Weeder2` sets to the whole `x = p` — the sub-pattern included. Colouring the
+  label alone would be right and would still not match; imitating the span would spread a field
+  colour across a binding.
+- a **record type**'s (`{x = Int32}`). The server emits nothing, so colouring it would be this layer
+  inventing a role rather than arriving early with one.
+
 Every other use — a bare name, a type in a signature — still needs resolution and stays the
 server's.
 

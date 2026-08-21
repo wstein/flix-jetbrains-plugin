@@ -17,6 +17,8 @@ import org.flixlang.intellij.lang.psi.FlixParameter
 import org.flixlang.intellij.lang.psi.FlixUnaryLambdaExpr
 import org.flixlang.intellij.lang.psi.FlixQualifiedName
 import org.flixlang.intellij.lang.psi.FlixPostfixExpr
+import org.flixlang.intellij.lang.psi.FlixRecordOp
+import org.flixlang.intellij.lang.psi.FlixTypes
 import org.flixlang.intellij.lang.psi.FlixParameterList
 import org.flixlang.intellij.lang.psi.FlixArgumentList
 import org.flixlang.intellij.lang.psi.FlixPlainEnumDecl
@@ -69,7 +71,7 @@ import org.flixlang.intellij.lang.psi.FlixVariablePattern
  * | `enum` name | `Enum` | `CLASS_NAME` |
  * | enum case | `EnumMember` | `STATIC_FIELD` |
  * | `struct` name, `type alias` name | `Type` | `CLASS_NAME` |
- * | struct field | `Property` | `INSTANCE_FIELD` |
+ * | struct field, record label | `Property` | `INSTANCE_FIELD` |
  * | `trait` name | `Interface` | `INTERFACE_NAME` |
  * | type parameter | `TypeParameter` | `PARAMETER` |
  *
@@ -150,7 +152,47 @@ class FlixSemanticFallbackAnnotator : Annotator {
         // The one *use* this colours, and the only one the parser can settle on its own.
         is FlixPostfixExpr -> callee(element)
 
-        else -> null
+        // A label being written: `{ x = 1 }`, `{ +x = 1 | r }`, `{ -x | r }`.
+        is FlixRecordOp -> named(element.ident, FlixSyntaxHighlighter.FIELD_NAME)
+
+        // Leaves reach here, which is where a label being *read* is: `e#f` is a bare token pair
+        // rather than a node of its own.
+        else -> recordLabel(element)
+    }
+
+    /**
+     * The label in `e#f`, when [element] is the `f`.
+     *
+     * ## Why this one needs no resolution either
+     *
+     * `#` has exactly one meaning in the grammar. `postfixSuffix`'s `HASH NAME_LOWERCASE` is its
+     * only appearance -- `#{`, `#(`, `#|` and `Array#` are each their own token, so nothing else can
+     * produce a `HASH` followed by a name. Whatever `e` turns out to be, `f` is a record label, and
+     * a chain (`inv#pos#x`) is a run of these with no rule needing to walk it.
+     *
+     * ## Why it is read off a leaf
+     *
+     * `postfixSuffix` is a private rule, so the pair are direct children of the [FlixPostfixExpr]
+     * rather than a node this could match on. Matching the node instead would mean colouring one
+     * label per expression, and `inv#pos#x` has two.
+     *
+     * ## What is left to the server, and why
+     *
+     * A **record pattern**'s labels. The server emits `Property` for those too, but over
+     * `RecordLabelPattern`'s own location -- which is the whole `x = p`, sub-pattern included, not
+     * the label. Read in `Weeder2`, where the location is the tree's. Colouring the label alone here
+     * would be right and would still not match, and imitating the wider span would spread a field
+     * colour across a binding.
+     *
+     * A **record type**'s labels, for the opposite reason: the server emits nothing for them, so
+     * colouring them here would be this layer inventing a role rather than arriving early with one.
+     */
+    private fun recordLabel(element: PsiElement): Role? {
+        if (element.node?.elementType != FlixTypes.NAME_LOWERCASE) return null
+        val hash = generateSequence(element.prevSibling) { it.prevSibling }
+            .firstOrNull { it !is PsiWhiteSpace }
+        if (hash?.node?.elementType != FlixTypes.HASH) return null
+        return Role(element.textRange, FlixSyntaxHighlighter.FIELD_NAME)
     }
 
     /**

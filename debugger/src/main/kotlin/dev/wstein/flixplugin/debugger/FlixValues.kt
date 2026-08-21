@@ -207,6 +207,46 @@ internal object FlixValues {
         return if (body.isEmpty()) "$name {}" else "$name { $body }"
     }
 
+    /**
+     * The class a lifted lambda is compiled to, before the definition it came out of.
+     *
+     * `y -> x * y` inside `curriedMultiply` becomes `dev.flix.gen.Clo$curriedMultiply$Xb8Kaq73gD3`,
+     * holding what it captured in `clo0`, `clo1`, … (`JvmOps.getClosureClassName`).
+     */
+    const val CLOSURE_PREFIX: String = "Clo\$"
+
+    /** A closure's captured values, in order: `clo0`, `clo1`, … */
+    val CAPTURE_FIELD: Regex = Regex("""clo(\d+)""")
+
+    /** The class a `lazy` expression is compiled to, before its type: `Lazy$Int32`. */
+    const val LAZY_PREFIX: String = "Lazy\$"
+
+    /** Whether `className` is a lifted lambda. */
+    fun isClosure(className: String): Boolean = simpleNameOf(className).startsWith(CLOSURE_PREFIX)
+
+    /** Whether `className` is a lazy value. */
+    fun isLazy(className: String): Boolean = simpleNameOf(className).startsWith(LAZY_PREFIX)
+
+    /**
+     * A function value rendered as what it is: `fn curriedMultiply(6)`.
+     *
+     * The name is the definition the lambda was lifted out of, which is what a reader has to go on:
+     * a lambda has no name of its own, and the one place it appears in the source is inside that
+     * definition. What follows is what it captured, since that is the difference between one
+     * closure of `curriedMultiply` and another.
+     */
+    fun formatClosure(definition: String, captures: List<String>): String =
+        "fn $definition(" + captures.joinToString(", ") + ")"
+
+    /**
+     * A lazy value: `lazy 4` once it has been forced, `lazy <unforced>` before.
+     *
+     * Which it is, is the thing worth knowing -- and reading it costs nothing, where forcing it in
+     * the debugger would run the program's own code to answer a question the reader only asked by
+     * looking.
+     */
+    fun formatLazy(value: String?): String = "lazy " + (value ?: "<unforced>")
+
     /** `List.Cons` and `List.Nil`, the two cases every Flix list is built from. */
     const val LIST_CONS: String = "List.Cons"
     const val LIST_NIL: String = "List.Nil"

@@ -78,6 +78,10 @@ registrations:
     com.intellij.debugger.compoundRendererProvider.tuple: dev.wstein.flixplugin.debugger.FlixTupleRenderer
     # A struct's field names are recorded in the value under --Xdebug; the class carries only types.
     com.intellij.debugger.compoundRendererProvider.struct: dev.wstein.flixplugin.debugger.FlixStructRenderer
+    # A function value, named after the definition its lambda was lifted out of.
+    com.intellij.debugger.compoundRendererProvider.closure: dev.wstein.flixplugin.debugger.FlixClosureRenderer
+    # A lazy value, which says whether it has been forced without forcing it.
+    com.intellij.debugger.compoundRendererProvider.lazy: dev.wstein.flixplugin.debugger.FlixLazyRenderer
     # Flix expressions in a watch. Scoped by `isContextAccepted` to a .flix context, so the Java,
     # Kotlin and Scala evaluators are untouched -- the platform asks every registered factory.
     com.intellij.debugger.codeFragmentFactory: dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory

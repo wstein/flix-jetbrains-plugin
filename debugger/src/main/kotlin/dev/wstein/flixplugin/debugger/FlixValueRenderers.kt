@@ -289,6 +289,113 @@ class FlixRecordRenderer : CompoundRendererProvider() {
 }
 
 /**
+ * Renders a function value as `fn curriedMultiply(6)` rather than
+ * `{Clo$curriedMultiply$Xb8Kaq73gD3@3454}` over `clo0`, `pc` and `arg0`.
+ *
+ * A lambda is lifted into a class of its own, named after the definition it came out of, holding
+ * what it captured in `clo0`, `clo1` and its calling state in `pc` and `arg0`. The captures are the
+ * value -- the difference between one closure of `curriedMultiply` and another is the `6` -- and the
+ * calling state is machinery.
+ *
+ * The captures are shown by value and not by name. The names exist in the source and nowhere in the
+ * class: `clo0` is a position, and the `LocalVariableTable` that would map it to `x` is keyed on JVM
+ * slots rather than on fields. Recording them, as `--Xdebug` already records a tag and a struct's
+ * fields, is what would turn this into `fn curriedMultiply(x = 6)`.
+ */
+class FlixClosureRenderer : CompoundRendererProvider() {
+
+    override fun getName(): String = "Flix function"
+
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.CLOSURE_PREFIX
+
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type: Type? -> completedFuture(type != null && FlixValues.isClosure(type.name())) }
+
+    override fun isEnabled(): Boolean = true
+
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
+        object : FlixLabelRenderer("FlixClosure") {
+            override fun label(value: Value?): String {
+                val closure = value as? ObjectReference ?: return ""
+                val name = FlixFrames.definitionOf(closure.referenceType().name())
+                    ?: FlixValues.simpleNameOf(closure.referenceType().name())
+                return FlixValues.formatClosure(name, capturesOf(closure).map { (_, v) -> renderScalar(v) })
+            }
+        }
+
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixClosureChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> =
+                capturesOf(value as? ObjectReference ?: return emptyList())
+        }
+
+    /**
+     * What the closure captured, in order.
+     *
+     * A lambda that captures nothing is still given one capture, of `Unit`, so that every closure
+     * has the same shape. It is dropped here: a unit carries no information, and `fn main(())` reads
+     * as a call with an argument rather than as a function of no captures. A genuine unit-typed
+     * capture is indistinguishable from the placeholder and is dropped with it, which costs the
+     * reader nothing they could have used.
+     */
+    private fun capturesOf(closure: ObjectReference): List<Pair<String, Value?>> =
+        closure.referenceType().allFields()
+            .mapNotNull { field ->
+                FlixValues.CAPTURE_FIELD.matchEntire(field.name())?.groupValues?.get(1)?.toIntOrNull()
+                    ?.let { index -> index to field }
+            }
+            .sortedBy { it.first }
+            .map { (index, field) -> "[$index]" to closure.getValue(field) }
+            .filterNot { (_, value) -> isUnit(value) }
+
+    private fun isUnit(value: Value?): Boolean =
+        (value as? ObjectReference)?.referenceType()?.name()?.endsWith(".Unit\$") == true
+}
+
+/**
+ * Renders a lazy value as `lazy 4` once it has been forced and `lazy <unforced>` before.
+ *
+ * Which of the two it is, is the thing worth knowing, and it is readable: the class keeps the
+ * unevaluated expression in `expression` and clears it when the value is forced. Reading that costs
+ * nothing, where *forcing* it to show a value would run the program's own code to answer a question
+ * the reader asked only by looking at a variable.
+ */
+class FlixLazyRenderer : CompoundRendererProvider() {
+
+    override fun getName(): String = "Flix lazy"
+
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.LAZY_PREFIX
+
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type: Type? -> completedFuture(type != null && FlixValues.isLazy(type.name())) }
+
+    override fun isEnabled(): Boolean = true
+
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
+        object : FlixLabelRenderer("FlixLazy") {
+            override fun label(value: Value?): String {
+                val lazy = value as? ObjectReference ?: return ""
+                return FlixValues.formatLazy(forcedValueOf(lazy)?.let { renderScalar(it) })
+            }
+        }
+
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixLazyChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> {
+                val lazy = value as? ObjectReference ?: return emptyList()
+                // The expression while it stands, the value once it does not: showing both would
+                // show one of them as empty and invite the reader to wonder which is authoritative.
+                forcedValueOf(lazy)?.let { return listOf("value" to it) }
+                return listOfNotNull(lazy.readField("expression")?.let { "expression" to it })
+            }
+        }
+
+    /** The value, if it has been forced -- which is exactly when the expression has been cleared. */
+    private fun forcedValueOf(lazy: ObjectReference): Value? =
+        if (lazy.readField("expression") == null) lazy.readField("value") else null
+}
+
+/**
  * Renders a Flix struct as `Counter { count = 3, label = "hits" }` rather than
  * `{Struct$Int32$Obj@3596}` over `field0`, `field1`.
  *
@@ -604,6 +711,10 @@ internal fun renderScalar(value: Value?): String = when (value) {
     is ObjectReference -> {
         val typeName = value.referenceType().name()
         when {
+            // The language writes unit as `()`. Without this it rendered as the empty string, since
+            // its class name ends in the `$` the tag rule strips -- so a unit value showed as
+            // nothing at all, which is indistinguishable from a rendering that failed.
+            typeName.endsWith(".Unit\$") -> "()"
             // Shallow, like every other nested value here: a tuple of tuples shows the inner ones
             // by class, and expanding the node is what shows the rest.
             FlixValues.isTuple(typeName) -> FlixValues.formatTuple(tupleComponents(value).map(::renderComponent))

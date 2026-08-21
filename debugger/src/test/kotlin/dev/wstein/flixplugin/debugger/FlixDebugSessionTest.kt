@@ -417,6 +417,50 @@ class FlixDebugSessionTest {
         }
     }
 
+    /** A closure with a capture, one without, and a lazy value on each side of being forced. */
+    private val closureFixture = """
+        def curriedMultiply(x: Int32): Int32 -> Int32 = y -> x * y
+
+        def main(): Unit \ IO =
+            let multFn = curriedMultiply(6);
+            let unforced = lazy (1 + 1);
+            let forced = lazy (2 + 2);
+            let f = force forced;
+            let anon = (y -> y + 1);
+            println(multFn(7) + f + anon(1));
+            println(force unforced);
+            spin(2000000000)
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a function value and a lazy one read as what they are, live`() {
+        session(closureFixture, "println(multFn(7)") { _, stop, _ ->
+            // `{Clo$curriedMultiply$Xb8Kaq73gD3@3454}` over `clo0`, `pc`, `arg0`.
+            assertEquals("fn curriedMultiply(6)", closureLabel(stop, "multFn"))
+            // A lambda that captures nothing is still given one capture, of Unit, so that every
+            // closure has the same shape. It is not a capture the reader wrote, and dropping it is
+            // visible: a kept one reads `fn main(())`, since unit renders as the language writes it.
+            assertEquals("fn main()", closureLabel(stop, "anon"))
+            assertEquals(emptyList<String>(), captureNames(stop, "anon"))
+            assertEquals(listOf("[0]"), captureNames(stop, "multFn"))
+
+            // Which side of `force` a lazy value is on, read without forcing it.
+            assertEquals("lazy <unforced>", lazyLabel(stop, "unforced"))
+            assertEquals("lazy 4", lazyLabel(stop, "forced"))
+        }
+    }
+
+    private fun closureLabel(stop: BreakpointEvent, name: String): String =
+        (FlixClosureRenderer().valueLabelRenderer as FlixLabelRenderer).label(local(stop, name))
+
+    private fun captureNames(stop: BreakpointEvent, name: String): List<String> =
+        (FlixClosureRenderer().childrenRenderer as FlixChildrenRenderer).childrenOf(local(stop, name)).map { it.first }
+
+    private fun lazyLabel(stop: BreakpointEvent, name: String): String =
+        (FlixLazyRenderer().valueLabelRenderer as FlixLabelRenderer).label(local(stop, name))
+
     @Test(timeout = SESSION_TIMEOUT_MS)
     fun `a struct reads with the names its fields were given, live`() {
         // `{Struct$Int32$Obj@3596}` over `field0` and `field1`: the class is shared by every struct

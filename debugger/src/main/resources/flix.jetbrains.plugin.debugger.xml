@@ -96,6 +96,16 @@
         <debugger.compoundRendererProvider
                 implementation="dev.wstein.flixplugin.debugger.FlixStructRenderer"/>
 
+        <!-- A function value and a lazy one. A lifted lambda is a class named after the definition
+             it came out of, holding its captures in clo0, clo1 and its calling state in pc and
+             arg0; the captures are the value and the rest is machinery. A lazy value keeps its
+             unevaluated expression until it is forced, and clears it then, so which of the two it
+             is can be read without running anything. -->
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixClosureRenderer"/>
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixLazyRenderer"/>
+
         <!-- Lets a watch be written in Flix rather than in Java. IntelliJ's Java debugger still owns
              the session (ADR 0002); this only supplies the front end for a .flix context, so Java,
              Kotlin and Scala frames keep their own evaluators: `isContextAccepted` is what keeps

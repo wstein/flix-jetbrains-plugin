@@ -89,6 +89,13 @@
         <debugger.compoundRendererProvider
                 implementation="dev.wstein.flixplugin.debugger.FlixTupleRenderer"/>
 
+        <!-- A struct's class is shared by every struct of the same erased shape and names its
+             fields by position, so it says how many there are and nothing else: a channel read as
+             field0 through field5. An Xdebug build records the struct's name and its field names in
+             the value, and this pairs them up. -->
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixStructRenderer"/>
+
         <!-- Lets a watch be written in Flix rather than in Java. IntelliJ's Java debugger still owns
              the session (ADR 0002); this only supplies the front end for a .flix context, so Java,
              Kotlin and Scala frames keep their own evaluators: `isContextAccepted` is what keeps

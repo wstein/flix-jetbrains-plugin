@@ -1,5 +1,8 @@
 package dev.wstein.flixplugin.debugger
 
+import com.sun.jdi.ArrayReference
+import com.sun.jdi.BooleanValue
+import com.sun.jdi.IntegerValue
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.Value
 
@@ -86,6 +89,61 @@ internal object FlixCollections {
         // More is left when a subtree is still pending or the walk stopped at the limit.
         return entries to (entries.size >= limit && (node != null || pending.isNotEmpty()))
     }
+
+    /**
+     * The entries of a `BPlusTree`, in key order, and whether the walk was cut short.
+     *
+     * The standard library stores a solved relation in one of these, and its nodes are structs --
+     * which is why this was unreadable until `--Xdebug` began recording struct field names. It is
+     * not read positionally: `keys`, `values`, `size`, `isLeaf`, `children` and `next` are looked up
+     * by the names the value carries, so a struct whose fields move does not silently transpose the
+     * data. A node that carries no names, as in a build without `--Xdebug`, yields nothing.
+     *
+     * The walk descends to the leftmost leaf and then follows the leaf chain, which is what that
+     * chain is for; the interior is never traversed.
+     */
+    fun bPlusEntries(tree: ObjectReference, limit: Int): Pair<List<Pair<Value?, Value?>>, Boolean> {
+        val entries = mutableListOf<Pair<Value?, Value?>>()
+        var node = leftmostLeaf(FlixStructs.field(tree, "root") as? ObjectReference)
+        val seen = mutableSetOf<Long>()
+
+        while (node != null && entries.size < limit) {
+            if (!seen.add(node.uniqueID())) return entries to true
+            val size = (FlixStructs.field(node, "size") as? IntegerValue)?.value() ?: 0
+            val keys = FlixStructs.field(node, "keys") as? ArrayReference
+            val values = FlixStructs.field(node, "values") as? ArrayReference
+            for (i in 0 until size) {
+                if (entries.size >= limit) return entries to true
+                entries += runCatching { keys?.getValue(i) }.getOrNull() to
+                    runCatching { values?.getValue(i) }.getOrNull()
+            }
+            node = unwrapOption(FlixStructs.field(node, "next"))
+        }
+        return entries to (node != null)
+    }
+
+    /** The leftmost leaf under `node`, following `children[0]` while there is an interior node. */
+    private fun leftmostLeaf(node: ObjectReference?): ObjectReference? {
+        var current = node
+        var depth = 0
+        while (current != null && depth++ < MAX_DEPTH) {
+            val leaf = (FlixStructs.field(current, "isLeaf") as? BooleanValue)?.value()
+            if (leaf != false) return current
+            val children = FlixStructs.field(current, "children") as? ArrayReference ?: return current
+            current = runCatching { children.getValue(0) }.getOrNull() as? ObjectReference ?: return null
+        }
+        return current
+    }
+
+    /** `Option.Some(x)` as `x`, and anything else -- including `None` -- as `null`. */
+    private fun unwrapOption(value: Value?): ObjectReference? {
+        val option = value as? ObjectReference ?: return null
+        val case = FlixValues.tagOf(option.referenceType().name(), recordedTagOf(option)) ?: return null
+        return if (case.endsWith("Option.Some")) option.readField("v0") as? ObjectReference else null
+    }
+
+    /** How deep to descend before giving up; a B+ tree of any real size is far shallower. */
+    private const val MAX_DEPTH = 64
 
     /** The case `value` is, qualified by its enum and with the specialisation hash removed. */
     private fun caseOf(value: ObjectReference): String? =

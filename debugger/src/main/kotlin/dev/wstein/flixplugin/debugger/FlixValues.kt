@@ -173,6 +173,40 @@ internal object FlixValues {
     /** Whether `className` is a Flix tuple. */
     fun isTuple(className: String): Boolean = simpleNameOf(className).startsWith(TUPLE_PREFIX)
 
+    /**
+     * The class every Flix struct is compiled to, before its field types.
+     *
+     * Shared by every struct of the same erased shape, with fields named `field0`, `field1` by
+     * position -- so unlike a tuple, the class says how many fields there are and nothing else.
+     */
+    const val STRUCT_PREFIX: String = "Struct\$"
+
+    /** The field a `--Xdebug` build writes the struct's identity into (`BackendObjType.Struct`). */
+    const val STRUCT_NAME_FIELD: String = "struct"
+
+    /** Whether `className` is a Flix struct. */
+    fun isStruct(className: String): Boolean = simpleNameOf(className).startsWith(STRUCT_PREFIX)
+
+    /**
+     * The struct's name and its field names, as recorded: `Counter{count,label}`.
+     *
+     * `null` when nothing was recorded, which is every build without `--Xdebug`. The caller then has
+     * positions and no names, and says so by keeping them.
+     */
+    fun structNameOf(recorded: String?): Pair<String, List<String>>? {
+        val text = recorded?.takeIf { it.endsWith("}") && it.contains('{') } ?: return null
+        val name = text.substringBefore('{')
+        val fields = text.substringAfter('{').dropLast(1).split(',').filter { it.isNotBlank() }
+        return name to fields
+    }
+
+    /** A struct rendered as it is written: `Counter { count = 3, label = "hits" }`. */
+    fun formatStruct(name: String, fields: List<Pair<String, String>>, truncated: Boolean): String {
+        val body = (fields.map { (field, value) -> "$field = $value" } +
+            if (truncated) listOf("…") else emptyList()).joinToString(", ")
+        return if (body.isEmpty()) "$name {}" else "$name { $body }"
+    }
+
     /** `List.Cons` and `List.Nil`, the two cases every Flix list is built from. */
     const val LIST_CONS: String = "List.Cons"
     const val LIST_NIL: String = "List.Nil"

@@ -11,6 +11,7 @@ import com.sun.jdi.ReferenceType
 import com.sun.jdi.StringReference
 import com.sun.jdi.Value
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.lang.reflect.Proxy
 import java.util.concurrent.CompletableFuture
@@ -227,6 +228,62 @@ class FlixValueTreeTest {
         assertEquals(false, FlixTupleRenderer().applicableTo(null))
     }
 
+    // --- structs ----------------------------------------------------------------------------------
+
+    @Test
+    fun `a struct reads with the names its fields were given`() {
+        val counter = struct("Counter{count,label}", int(3), string("hits"))
+
+        assertEquals("""Counter { count = 3, label = "hits" }""", FlixStructRenderer().labelOf(counter))
+        assertEquals(listOf("count", "label"), FlixStructRenderer().childNamesOf(counter))
+    }
+
+    @Test
+    fun `without a record a struct keeps the positional names it has`() {
+        // A build without `--Xdebug` records nothing, and the class names its fields by position.
+        // That is what a reader had before, and it is still true.
+        val counter = struct(recorded = null, int(3), string("hits"))
+
+        assertEquals(listOf("field0", "field1"), FlixStructRenderer().childNamesOf(counter))
+        assertEquals("""Struct${'$'}Int32${'$'}Obj { field0 = 3, field1 = "hits" }""", FlixStructRenderer().labelOf(counter))
+    }
+
+    @Test
+    fun `a record of the wrong length names nothing rather than half of it`() {
+        // The names are paired with the fields by position, so a list of the wrong length pairs them
+        // wrongly from the first mismatch on. Half a struct named and half not is worse than none.
+        val counter = struct("Counter{count}", int(3), string("hits"))
+
+        assertEquals(listOf("field0", "field1"), FlixStructRenderer().childNamesOf(counter))
+    }
+
+    @Test
+    fun `a struct is recognised by its class, and a tuple is not one`() {
+        assertEquals(true, FlixStructRenderer().applicableTo(struct("C{a}", int(1)).referenceType()))
+        assertEquals(false, FlixStructRenderer().applicableTo(tuple(int(1)).referenceType()))
+        assertEquals(false, FlixStructRenderer().applicableTo(null))
+    }
+
+    @Test
+    fun `a struct field is found by its name, not by where it happens to sit`() {
+        // The rule the B+ tree walk rests on. In the tree the library builds, `keys` happens to be
+        // `field1` -- so a walk that read position 1 and called it `keys` would agree with a walk
+        // that read the name, and no live test could tell them apart. This one can.
+        val node = struct("Node{size,keys,values}", int(2), string("K"), string("V"))
+
+        assertEquals(2, (FlixStructs.field(node, "size") as com.sun.jdi.IntegerValue).value())
+        assertEquals("K", (FlixStructs.field(node, "keys") as com.sun.jdi.StringReference).value())
+        assertEquals("V", (FlixStructs.field(node, "values") as com.sun.jdi.StringReference).value())
+    }
+
+    @Test
+    fun `a field nobody recorded is not found by guessing`() {
+        // Without `--Xdebug` there are no names, and a reader that fell back to a position would be
+        // reading whatever happened to be there.
+        assertNull(FlixStructs.field(struct(recorded = null, int(2)), "size"))
+        assertNull(FlixStructs.field(struct("Node{size}", int(2)), "keys"))
+    }
+
     // --- applicability, through the checker the platform actually calls ------------------------
 
     @Test
@@ -347,6 +404,22 @@ class FlixValueTreeTest {
         fields["rest"] = head
         return head
     }
+
+    /** A struct, whose class carries only types; the names live in the value under `--Xdebug`. */
+    private fun struct(recorded: String?, vararg fields: Value): ObjectReference {
+        val types = fields.joinToString("$") { if (it is com.sun.jdi.IntegerValue) "Int32" else "Obj" }
+        val values = fields.withIndex().associate { (i, v) -> "field$i" to v } +
+            listOfNotNull(recorded?.let { FlixValues.STRUCT_NAME_FIELD to string(it) })
+        return objectRef("dev.flix.gen.Struct\$$types", values)
+    }
+
+    private fun FlixStructRenderer.labelOf(value: Value): String =
+        (valueLabelRenderer as FlixLabelRenderer).label(value)
+
+    private fun FlixStructRenderer.childNamesOf(value: Value): List<String> =
+        (childrenRenderer as FlixChildrenRenderer).childrenOf(value).map { it.first }
+
+    private fun FlixStructRenderer.applicableTo(type: Type?): Boolean = ask(isApplicableChecker, type)
 
     /** A tuple, as `BackendObjType.Tuple` compiles one: a class per arity, fields `field0`, `field1`. */
     private fun tuple(vararg components: Value): ObjectReference {

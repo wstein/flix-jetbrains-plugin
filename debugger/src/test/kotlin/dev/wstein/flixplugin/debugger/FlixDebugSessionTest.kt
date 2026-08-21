@@ -332,18 +332,116 @@ class FlixDebugSessionTest {
     }
 
     @Test(timeout = SESSION_TIMEOUT_MS)
-    fun `a solved model reads as the relations it holds, live`() {
-        // `Model(Map)` over a red-black tree of B+ trees. The *relations* are exact -- a predicate
-        // name, an arity, and whether it is a lattice -- so those are what is shown. The facts are
-        // not: they live in `Struct$…` classes shared by every struct of the same erased shape, so
-        // their field names are nowhere in the value, and walking them would be a structural guess.
+    fun `a solved model reads as the facts it holds, live`() {
+        // `Model(Map)` over a red-black tree of B+ trees, whose nodes are structs -- unreadable
+        // until `--Xdebug` began recording struct field names, and read by those names now: `keys`,
+        // `values`, `size`, `isLeaf`, `next`.
         session(datalogFixture, "println(paths)") { _, stop, _ ->
             val model = tagLabel(stop, "resolved")
 
-            assertTrue("the derived relations are missing from $model", model.contains("Path/2"))
-            assertTrue("the input relations are missing from $model", model.contains("Edge/2"))
-            assertTrue("the model should read as one: $model", model.startsWith("Model#{ "))
+            // Asserted whole rather than by `contains`: a walk that reads past a node's `size`
+            // picks up the unused slots of a 64-wide array, and every `contains` still passes.
+            assertEquals(
+                "Model#{ Edge(1, 2). Edge(2, 3). Edge(3, 4). Path(1, 2). Path(1, 3). Path(1, 4). " +
+                    "Path(2, 3). Path(2, 4). Path(3, 4). }",
+                model,
+            )
         }
+    }
+
+    /** Temporary hook for shape dumps. */
+    fun dumpSession(fixture: String, marker: String, body: (BreakpointEvent) -> Unit) {
+        session(fixture, marker) { _, stop, _ -> body(stop) }
+    }
+
+    /** A struct, whose class names its fields by position and says nothing else about them. */
+    private val structFixture = """
+        mod Counter {
+            pub struct Counter[r] {
+                mut count: Int32,
+                label: String
+            }
+
+            pub def make(rc: Region[r], n: Int32): Counter[r] \ r =
+                new Counter @ rc { count = n, label = "hits" }
+
+            pub def total(c: Counter[r]): Int32 \ r = c->count + String.length(c->label)
+        }
+
+        def main(): Unit \ IO =
+            region rc {
+                let c = Counter.make(rc, 3);
+                println(Counter.total(c));
+                spin(2000000000)
+            }
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    /**
+     * A chain of forty nodes, whose closure is 780 facts.
+     *
+     * A B+ tree node here holds 64 entries, so a relation this size spans several leaves -- which is
+     * what makes the leaf chain load-bearing. The three-fact fixture above fits in one leaf, and
+     * with it three separate mistakes in the walk (reading fields by position, never following the
+     * chain, ignoring a node's `size`) all still passed.
+     */
+    private val largeDatalogFixture = """
+        def main(): Unit \ IO =
+            let edges = List.map(i -> (i, i + 1), List.range(1, 40));
+            let p = inject edges into Edge/2;
+            let rules = #{
+                Path(x, y) :- Edge(x, y).
+                Path(x, z) :- Path(x, y), Edge(y, z).
+            };
+            let resolved = solve (p <+> rules);
+            let paths = query resolved select (x, y) from Path(x, y);
+            println(Vector.length(paths));
+            spin(2000000000)
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a relation larger than one tree node is read whole, live`() {
+        session(largeDatalogFixture, "println(Vector.length(paths))") { _, stop, _ ->
+            val model = local(stop, "resolved") as com.sun.jdi.ObjectReference
+            val relations = FlixDatalog.relations(model, Int.MAX_VALUE).first
+                .associate { (name, tree) -> name.substringBefore('/') to FlixDatalog.renderRelation(name, tree, 10_000) }
+
+            // 39 edges in a chain of 40, and every pair (i, j) with i < j reachable: 780.
+            assertEquals("edges", 39, relations["Edge"]?.size)
+            assertEquals("paths", 780, relations["Path"]?.size)
+            assertTrue("a fact should read as one: ${relations["Path"]?.first()}",
+                relations["Path"]?.all { it.matches(Regex("""Path\(\d+, \d+\)\.""")) } == true)
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a struct reads with the names its fields were given, live`() {
+        // `{Struct$Int32$Obj@3596}` over `field0` and `field1`: the class is shared by every struct
+        // of the same erased shape, so it says how many fields there are and nothing else. The
+        // names come from the value, recorded there by `--Xdebug`.
+        session(structFixture, "println(Counter.total(c))") { _, stop, _ ->
+            val struct = local(stop, "c")
+            val renderer = FlixStructRenderer()
+
+            assertEquals("""Counter { count = 3, label = "hits" }""", (renderer.valueLabelRenderer as FlixLabelRenderer).label(struct))
+            assertEquals(
+                listOf("count", "label"),
+                (renderer.childrenRenderer as FlixChildrenRenderer).childrenOf(struct).map { it.first },
+            )
+        }
+    }
+
+    /** The value of the local `name` in the frame that stopped. */
+    private fun local(stop: BreakpointEvent, name: String): Value? {
+        val frame = stop.thread().frame(0)
+        val variable = frame.visibleVariableByName(name)
+        if (variable == null) {
+            fail("no local named `$name`; locals: " + frame.visibleVariables().map { it.name() })
+        }
+        return frame.getValue(variable)
     }
 
     @Test(timeout = SESSION_TIMEOUT_MS)
@@ -413,11 +511,6 @@ class FlixDebugSessionTest {
             events.resume()
         }
         throw AssertionError("no class carrying SMAP prepared")
-    }
-
-    /** Temporary hook for shape dumps. */
-    fun dumpSession(fixture: String, marker: String, body: (BreakpointEvent) -> Unit) {
-        session(fixture, marker) { _, stop, _ -> body(stop) }
     }
 
     /** A map, a set and an empty map, which are red-black trees in the debuggee. */

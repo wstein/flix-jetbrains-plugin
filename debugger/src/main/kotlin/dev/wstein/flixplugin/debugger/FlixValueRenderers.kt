@@ -289,6 +289,77 @@ class FlixRecordRenderer : CompoundRendererProvider() {
 }
 
 /**
+ * Renders a Flix struct as `Counter { count = 3, label = "hits" }` rather than
+ * `{Struct$Int32$Obj@3596}` over `field0`, `field1`.
+ *
+ * A struct's class is shared by every struct of the same erased shape and names its fields by
+ * position, so the class says how many fields there are and nothing else -- which is why a channel
+ * read as `MpmcAdmin(1, ReentrantLock, false, 1, …)` and the standard library's B+ tree could not be
+ * walked at all. A `--Xdebug` build records the struct's name and its field names in the value
+ * itself (`BackendObjType.Struct.NameField`), in `field` order, and this pairs them up.
+ *
+ * Without that record there is nothing to pair: the fields keep their positional names, which is
+ * what they had before.
+ */
+class FlixStructRenderer : CompoundRendererProvider() {
+
+    override fun getName(): String = "Flix struct"
+
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.STRUCT_PREFIX
+
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type: Type? -> completedFuture(type != null && FlixValues.isStruct(type.name())) }
+
+    override fun isEnabled(): Boolean = true
+
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
+        object : FlixLabelRenderer("FlixStruct") {
+            override fun label(value: Value?): String = renderStruct(value)
+        }
+
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixStructChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> =
+                structFields(value as? ObjectReference ?: return emptyList())
+        }
+
+    private fun renderStruct(value: Value?): String {
+        val struct = value as? ObjectReference ?: return ""
+        val fields = structFields(struct)
+        val name = FlixValues.structNameOf(recordedStructOf(struct))?.first
+            ?: FlixValues.simpleNameOf(struct.referenceType().name())
+        val shown = fields.take(FlixValues.MAX_RECORD_FIELDS)
+        return FlixValues.formatStruct(
+            name,
+            shown.map { (field, v) -> field to renderScalar(v) },
+            truncated = fields.size > shown.size,
+        )
+    }
+
+    /**
+     * The fields, named where a name was recorded and by position where none was.
+     *
+     * Paired by position rather than by looking a name up: the class names its fields `field0`,
+     * `field1` in the order the struct declares them, and the recorded names are in that same
+     * order. A recorded list of the wrong length is ignored rather than partially applied -- half a
+     * struct named and half not is worse than none of it named.
+     */
+    private fun structFields(struct: ObjectReference): List<Pair<String, Value?>> {
+        val values = struct.referenceType().allFields()
+            .mapNotNull { field ->
+                FlixValues.TUPLE_FIELD.matchEntire(field.name())?.groupValues?.get(1)?.toIntOrNull()
+                    ?.let { index -> index to field }
+            }
+            .sortedBy { it.first }
+        val names = FlixValues.structNameOf(recordedStructOf(struct))?.second
+            ?.takeIf { it.size == values.size }
+        return values.mapIndexed { position, (index, field) ->
+            (names?.getOrNull(position) ?: "field$index") to struct.getValue(field)
+        }
+    }
+}
+
+/**
  * Renders a Flix tuple as `(1, 2)` rather than `{Tuple$Int32$Int32@3405}`.
  *
  * A tuple is the one Flix value whose compiled form says everything about it: `BackendObjType.Tuple`
@@ -475,7 +546,8 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
                     return FlixDatalog.constraints(tagged, Int.MAX_VALUE).first
                         .mapIndexed { index, constraint -> "[$index]" to constraint }
                 }
-                // A model expands to its relations, named as they are written.
+                // A model expands to one node per relation, holding that relation's own value --
+                // which renders as its facts, so the tree is never shown as a tree.
                 if (FlixDatalog.isModel(tagged)) {
                     return FlixDatalog.relations(tagged, Int.MAX_VALUE).first
                 }
@@ -557,6 +629,10 @@ private fun renderComponent(value: Value?): String = when (value) {
     is ObjectReference -> value.referenceType().name().substringAfterLast('.').substringAfterLast('$')
     else -> renderScalar(value)
 }
+
+/** The struct identity a `--Xdebug` build wrote into `value`, or `null` if it carries none. */
+internal fun recordedStructOf(value: ObjectReference): String? =
+    (value.readField(FlixValues.STRUCT_NAME_FIELD) as? StringReference)?.value()
 
 /** The case name a `--Xdebug` build wrote into `value`, or `null` if it carries none. */
 internal fun recordedTagOf(value: ObjectReference): String? =

@@ -67,23 +67,51 @@ internal object FlixDatalog {
     }
 
     /**
-     * A model as the relations it holds: `Model#{ Edge/2, Path/2 }`.
+     * A model as the facts it holds: `Model#{ Edge(1, 2). Path(1, 2). }`.
      *
-     * Not the facts, and the reason is worth stating rather than leaving as an omission. The facts
-     * of each relation live in a `BPlusTree`, whose nodes are compiled to `Struct$…` classes shared
-     * by every struct of the same erased shape -- so the field *names* are nowhere in the value, and
-     * walking the tree would mean deciding from arity and types alone which array is the keys and
-     * which the children. That is a structural guess, which is the one thing this plugin does not
-     * do with a value.
+     * The facts of each relation live in a `BPlusTree` whose nodes are structs, so this was the
+     * relations alone until `--Xdebug` began recording struct field names -- before that, walking
+     * the tree would have meant deciding from arity and types which array held the keys, which is a
+     * structural guess. It is now read by name.
      *
-     * What a reader wants from the facts, they can have exactly: `query … select … from P(…)`
-     * returns them as a vector of tuples, which renders as tuples.
+     * A relation whose facts cannot be read falls back to naming itself, `Edge/2`, rather than
+     * claiming it is empty.
      */
     fun renderModel(model: ObjectReference, limit: Int): String {
         val (relations, truncated) = relations(model, limit)
-        val body = (relations.map { it.first } + if (truncated) listOf("…") else emptyList())
-            .joinToString(", ")
+        val rendered = relations.flatMap { (name, tree) -> renderRelation(name, tree, limit) }
+        val body = (rendered + if (truncated) listOf("…") else emptyList()).joinToString(" ")
         return if (body.isEmpty()) "Model#{}" else "Model#{ $body }"
+    }
+
+    /**
+     * The facts of one relation, as they are written: `Edge(1, 2).`
+     *
+     * A fact's key is the vector of its terms, boxed; its value is the lattice element, or
+     * `Boxed.NoValue` where the relation is a plain one -- which is exactly the distinction the
+     * language writes as `P(k, v)` against `P(k; v)`.
+     */
+    fun renderRelation(name: String, relation: Value?, limit: Int): List<String> {
+        val tree = relation as? ObjectReference ?: return listOf(name)
+        val (facts, truncated) = FlixCollections.bPlusEntries(tree, limit)
+        if (facts.isEmpty()) return listOf(name)
+        val predicate = name.substringBefore('/')
+        val rendered = facts.map { (key, value) -> renderFact(predicate, key, value) }
+        return rendered + if (truncated) listOf("…") else emptyList()
+    }
+
+    private fun renderFact(predicate: String, key: Value?, value: Value?): String {
+        val terms = elementsOf(key).map { renderScalar(unbox(it)) }
+        val lattice = value?.let { element ->
+            val case = caseOf(element as? ObjectReference)
+            if (case != null && !case.endsWith("Boxed.NoValue")) renderScalar(unbox(element)) else null
+        }
+        val arguments = when {
+            lattice == null -> terms.joinToString(", ", "(", ")")
+            terms.isEmpty() -> "($lattice)"
+            else -> terms.joinToString(", ", "(", "; ") + lattice + ")"
+        }
+        return "$predicate$arguments."
     }
 
     /** A relation symbol as `Edge/2`, or `Cost/2 (lattice)` where the relation is a lattice. */

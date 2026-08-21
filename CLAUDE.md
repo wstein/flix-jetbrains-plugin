@@ -239,7 +239,14 @@ tests:
   removes the suffix, the same rule that turns `Clo$main$626ZYxrpg1N` into `main`. It records a
   **struct's** name and field names the same way (`Counter{count,label}`, in the value, since struct
   classes are shared too) and a **closure's capture names** as a `cloNames` constant *on the class* —
-  a closure class belongs to one lambda, so there the names are the same for every instance.
+  a closure class belongs to one lambda, so there the names are the same for every instance. It also
+  writes two side files beside the build manifest: `debug-index.json` (source → classes) and
+  `debug-scopes.json`, which records the **Flix type** of every parameter and capture by class and
+  method. The `LocalVariableTable` already carries names, slots and ranges; what it cannot carry is
+  the type, because the back end erases — an `Option[String]` and a `Result[Int32, Bool]` have the
+  same descriptor. Slots stay the table's business and are deliberately not repeated. Locals are
+  **not** covered: they are named where `GenExpression` compiles them and their slots allocated
+  there, so describing them would mean re-implementing slot allocation outside code generation.
 - **`flix run` does not run the program.** It builds and then starts the program in a JVM of its
   own, so an agent on that command line lands on the *compiler* and the program runs unwatched one
   process further down — with no error and no bound breakpoint. Never put the agent there.

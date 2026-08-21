@@ -165,6 +165,31 @@ class FlixDebugSessionTest {
                 "the index omits a class that holds the line: ${holders.filterNot(named::contains)}",
                 named.containsAll(holders),
             )
+
+            // What the index saves, counted on both sides rather than asserted.
+            //
+            // The named watch's side is the number of prepare events it actually received. The
+            // unfiltered watch's side is every class the VM has loaded by the time the breakpoint
+            // hits -- which is what a request with no name filter has to receive and re-check, one
+            // event per class, for every breakpoint in the session. `allClasses` is a lower bound
+            // on that: classes prepared after the stop are not in it.
+            val loaded = vm.allClasses().size
+            println(
+                "debug index: $namedPrepareEvents class-prepare event(s) for the named watch, " +
+                    "against $loaded class(es) loaded by the time the breakpoint hit",
+            )
+            assertTrue(
+                "the named watch received more events than the index named classes: " +
+                    "$namedPrepareEvents > ${named.size}",
+                namedPrepareEvents <= named.size,
+            )
+            // A margin rather than an exact figure: the number of JDK classes a Flix program loads
+            // is the JDK's business and moves between releases. What is being pinned is the order
+            // of magnitude -- that this is a different kind of watch, not a slightly smaller one.
+            assertTrue(
+                "the index saved almost nothing: $namedPrepareEvents of $loaded",
+                namedPrepareEvents * 20 < loaded,
+            )
         }
     }
 
@@ -658,6 +683,13 @@ class FlixDebugSessionTest {
     private lateinit var project: Path
 
     /**
+     * How many class-prepare events the named watch received, counted by [stopAtNamed].
+     *
+     * The saving the index exists for is a count, so it is counted rather than argued about.
+     */
+    private var namedPrepareEvents = 0
+
+    /**
      * Compiles `fixture`, launches it under a debugger, stops at the line carrying `marker`, and
      * runs `assertions` there.
      *
@@ -799,6 +831,7 @@ class FlixDebugSessionTest {
      * the fault this test exists to catch, and it cannot be caught anywhere the names are believed.
      */
     private fun stopAtNamed(vm: VirtualMachine, sourceName: String, line: Int): BreakpointEvent {
+        namedPrepareEvents = 0
         val named = FlixPositionManager.classesToWatch(project, sourceName)
         assertTrue("the build wrote no debug index naming classes for $sourceName", named.isNotEmpty())
 
@@ -823,6 +856,7 @@ class FlixDebugSessionTest {
                                 "${named.size} class(es) for $sourceName",
                         )
                     is ClassPrepareEvent -> {
+                        namedPrepareEvents++
                         assertTrue(
                             "a class outside the index prepared: ${event.referenceType().name()}",
                             named.contains(event.referenceType().name()),

@@ -59,3 +59,10 @@ out/ide-tests/
 # repository root rather than under build/. They are a record of one run on one machine -- a
 # failed `flixUiSmoke` here is a stack trace from the IDE under test, not a fixture.
 /allure-results/
+
+# JVM crash artefacts. A 3.3 GB heap dump reached a commit once, by way of `git add -A`, and
+# GitHub refuses any push carrying it -- 100 MB is the limit -- so the whole branch was unpushable
+# until that commit was rewritten. Never again by accident.
+*.hprof
+hs_err_pid*.log
+replay_pid*.log

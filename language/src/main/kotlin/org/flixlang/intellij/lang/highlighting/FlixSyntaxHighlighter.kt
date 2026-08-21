@@ -52,6 +52,9 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
             name == "LITERAL_STRING" || name == "LITERAL_CHAR" || name == "LITERAL_REGEX" ||
                 name.startsWith("LITERAL_STRING_INTERPOLATION") -> STRING
             name.startsWith("LITERAL_") -> NUMBER
+            // Order-free, unlike the rules around it: no operator's constant name ends in `_KW` or
+            // begins with `COMMENT_`/`LITERAL_`, so nothing can shadow it and it shadows nothing.
+            name in OPERATORS -> OPERATOR
             name in CONTROL_FLOW_KEYWORDS -> CONTROL_FLOW_KEYWORD
             name.endsWith("_KW") -> KEYWORD
             name == "ANNOTATION" -> ANNOTATION
@@ -100,6 +103,52 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
             "TRY_KW", "CATCH_KW", "THROW_KW",
             "FOREACH_KW", "YIELD_KW",
         )
+
+        /**
+         * The symbolic operators, by the names the grammar's own "Operators" section gives them,
+         * plus the catch-all every user-defined one lexes as.
+         *
+         * A spelling, not a role -- which is precisely the division of labour between this layer
+         * and the server's. `+` is a call to `Add.add` and `|>` is a call to `pub def |>`, and the
+         * server says so; what the lexer can see is that both are written as symbols rather than as
+         * words, and that is worth a colour of its own because nothing else in the file supplies
+         * one until the server answers.
+         *
+         * `GENERIC_OPERATOR` is the important entry: every operator Flix does not reserve a token
+         * for -- `|>`, `>>`, `<*>`, `|+|`, and anything a user defines -- arrives under it
+         * (`_Flix.flex:112, :453`). Without it the operators a Flix program actually reads by are
+         * the only ones left uncoloured.
+         *
+         * `NAME_MATH` is deliberately absent. A math identifier (`⊗`) is a *name*, so it is bound
+         * and used like one -- `let ⊗ = …` reaches [FlixSemanticFallbackAnnotator] as a variable
+         * pattern and is coloured as the local it is. Colouring it here would overrule that with a
+         * claim about how it is spelled.
+         */
+        private val OPERATORS = setOf(
+            "BANG", "BANG_EQUAL", "AMPERSAND", "STAR", "PLUS", "MINUS",
+            "COLON", "COLON_MINUS", "COLON_COLON", "COLON_COLON_COLON",
+            "ANGLE_L", "ANGLE_R", "ANGLE_L_EQUAL", "ANGLE_R_EQUAL",
+            "ANGLED_PLUS", "ANGLED_EQUAL", "EQUAL", "EQUAL_EQUAL",
+            "ARROW_THIN_L", "ARROW_THIN_R", "ARROW_THIN_R_TIGHT", "ARROW_THICK_R",
+            "CARET", "BAR", "SLASH", "TILDE", "BACKSLASH",
+            "GENERIC_OPERATOR",
+        )
+
+        /**
+         * An operator, by its spelling.
+         *
+         * The layer that paints this one is the lexer, so what it can answer is "this is written as
+         * a symbol". The server answers a different question -- what the symbol *resolves to* -- and
+         * repaints the ones that are calls: `+` and `<=` come back as `Method`, `|>` as an operator
+         * or a function depending on the compiler. Where the server has no opinion at all (`::`,
+         * `->`, `=>`, the `~`/`&`/`+` of an effect set) this is the only colour there is, which is
+         * the gap it was added to close.
+         */
+        val OPERATOR: TextAttributesKey =
+            TextAttributesKey.createTextAttributesKey(
+                "FLIX_OPERATOR",
+                DefaultLanguageHighlighterColors.OPERATION_SIGN,
+            )
 
         val KEYWORD: TextAttributesKey =
             TextAttributesKey.createTextAttributesKey("FLIX_KEYWORD", DefaultLanguageHighlighterColors.KEYWORD)

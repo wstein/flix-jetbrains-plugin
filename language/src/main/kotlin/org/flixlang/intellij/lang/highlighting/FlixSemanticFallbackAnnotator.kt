@@ -69,6 +69,14 @@ import org.flixlang.intellij.lang.psi.FlixVariablePattern
  * to be invisible. A fallback that picked its own palette would make every file flicker through a
  * second colour scheme on open.
  *
+ * One row cannot be invisible, and saying so is more useful than pretending otherwise. LSP4IJ ships
+ * colour schemes of its own (`colorSchemes/SemanticTokens*.xml`), and `LSP_TYPE_PARAMETER` is the
+ * single key in them given an explicit foreground -- teal in dark and high contrast, blue in light.
+ * So a type parameter *does* change colour when the server answers, from the scheme's parameter
+ * colour to that one. Matching it here would mean shipping a colour, which nothing else in this
+ * plugin does; the alternative is to leave the row uncoloured, which is worse. Measured against
+ * lsp4ij-0.20.1; every other key in those schemes is empty.
+ *
  * `eff` is the one row with no platform attribute, because `Effect` is a semantic token type Flix
  * invented and LSP4IJ's default provider answers `null` for anything outside the standard set --
  * so an effect name is uncoloured in *both* layers today. It is coloured here as a type, which is

@@ -95,6 +95,7 @@ class FlixColorSettingsPage : ColorSettingsPage {
             AttributesDescriptor("Comment", FlixSyntaxHighlighter.COMMENT),
             AttributesDescriptor("Doc comment", FlixSyntaxHighlighter.DOC_COMMENT),
             AttributesDescriptor("Annotation", FlixSyntaxHighlighter.ANNOTATION),
+            AttributesDescriptor("Operator", FlixSyntaxHighlighter.OPERATOR),
             AttributesDescriptor("Bad character", FlixSyntaxHighlighter.BAD_CHARACTER),
             // The roles the parser knows and the lexer cannot: assigned by
             // FlixSemanticFallbackAnnotator, and repainted by the language server's semantic tokens

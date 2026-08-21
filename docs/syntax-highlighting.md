@@ -33,7 +33,22 @@ colour scheme on open. The table is in the annotator's docs and pinned by
 
 One row has no counterpart: `Effect` is a semantic token type Flix invented, and LSP4IJ's default
 colours provider answers `null` for anything outside the standard set — so an effect name is
-**uncoloured in the server's layer too**, and `FLIX_EFFECT_NAME` is the only colour it gets.
+**uncoloured in the server's layer too**, and `FLIX_EFFECT_NAME` is the only colour it gets. (The
+wire value is lowercase `effect`; a client mapping written against `Effect` compiles, runs and
+colours nothing.)
+
+One row is invisible in the other direction. LSP4IJ ships colour schemes
+(`colorSchemes/SemanticTokens*.xml` in lsp4ij-0.20.1) and `LSP_TYPE_PARAMETER` is the only key in
+them with an explicit foreground — teal in dark and high contrast, blue in light. So a **type
+parameter does change colour when the server answers**, and the handover is invisible for every
+other row but not that one. Matching it would mean this plugin shipping a colour, which it does not
+do anywhere else.
+
+To see what the server actually sent rather than what the buffer looks like, use LSP4IJ's **Semantic
+Tokens Inspector** (Tools → LSP → …). It prints one line per span, `<colour key> - <type>.<modifier>`,
+and prints `null` where a token type maps to no key at all — which is how the `Effect` gap above was
+established. In a file whose whole point is that a layer can be dead while looking healthy, that is
+the instrument to reach for first.
 
 ## The bug the tests exist for
 
@@ -146,6 +161,28 @@ and it is worth knowing before touching it: a doc comment leads with *exactly* t
 comment out a doc line — colouring that as documentation would say the opposite of what the compiler
 does with it. `Lexer.acceptLineOrDocComment` in the fork states it, `_Flix.flex` matches it, and
 `FlixSyntaxHighlighterTest` pins it.
+
+## Spelling is not a role
+
+The two layers answer different questions, and operators are where the difference is easiest to see.
+
+The lexer can say that `+`, `<=`, `|>` and `<*>` are **written as symbols**. That is a fact about
+spelling, it needs no resolution, and it is what `FLIX_OPERATOR` colours — including every operator
+Flix reserves no token for, which all arrive as one catch-all kind (`GENERIC_OPERATOR`) and are
+otherwise the operators a Flix program actually reads by.
+
+The server answers what a symbol **resolves to**, and repaints the ones that are calls: `Weeder2`
+rewrites `+` to `Add.add` and `<=` to `Order.lessEqual` before anything sees them, so both come back
+as `Method`. `|>` is `pub def |>` in the Prelude and comes back as `Operator` today — the one
+category that is about spelling rather than role, which is why it is under review.
+
+Where the server has no opinion at all this layer is the only colour there is: `::` desugars to a
+vector literal before token collection, and `->`, `=>`, `=` and the `~`/`&`/`+` of an effect set are
+syntax rather than calls.
+
+A math identifier (`⊗`) is deliberately **not** in the set. It is a name — bound and used like one,
+and reaching `FlixSemanticFallbackAnnotator` as a variable pattern — so colouring it by its spelling
+would overrule what it is with what it looks like.
 
 ## What is not coloured, and why
 

@@ -101,10 +101,49 @@ class FlixSyntaxHighlighterTest : BasePlatformTestCase() {
         assertEquals("FLIX_COMMENT", keyOf("//// heading\ndef f(): Unit = ()", "//// heading"))
     }
 
-    /** Punctuation carries no key, which is what leaves it the scheme's default text colour. */
-    fun testPunctuationIsLeftAlone() {
+    /** Delimiters carry no key, which is what leaves them the scheme's default text colour. */
+    fun testDelimitersAreLeftAlone() {
         assertNull(keyOf("def f(): Unit = ()", "("))
-        assertNull(keyOf("def f(): Unit = ()", "="))
+        assertNull(keyOf("def f(xs: List[Int32]): Unit = ()", "["))
+        assertNull(keyOf("enum E { case A, case B }", ","))
+    }
+
+    fun testOperatorsAreColouredBySpelling() {
+        // The one thing a lexer can honestly say about `+` or `|>`: it is written as a symbol. What
+        // it *resolves* to is the server's answer, and the server repaints the ones that are calls.
+        val source = "def f(x: Int32, y: Int32): Bool = x + y <= 9 and x != y"
+
+        assertEquals("FLIX_OPERATOR", keyOf(source, "+"))
+        assertEquals("FLIX_OPERATOR", keyOf(source, "<="))
+        assertEquals("FLIX_OPERATOR", keyOf(source, "!="))
+        assertEquals("FLIX_OPERATOR", keyOf(source, "="))
+    }
+
+    fun testAUserDefinedOperatorIsColouredToo() {
+        // The entry that matters most, and the one a hand-written list of operators would miss.
+        // Flix reserves a token for `+` and `<=`, but every operator it does not reserve -- `|>`,
+        // `>>`, `<*>`, `|+|`, and anything a user defines -- lexes as one catch-all kind.
+        val source = "def f(xs: List[Int32]): Int32 = xs |> List.length"
+
+        assertEquals("FLIX_OPERATOR", keyOf(source, "|>"))
+        assertEquals("FLIX_OPERATOR", keyOf("def f(): Int32 = a <*> b", "<*>"))
+        assertEquals("FLIX_OPERATOR", keyOf("def f(): Int32 = a |+| b", "|+|"))
+    }
+
+    fun testArrowsAndConsAreOperatorsToo() {
+        // The server emits no token at all for these -- `::` desugars to a vector literal before
+        // anything sees it, and an arrow is pure syntax -- so this layer is the only colour they
+        // will ever have.
+        assertEquals("FLIX_OPERATOR", keyOf("def f(): List[Int32] = 1 :: Nil", "::"))
+        assertEquals("FLIX_OPERATOR", keyOf("def f(g: Int32 -> Int32): Unit = ()", "->"))
+        assertEquals("FLIX_OPERATOR", keyOf("def f(o: Option[Int32]): Int32 = match o { case _ => 0 }", "=>"))
+    }
+
+    fun testAMathNameIsANameAndNotAnOperator() {
+        // A math identifier is bound and used like any other name -- `let ⊗ = …` reaches the PSI
+        // as a variable pattern -- so colouring it here by its spelling would overrule that with a
+        // claim about how it looks.
+        assertNull(keyOf("def f(): Int32 = let ⊗ = 1; ⊗", "⊗"))
     }
 
     fun testControlFlowKeywordsGetTheirOwnKey() {

@@ -30,6 +30,7 @@ class FlixColorSettingsPageTest : BasePlatformTestCase() {
             FlixSyntaxHighlighter.COMMENT,
             FlixSyntaxHighlighter.DOC_COMMENT,
             FlixSyntaxHighlighter.ANNOTATION,
+            FlixSyntaxHighlighter.OPERATOR,
             FlixSyntaxHighlighter.BAD_CHARACTER,
             FlixSyntaxHighlighter.FUNCTION_NAME,
             FlixSyntaxHighlighter.PARAMETER,

@@ -13,7 +13,7 @@ pluginManagement {
         // reach until they catch up.
         id("rpc") version "2.4.0-RC-0.1"
         id("org.jetbrains.kotlin.jvm") version "2.4.0"
-        id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
         id("org.jetbrains.qodana") version "2026.2.0"
         id("org.jetbrains.grammarkit") version "2023.3.0.3"
     }

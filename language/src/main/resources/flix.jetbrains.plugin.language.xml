@@ -66,6 +66,15 @@
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.highlighting.FlixSemanticFallbackAnnotator"/>
 
+        <!-- Where the caret lands after Enter. Not a formatter: `EnterHandler` asks
+             `CodeStyle.getLineIndent` with the document uncommitted, which consults this extension
+             point and nothing else, so with none registered every new line began in column 0. A
+             `FormattingModelBuilder` would answer the same question and a great many others – it is
+             what Reformat Code runs – so it would mean shipping an opinion about every construct in
+             the language to fix one keystroke. -->
+        <lineIndentProvider
+                implementation="org.flixlang.intellij.lang.editor.FlixLineIndentProvider"/>
+
         <lang.braceMatcher
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.editor.FlixBraceMatcher"/>

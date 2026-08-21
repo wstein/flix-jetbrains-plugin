@@ -117,6 +117,9 @@ class FlixPluginDescriptorTest {
                 //     than token kinds and so are invisible to the lexer.
                 "annotator",
                 "annotator",
+                // Where the caret lands after Enter. The one extension point `EnterHandler` consults
+                // while the document is uncommitted, which is why a formatter would not do.
+                "lineIndentProvider",
                 "lang.braceMatcher",
                 "lang.commenter",
                 "lang.quoteHandler",
@@ -145,6 +148,7 @@ class FlixPluginDescriptorTest {
             "lang.syntaxHighlighterFactory" to "com.intellij.openapi.fileTypes.SyntaxHighlighterFactory",
             "colorSettingsPage" to "com.intellij.openapi.options.colors.ColorSettingsPage",
             "annotator" to "com.intellij.lang.annotation.Annotator",
+            "lineIndentProvider" to "com.intellij.psi.codeStyle.lineIndent.LineIndentProvider",
             "lang.braceMatcher" to "com.intellij.lang.PairedBraceMatcher",
             "lang.commenter" to "com.intellij.lang.Commenter",
             "lang.quoteHandler" to "com.intellij.codeInsight.editorActions.QuoteHandler",

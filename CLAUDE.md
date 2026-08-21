@@ -177,6 +177,16 @@ java scripts/FlixLineProbe.java <jdwp-port> Main.flix <first-line> <last-line>
 
 Reach for it before reading bytecode, not after.
 
+**An indent on Enter is not the formatter's.** `EnterHandler.DoEnterAction` inserts the newline and
+then calls `CodeStyle.getLineIndent(editor, language, offset, allowDocCommit = false)`, which
+consults `LineIndentProviderEP` and **nothing else** — a `FormattingModelBuilder` is reached only by
+the deferred `scheduleIndentAdjustment` afterwards. With no `LineIndentProvider` registered the
+answer is always `null` and the line is left alone, which is why every new line began in column 0.
+`FlixLineIndentProvider` answers it from the **editor's highlighter**, not the PSI: `allowDocCommit
+= false` is the platform saying the tree may be stale, and at that point it is. A formatter was the
+other candidate and was rejected — it is what Reformat Code runs, so it would mean shipping an
+opinion about every construct in the language to fix one keystroke.
+
 `scripts/FlixDebugProbe.java` is the next step up: it arms one line — or one exception class — waits
 for the hit and prints the stack, which is how mixed-language frames become visible without an IDE.
 

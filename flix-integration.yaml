@@ -40,6 +40,10 @@ registrations:
     # rather than token kinds and so are invisible to the lexer. Declarations only: a use needs
     # resolution, which is the server's job.
     com.intellij.annotator.semanticFallback: org.flixlang.intellij.lang.highlighting.FlixSemanticFallbackAnnotator
+    # Where the caret lands after Enter. `EnterHandler` asks `CodeStyle.getLineIndent` with the
+    # document uncommitted, which consults this extension point alone; with none registered every
+    # new line began in column 0.
+    com.intellij.lineIndentProvider: org.flixlang.intellij.lang.editor.FlixLineIndentProvider
     com.intellij.lang.braceMatcher: org.flixlang.intellij.lang.editor.FlixBraceMatcher
     com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
     com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler

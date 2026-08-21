@@ -35,6 +35,8 @@ import com.sun.jdi.Value
 internal object FlixDatalog {
 
     private const val PROGRAM = "Datalog.Datalog"
+    private const val MODEL = "Datalog.Model"
+    private const val REL_SYM = "RelSym.Symbol"
     private const val CONSTRAINT = "Constraint.Constraint"
     private const val HEAD_ATOM = "HeadPredicate.HeadAtom"
     private const val BODY_ATOM = "BodyPredicate.BodyAtom"
@@ -46,6 +48,53 @@ internal object FlixDatalog {
 
     /** Whether `value` is a Datalog program. */
     fun isProgram(value: ObjectReference): Boolean = caseOf(value)?.endsWith(PROGRAM) == true
+
+    /** Whether `value` is a solved model -- what `solve` returns. */
+    fun isModel(value: ObjectReference): Boolean = caseOf(value)?.endsWith(MODEL) == true
+
+    /**
+     * The relations a model holds, as `Edge/2`, with the value of each.
+     *
+     * A model is a map from relation symbol to the facts derived for it, and the *symbol* is exact:
+     * a predicate name, an arity, and whether the relation is a lattice. The facts are not read --
+     * see [renderModel].
+     */
+    fun relations(model: ObjectReference, limit: Int): Pair<List<Pair<String, Value?>>, Boolean> {
+        val map = model.readField("v0") as? ObjectReference
+            ?: return emptyList<Pair<String, Value?>>() to false
+        val (entries, truncated) = FlixCollections.entries(map, limit)
+        return entries.map { (key, value) -> (renderRelSym(key) ?: "?") to value } to truncated
+    }
+
+    /**
+     * A model as the relations it holds: `Model#{ Edge/2, Path/2 }`.
+     *
+     * Not the facts, and the reason is worth stating rather than leaving as an omission. The facts
+     * of each relation live in a `BPlusTree`, whose nodes are compiled to `Struct$…` classes shared
+     * by every struct of the same erased shape -- so the field *names* are nowhere in the value, and
+     * walking the tree would mean deciding from arity and types alone which array is the keys and
+     * which the children. That is a structural guess, which is the one thing this plugin does not
+     * do with a value.
+     *
+     * What a reader wants from the facts, they can have exactly: `query … select … from P(…)`
+     * returns them as a vector of tuples, which renders as tuples.
+     */
+    fun renderModel(model: ObjectReference, limit: Int): String {
+        val (relations, truncated) = relations(model, limit)
+        val body = (relations.map { it.first } + if (truncated) listOf("…") else emptyList())
+            .joinToString(", ")
+        return if (body.isEmpty()) "Model#{}" else "Model#{ $body }"
+    }
+
+    /** A relation symbol as `Edge/2`, or `Cost/2 (lattice)` where the relation is a lattice. */
+    fun renderRelSym(value: Value?): String? {
+        val sym = value as? ObjectReference ?: return null
+        if (caseOf(sym)?.endsWith(REL_SYM) != true) return null
+        val name = predicateName(sym.readField("v0")) ?: return null
+        val arity = (sym.readField("v1") as? com.sun.jdi.IntegerValue)?.value()
+        val lattice = caseOf(sym.readField("v2") as? ObjectReference)?.endsWith(LATTICE) == true
+        return name + (arity?.let { "/$it" } ?: "") + (if (lattice) " (lattice)" else "")
+    }
 
     /** Whether `value` is one constraint -- a fact or a rule. */
     fun isConstraint(value: ObjectReference): Boolean = caseOf(value)?.endsWith(CONSTRAINT) == true

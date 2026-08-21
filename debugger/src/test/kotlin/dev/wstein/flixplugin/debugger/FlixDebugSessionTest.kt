@@ -332,6 +332,21 @@ class FlixDebugSessionTest {
     }
 
     @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a solved model reads as the relations it holds, live`() {
+        // `Model(Map)` over a red-black tree of B+ trees. The *relations* are exact -- a predicate
+        // name, an arity, and whether it is a lattice -- so those are what is shown. The facts are
+        // not: they live in `Struct$…` classes shared by every struct of the same erased shape, so
+        // their field names are nowhere in the value, and walking them would be a structural guess.
+        session(datalogFixture, "println(paths)") { _, stop, _ ->
+            val model = tagLabel(stop, "resolved")
+
+            assertTrue("the derived relations are missing from $model", model.contains("Path/2"))
+            assertTrue("the input relations are missing from $model", model.contains("Edge/2"))
+            assertTrue("the model should read as one: $model", model.startsWith("Model#{ "))
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
     fun `a tuple reads as a tuple, live`() {
         session(datalogFixture, "println(paths)") { _, stop, _ ->
             // `paths` is a vector, so what is asserted is one of its elements: the vector node
@@ -398,6 +413,11 @@ class FlixDebugSessionTest {
             events.resume()
         }
         throw AssertionError("no class carrying SMAP prepared")
+    }
+
+    /** Temporary hook for shape dumps. */
+    fun dumpSession(fixture: String, marker: String, body: (BreakpointEvent) -> Unit) {
+        session(fixture, marker) { _, stop, _ -> body(stop) }
     }
 
     /** A map, a set and an empty map, which are red-black trees in the debuggee. */

@@ -400,7 +400,11 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
         if (FlixDatalog.isProgram(tagged)) {
             return FlixDatalog.renderProgram(tagged, FlixValues.MAX_LIST_ELEMENTS)
         }
+        if (FlixDatalog.isModel(tagged)) {
+            return FlixDatalog.renderModel(tagged, FlixValues.MAX_LIST_ELEMENTS)
+        }
         FlixDatalog.renderConstraint(tagged)?.let { return it }
+        FlixDatalog.renderRelSym(tagged)?.let { return it }
         if (FlixCollections.isMap(tagged)) {
             val (entries, truncated) = FlixCollections.entries(tagged, FlixValues.MAX_LIST_ELEMENTS)
             return FlixValues.formatMap(entries.map { (k, v) -> renderScalar(k) to renderScalar(v) }, truncated)
@@ -470,6 +474,10 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
                 if (FlixDatalog.isProgram(tagged)) {
                     return FlixDatalog.constraints(tagged, Int.MAX_VALUE).first
                         .mapIndexed { index, constraint -> "[$index]" to constraint }
+                }
+                // A model expands to its relations, named as they are written.
+                if (FlixDatalog.isModel(tagged)) {
+                    return FlixDatalog.relations(tagged, Int.MAX_VALUE).first
                 }
                 // A map expands to its entries, named by key: the key is what a reader is looking
                 // for, and a positional name would send them counting.

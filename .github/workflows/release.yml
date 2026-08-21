@@ -261,6 +261,15 @@ jobs:
 
   # Deploy the feed. A separate job so that it runs only after every check above has passed, and so
   # that `pages: write` and `id-token: write` are held by a job that builds nothing.
+  #
+  # One piece of configuration for this lives outside the repository and cost a failed run to find:
+  # GitHub creates the `github-pages` environment with a deployment policy allowing the default
+  # branch only, and a release event runs at the **tag** -- so the deployment is rejected with
+  # `Tag "v0.2.0-beta.1" is not allowed to deploy to github-pages due to environment protection
+  # rules`. A tag policy of `v*` was added alongside the `main` branch policy:
+  #
+  #   gh api -X POST repos/<owner>/<repo>/environments/github-pages/deployment-branch-policies \
+  #     -f name='v*' -f type=tag
   beta-pages:
     name: Deploy Beta Feed
     if: github.event.action == 'prereleased'

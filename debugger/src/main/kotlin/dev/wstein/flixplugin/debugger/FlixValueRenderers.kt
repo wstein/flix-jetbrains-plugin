@@ -297,10 +297,10 @@ class FlixRecordRenderer : CompoundRendererProvider() {
  * value -- the difference between one closure of `curriedMultiply` and another is the `6` -- and the
  * calling state is machinery.
  *
- * The captures are shown by value and not by name. The names exist in the source and nowhere in the
- * class: `clo0` is a position, and the `LocalVariableTable` that would map it to `x` is keyed on JVM
- * slots rather than on fields. Recording them, as `--Xdebug` already records a tag and a struct's
- * fields, is what would turn this into `fn curriedMultiply(x = 6)`.
+ * A capture is named where the compiler recorded a name for it -- `fn curriedMultiply(x = 6)` -- and
+ * shown by value alone where it did not. `clo0` is a position, and the `LocalVariableTable` that
+ * would map it to `x` is keyed on JVM slots rather than on fields, so a `--Xdebug` build writes the
+ * names onto the class instead ([FlixValues.CAPTURE_NAMES_FIELD]).
  */
 class FlixClosureRenderer : CompoundRendererProvider() {
 
@@ -319,7 +319,11 @@ class FlixClosureRenderer : CompoundRendererProvider() {
                 val closure = value as? ObjectReference ?: return ""
                 val name = FlixFrames.definitionOf(closure.referenceType().name())
                     ?: FlixValues.simpleNameOf(closure.referenceType().name())
-                return FlixValues.formatClosure(name, capturesOf(closure).map { (_, v) -> renderScalar(v) })
+                val captures = capturesOf(closure).map { (capture, v) ->
+                    val rendered = renderScalar(v)
+                    if (capture.startsWith("[")) rendered else "$capture = $rendered"
+                }
+                return FlixValues.formatClosure(name, captures)
             }
         }
 
@@ -338,15 +342,28 @@ class FlixClosureRenderer : CompoundRendererProvider() {
      * capture is indistinguishable from the placeholder and is dropped with it, which costs the
      * reader nothing they could have used.
      */
-    private fun capturesOf(closure: ObjectReference): List<Pair<String, Value?>> =
-        closure.referenceType().allFields()
+    private fun capturesOf(closure: ObjectReference): List<Pair<String, Value?>> {
+        val fields = closure.referenceType().allFields()
             .mapNotNull { field ->
                 FlixValues.CAPTURE_FIELD.matchEntire(field.name())?.groupValues?.get(1)?.toIntOrNull()
                     ?.let { index -> index to field }
             }
             .sortedBy { it.first }
-            .map { (index, field) -> "[$index]" to closure.getValue(field) }
-            .filterNot { (_, value) -> isUnit(value) }
+        val names = recordedCaptureNames(closure.referenceType())?.takeIf { it.size == fields.size }
+        // Named before filtering, because the names line up with `clo0`, `clo1` by position: a
+        // capture dropped first would shift every name after it onto the wrong value.
+        return fields.mapIndexed { position, (index, field) ->
+            val name = names?.getOrNull(position)?.takeIf { it != FlixValues.UNNAMED_CAPTURE } ?: "[$index]"
+            name to closure.getValue(field)
+        }.filterNot { (_, value) -> isUnit(value) }
+    }
+
+    /** The capture names a `--Xdebug` build wrote onto `type`, or `null` if it carries none. */
+    private fun recordedCaptureNames(type: ReferenceType): List<String>? {
+        val field = runCatching { type.fieldByName(FlixValues.CAPTURE_NAMES_FIELD) }.getOrNull() ?: return null
+        val recorded = runCatching { type.getValue(field) as? StringReference }.getOrNull() ?: return null
+        return recorded.value().split(',').map { it.trim() }
+    }
 
     private fun isUnit(value: Value?): Boolean =
         (value as? ObjectReference)?.referenceType()?.name()?.endsWith(".Unit\$") == true

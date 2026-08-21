@@ -284,6 +284,42 @@ class FlixValueTreeTest {
         assertNull(FlixStructs.field(struct("Node{size}", int(2)), "keys"))
     }
 
+    // --- function values -----------------------------------------------------------------------
+
+    @Test
+    fun `a capture is named where the compiler recorded a name`() {
+        val closure = closure("Clo\$curriedMultiply\$Xb8Kaq73gD3", "x", int(6))
+
+        assertEquals("fn curriedMultiply(x = 6)", FlixClosureRenderer().labelOf(closure))
+        assertEquals(listOf("x"), FlixClosureRenderer().childNamesOf(closure))
+    }
+
+    @Test
+    fun `a capture nobody named is shown by value alone`() {
+        // `_` is what the compiler records for a capture the source never named, so that the list
+        // still lines up with `clo0`, `clo1`. It is a position, not a name, and reads as one.
+        val closure = closure("Clo\$main\$aBfCTPKjx6U", "_", int(6))
+
+        assertEquals("fn main(6)", FlixClosureRenderer().labelOf(closure))
+        assertEquals(listOf("[0]"), FlixClosureRenderer().childNamesOf(closure))
+    }
+
+    @Test
+    fun `names that do not line up with the captures are not used at all`() {
+        // The names are paired by position, so a list of the wrong length pairs them wrongly from
+        // the first mismatch on -- the same rule as a struct's fields.
+        val closure = closure("Clo\$both\$QhFZgVt8ipa", "a", int(1), int(2))
+
+        assertEquals(listOf("[0]", "[1]"), FlixClosureRenderer().childNamesOf(closure))
+    }
+
+    @Test
+    fun `without a record the captures keep their positions`() {
+        val closure = closure("Clo\$curriedMultiply\$Xb8Kaq73gD3", recorded = null, int(6))
+
+        assertEquals("fn curriedMultiply(6)", FlixClosureRenderer().labelOf(closure))
+    }
+
     // --- applicability, through the checker the platform actually calls ------------------------
 
     @Test
@@ -405,6 +441,27 @@ class FlixValueTreeTest {
         return head
     }
 
+    /**
+     * A lifted lambda, with its captures in `clo0`, `clo1` and their names on the class.
+     *
+     * The names are a *static* field, which is what the renderer reads: a closure class belongs to
+     * one lambda, so unlike a tag or a struct the names are the same for every instance.
+     */
+    private fun closure(className: String, recorded: String?, vararg captures: Value): ObjectReference {
+        val fields = captures.withIndex().associate { (i, v) -> "clo$i" to v } + ("pc" to int(0))
+        return objectRef(
+            "dev.flix.gen.$className",
+            fields,
+            statics = listOfNotNull(recorded?.let { FlixValues.CAPTURE_NAMES_FIELD to string(it) }).toMap(),
+        )
+    }
+
+    private fun FlixClosureRenderer.labelOf(value: Value): String =
+        (valueLabelRenderer as FlixLabelRenderer).label(value)
+
+    private fun FlixClosureRenderer.childNamesOf(value: Value): List<String> =
+        (childrenRenderer as FlixChildrenRenderer).childrenOf(value).map { it.first }
+
     /** A struct, whose class carries only types; the names live in the value under `--Xdebug`. */
     private fun struct(recorded: String?, vararg fields: Value): ObjectReference {
         val types = fields.joinToString("$") { if (it is com.sun.jdi.IntegerValue) "Int32" else "Obj" }
@@ -491,6 +548,7 @@ class FlixValueTreeTest {
         fields: Map<String, Value?>,
         superclass: String? = null,
         interfaces: List<String> = emptyList(),
+        statics: Map<String, Value?> = emptyMap(),
     ): ObjectReference {
         val id = nextId++
         // Read from the map on every call rather than captured once. A cyclic fixture is built by
@@ -504,7 +562,9 @@ class FlixValueTreeTest {
             when (method.name) {
                 "name" -> className
                 "allFields", "fields" -> fields.keys.map { field(it) }
-                "fieldByName" -> fields.keys.firstOrNull { it == args?.get(0) }?.let { field(it) }
+                "fieldByName" -> (fields.keys + statics.keys).firstOrNull { it == args?.get(0) }?.let { field(it) }
+                // A static field is read off the *type*, which is where the platform looks for one.
+                "getValue" -> statics[(args?.get(0) as? Field)?.name()]
                 "superclass" -> superclass?.let { classType(it) }
                 "interfaces" -> interfaces.map { interfaceType(it) }
                 else -> null

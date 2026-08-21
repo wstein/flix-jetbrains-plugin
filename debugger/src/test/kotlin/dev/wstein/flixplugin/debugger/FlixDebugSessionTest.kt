@@ -438,13 +438,13 @@ class FlixDebugSessionTest {
     fun `a function value and a lazy one read as what they are, live`() {
         session(closureFixture, "println(multFn(7)") { _, stop, _ ->
             // `{Clo$curriedMultiply$Xb8Kaq73gD3@3454}` over `clo0`, `pc`, `arg0`.
-            assertEquals("fn curriedMultiply(6)", closureLabel(stop, "multFn"))
+            assertEquals("fn curriedMultiply(x = 6)", closureLabel(stop, "multFn"))
             // A lambda that captures nothing is still given one capture, of Unit, so that every
             // closure has the same shape. It is not a capture the reader wrote, and dropping it is
             // visible: a kept one reads `fn main(())`, since unit renders as the language writes it.
             assertEquals("fn main()", closureLabel(stop, "anon"))
             assertEquals(emptyList<String>(), captureNames(stop, "anon"))
-            assertEquals(listOf("[0]"), captureNames(stop, "multFn"))
+            assertEquals(listOf("x"), captureNames(stop, "multFn"))
 
             // Which side of `force` a lazy value is on, read without forcing it.
             assertEquals("lazy <unforced>", lazyLabel(stop, "unforced"))

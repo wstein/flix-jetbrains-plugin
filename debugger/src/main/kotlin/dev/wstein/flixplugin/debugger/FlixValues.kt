@@ -228,6 +228,18 @@ internal object FlixValues {
     fun isLazy(className: String): Boolean = simpleNameOf(className).startsWith(LAZY_PREFIX)
 
     /**
+     * The constant a `--Xdebug` build writes a closure's capture names into.
+     *
+     * On the class rather than in the value, unlike a tag or a struct name: a closure class belongs
+     * to one lifted lambda, so its captures have one set of names
+     * (`GenFunAndClosureClasses.captureNames`).
+     */
+    const val CAPTURE_NAMES_FIELD: String = "cloNames"
+
+    /** A capture the source never named, recorded so the list still lines up with `clo0`, `clo1`. */
+    const val UNNAMED_CAPTURE: String = "_"
+
+    /**
      * A function value rendered as what it is: `fn curriedMultiply(6)`.
      *
      * The name is the definition the lambda was lifted out of, which is what a reader has to go on:

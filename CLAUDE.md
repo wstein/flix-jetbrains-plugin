@@ -227,7 +227,10 @@ tests:
   its erased shape, so without that field `Some("/home/x")` can only be reported as `#1("/home/x")`,
   and a `List` cannot be told from any other two-term case. The name is qualified by its enum, and
   that enum arrives **monomorphised** (`List$Vv4NSpVAmjE.Cons`): `FlixValues.withoutStableHash`
-  removes the suffix, the same rule that turns `Clo$main$626ZYxrpg1N` into `main`.
+  removes the suffix, the same rule that turns `Clo$main$626ZYxrpg1N` into `main`. It records a
+  **struct's** name and field names the same way (`Counter{count,label}`, in the value, since struct
+  classes are shared too) and a **closure's capture names** as a `cloNames` constant *on the class* —
+  a closure class belongs to one lambda, so there the names are the same for every instance.
 - **`flix run` does not run the program.** It builds and then starts the program in a JVM of its
   own, so an agent on that command line lands on the *compiler* and the program runs unwatched one
   process further down — with no error and no bound breakpoint. Never put the agent there.

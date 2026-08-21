@@ -313,6 +313,25 @@ class FlixDebugSessionTest {
     """.trimIndent() + "\n"
 
     @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a Datalog program reads as the program it is, live`() {
+        // `Datalog([], [])`, with `Constraint(HeadAtom, [])` under it: the shape of the AST, with
+        // the program nowhere in sight. Everything needed to write it back out survives into the
+        // value -- predicate names, variable names, literals -- so it is read back rather than
+        // approximated.
+        session(datalogFixture, "println(paths)") { _, stop, _ ->
+            val program = tagLabel(stop, "p")
+
+            assertTrue("facts are missing from $program", program.contains("Edge(1, 2)."))
+            assertTrue("rules are missing from $program", program.contains("Path(x, y) :- Edge(x, y)."))
+            assertTrue(
+                "a rule with two body atoms is missing from $program",
+                program.contains("Path(x, z) :- Path(x, y), Edge(y, z)."),
+            )
+            assertTrue("the program should read as one: $program", program.startsWith("#{ "))
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
     fun `a tuple reads as a tuple, live`() {
         session(datalogFixture, "println(paths)") { _, stop, _ ->
             // `paths` is a vector, so what is asserted is one of its elements: the vector node

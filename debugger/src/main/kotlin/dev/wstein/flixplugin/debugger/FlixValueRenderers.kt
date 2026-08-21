@@ -394,6 +394,13 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
         listElements(tagged, FlixValues.MAX_LIST_ELEMENTS)?.let { (elements, end) ->
             return FlixValues.formatList(elements.map { renderScalar(it) }, end)
         }
+        // A Datalog program and its constraints, written back out as the program they are. Before
+        // the tag rendering, since both are ordinary tagged values and would otherwise read as
+        // `Datalog([], [])` and `Constraint(HeadAtom, [])`.
+        if (FlixDatalog.isProgram(tagged)) {
+            return FlixDatalog.renderProgram(tagged, FlixValues.MAX_LIST_ELEMENTS)
+        }
+        FlixDatalog.renderConstraint(tagged)?.let { return it }
         if (FlixCollections.isMap(tagged)) {
             val (entries, truncated) = FlixCollections.entries(tagged, FlixValues.MAX_LIST_ELEMENTS)
             return FlixValues.formatMap(entries.map { (k, v) -> renderScalar(k) to renderScalar(v) }, truncated)
@@ -458,6 +465,11 @@ class FlixTaggedRenderer : CompoundRendererProvider() {
                 // reading the fourth element took four clicks and named none of them.
                 listElements(tagged, Int.MAX_VALUE)?.let { (elements, _) ->
                     return elements.mapIndexed { index, element -> "[$index]" to element }
+                }
+                // A program expands to its constraints, each of which renders as itself.
+                if (FlixDatalog.isProgram(tagged)) {
+                    return FlixDatalog.constraints(tagged, Int.MAX_VALUE).first
+                        .mapIndexed { index, constraint -> "[$index]" to constraint }
                 }
                 // A map expands to its entries, named by key: the key is what a reader is looking
                 // for, and a positional name would send them counting.

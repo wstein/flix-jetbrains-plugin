@@ -86,7 +86,10 @@ counterintuitive and were each learned from a failure:
    *position*; once it is Flix, every answer is final.
 3. **Class-prepare filtering is per line, not per file.** One `.flix` file compiles to dozens of
    classes each covering part of it. A class lacking the line reports "no executable code", and
-   `RequestManagerImpl.setInvalid` makes that stick if it lands first.
+   `RequestManagerImpl.setInvalid` makes that stick if it lands first. *Which* classes to watch now
+   comes from `build/development/debug-index.json`, which a `--Xdebug` build writes by reading back
+   the `SourceFile`/SMAP attributes it emitted; without it the request watches every class the VM
+   prepares, which is what it did before and is still the fallback.
 4. **A line held by more than one class is a compiler bug, not a plugin one.** The position manager
    correctly binds a breakpoint in *every* class reporting that line, so if several do, Continue
    stops once per class. That happened: each default-effect handler frame carried the body's
@@ -301,6 +304,23 @@ because the platform merges markers at one offset.
 This suite has a history of tests that passed while proving nothing. When adding one, check it fails
 against the broken code — mutating the implementation and rerunning is cheap and has caught real
 gaps here.
+
+One failure in `:test` is **not** yours and cannot be fixed here:
+
+```
+Cannot create extension (class=org.jetbrains.vuejs.…lsp.VueLspServerSupportProvider)
+  … Could not initialize class …VueLspServerActivationRule
+  … java.lang.ExceptionInInitializerError [in thread "ApplicationImpl pooled thread 1"]
+```
+
+IU bundles the Vue plugin, whose LSP activation rule fails to initialise in a headless test IDE.
+`LspOpenedFilesService` enumerates every `LspServerSupportProvider` when a file is opened, so any
+`BasePlatformTestCase` triggers it; the error is logged on a pooled thread, and `TestLoggerFactory`
+turns a logged error into a failure of whichever test happens to be running. That is why it lands on
+a different test each time and why rerunning the named test alone passes. Nothing in this plugin
+touches the platform LSP API — it uses LSP4IJ (ADR 0001) — and the platform offers only an
+*allowlist* (`idea.load.plugins.id`) for what a test IDE loads, no way to drop one bundled plugin.
+Rerun; do not chase it.
 
 ## Where things are recorded
 

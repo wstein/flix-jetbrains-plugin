@@ -136,6 +136,38 @@ class FlixDebugSessionTest {
         }
     }
 
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a breakpoint watching only the classes the debug index names still binds and hits`() {
+        // What the index is for. A generated class name encodes the definition and never the file
+        // -- `Def$main`, `Clo$main$626ZYxrpg1N` -- so before this the only correct request was one
+        // watching every class the VM prepares, re-checking the source on each. A `--Xdebug` build
+        // now writes `build/development/debug-index.json` and the watch can name its classes.
+        //
+        // Live rather than against a fixture index, because the claim is about names: that what the
+        // compiler wrote down are the names this VM will prepare a class under. A stub would only
+        // repeat back whichever names were typed into it, and the two mutations that matter -- a
+        // name that is subtly wrong, and an index that names classes belonging to another file --
+        // both survive a stub and fail here.
+        session(fixture, breakpointMarker, arm = ::stopAtNamed) { vm, stop, line ->
+            assertEquals(line, FlixSourceLocations.lineNumberOf(stop.location()))
+            assertTrue(
+                "the class the breakpoint bound in should be one the index named: " +
+                    stop.location().declaringType().name(),
+                FlixPositionManager.classesToWatch(project, "Main.flix")
+                    .contains(stop.location().declaringType().name()),
+            )
+
+            // And the index is a narrowing, not a rewrite: every class that actually holds the line
+            // is in it, so nothing that could have been armed was excluded by naming.
+            val holders = flixClassesHolding(vm, "Main.flix", line).map { it.first.name() }
+            val named = FlixPositionManager.classesToWatch(project, "Main.flix")
+            assertTrue(
+                "the index omits a class that holds the line: ${holders.filterNot(named::contains)}",
+                named.containsAll(holders),
+            )
+        }
+    }
+
     /**
      * A program whose calls are effectful, so the chain lives in continuations rather than on the
      * JVM stack: `main` runs `both`, which calls `one` and then `two`, each of which performs `Ask`.
@@ -622,19 +654,27 @@ class FlixDebugSessionTest {
         return renderer.label(frame.getValue(variable))
     }
 
+    /** The project the current session compiled, for assertions about what its build wrote. */
+    private lateinit var project: Path
+
     /**
      * Compiles `fixture`, launches it under a debugger, stops at the line carrying `marker`, and
      * runs `assertions` there.
+     *
+     * `arm` is how the breakpoint is placed. It is a parameter because there are two ways to do it
+     * and the difference is the point of one of the tests: watching every class the VM prepares,
+     * and watching only the classes the build's debug index names.
      */
     private fun session(
         fixture: String,
         marker: String,
+        arm: (VirtualMachine, String, Int) -> BreakpointEvent = ::stopAt,
         assertions: (VirtualMachine, BreakpointEvent, Int) -> Unit,
     ) {
         val compiler = compilerJar()
         assumeTrue("No compiler jar: set FLIX_JAR, or put flix.jar in the repository root.", compiler != null)
 
-        val project = Files.createTempDirectory("flix-debug-session")
+        project = Files.createTempDirectory("flix-debug-session")
         val source = project.resolve("src/Main.flix")
         source.parent.createDirectories()
         source.writeText(fixture)
@@ -658,7 +698,7 @@ class FlixDebugSessionTest {
         try {
             val vm = attach(port)
             try {
-                assertions(vm, stopAt(vm, "Main.flix", line), line)
+                assertions(vm, arm(vm, "Main.flix", line), line)
             } finally {
                 runCatching { vm.dispose() }
             }
@@ -742,6 +782,70 @@ class FlixDebugSessionTest {
                 "a breakpoint was armed on $sourceName:$line and never hit"
             } else {
                 "no class holding $sourceName:$line ever prepared, so nothing could be armed"
+            },
+        )
+    }
+
+    /**
+     * Arms the same breakpoint by watching only the classes the build's debug index names.
+     *
+     * The difference from [stopAt] is the whole claim the index makes. That one watches every class
+     * the VM prepares -- thousands of them, JDK included -- and asks each whether it holds the line.
+     * This one asks the index which classes carry `Main.flix` and creates one exact-name request per
+     * answer, which is what `FlixPositionManager.createPrepareRequests` does with them.
+     *
+     * So a name the compiler got wrong is not a smaller watch, it is no watch at all: the VM never
+     * prepares a class by that name, nothing is ever armed, and the failure below says so. That is
+     * the fault this test exists to catch, and it cannot be caught anywhere the names are believed.
+     */
+    private fun stopAtNamed(vm: VirtualMachine, sourceName: String, line: Int): BreakpointEvent {
+        val named = FlixPositionManager.classesToWatch(project, sourceName)
+        assertTrue("the build wrote no debug index naming classes for $sourceName", named.isNotEmpty())
+
+        for (className in named) {
+            val prepare = vm.eventRequestManager().createClassPrepareRequest()
+            prepare.addClassFilter(className)
+            prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+            prepare.enable()
+        }
+        vm.resume()
+
+        var armed = false
+        val deadline = System.currentTimeMillis() + HIT_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            val events = vm.eventQueue().remove(POLL_MS) ?: continue
+            for (event in events) {
+                when (event) {
+                    is BreakpointEvent -> return event
+                    is VMDisconnectEvent ->
+                        throw AssertionError(
+                            "the program exited without hitting the breakpoint; the index named " +
+                                "${named.size} class(es) for $sourceName",
+                        )
+                    is ClassPrepareEvent -> {
+                        assertTrue(
+                            "a class outside the index prepared: ${event.referenceType().name()}",
+                            named.contains(event.referenceType().name()),
+                        )
+                        val locations = locationsIn(event.referenceType(), sourceName, line)
+                        if (locations.isNotEmpty()) {
+                            val request = vm.eventRequestManager().createBreakpointRequest(locations.first())
+                            request.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+                            request.enable()
+                            armed = true
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+            events.resume()
+        }
+        throw AssertionError(
+            if (armed) {
+                "a breakpoint was armed on $sourceName:$line and never hit"
+            } else {
+                "none of the ${named.size} class(es) the index named for $sourceName holds line " +
+                    "$line, or none of them ever prepared: $named"
             },
         )
     }

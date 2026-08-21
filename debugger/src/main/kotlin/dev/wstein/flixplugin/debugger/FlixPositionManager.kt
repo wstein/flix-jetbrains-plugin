@@ -12,6 +12,7 @@ import com.intellij.debugger.engine.SuspendContext
 import com.intellij.debugger.engine.evaluation.EvaluationContext
 import com.intellij.debugger.jdi.StackFrameProxyImpl
 import com.intellij.debugger.requests.ClassPrepareRequestor
+import dev.wstein.flixplugin.FlixDebugIndex
 import com.intellij.debugger.ui.impl.watch.StackFrameDescriptorImpl
 import com.intellij.util.ThreeState
 import com.intellij.xdebugger.frame.XStackFrame
@@ -23,6 +24,7 @@ import com.intellij.psi.PsiFile
 import com.sun.jdi.Location
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.request.ClassPrepareRequest
+import java.nio.file.Path
 import org.flixlang.intellij.lang.FlixFileType
 
 /**
@@ -256,6 +258,26 @@ class FlixPositionManager(private val debugProcess: DebugProcess) :
         // language never produces a class-prepare request owned by this manager.
         val target = flixTargetOf(position)
 
+        // The classes a `--Xdebug` build says carry this file's code. Naming them is the difference
+        // between watching a handful of prepares and watching every class the VM loads -- and it is
+        // the compiler that can say, because a generated name never encodes its file.
+        //
+        // Only the *watch* narrows: which of them can host the line is still asked per class by
+        // [FlixLineOnly], because a class can carry a file's code without carrying that line.
+        val named = namedClassesFor(target)
+        if (named.isNotEmpty()) {
+            val requests = named.mapNotNull { className ->
+                debugProcess.requestsManager.createClassPrepareRequest(FlixLineOnly(requestor, position), className)
+            }
+            if (requests.isNotEmpty()) {
+                LOG.debug(
+                    "createPrepareRequests(${position.file.name}:${position.line + 1}): " +
+                        "watching ${requests.size} named class(es) from the debug index",
+                )
+                return requests
+            }
+        }
+
         // Flix compiles a source file into many classes whose names it chooses -- Def$main,
         // Clo$main$400074 and so on -- so there is no class-name pattern to filter on. Watching
         // every prepare and re-checking the source on arrival is the correct trade: breakpoints set
@@ -300,6 +322,23 @@ class FlixPositionManager(private val debugProcess: DebugProcess) :
                 "watching prepares outside ${NON_FLIX_NAMESPACES.joinToString()}",
         )
         return listOf(request)
+    }
+
+    /**
+     * The classes a `--Xdebug` build recorded for [target]'s file, or empty if none were recorded.
+     *
+     * Empty is the ordinary case for a project that has not been built, or was built by a compiler
+     * without the index, and it is not an answer about the file: the caller falls back to watching
+     * every class rather than concluding there are none.
+     *
+     * Read on demand rather than cached with the session. The index is rewritten by every build,
+     * including one a user starts while the debugger is attached, and a stale copy would name
+     * classes that no longer exist -- a breakpoint watching for a class the VM will never prepare
+     * looks exactly like a breakpoint the compiler forgot.
+     */
+    private fun namedClassesFor(target: Target): List<String> {
+        val basePath = debugProcess.project.basePath ?: return emptyList()
+        return classesToWatch(Path.of(basePath), target.baseName)
     }
 
     /**
@@ -397,7 +436,23 @@ class FlixPositionManager(private val debugProcess: DebugProcess) :
 
     private data class Target(val file: VirtualFile, val baseName: String)
 
-    private companion object {
+    companion object {
+        /**
+         * The classes a `--Xdebug` build under [projectRoot] recorded for the source [sourceName],
+         * verbatim and in the order the compiler wrote them.
+         *
+         * Companion-level and public because it is the one part of the watch that can be asserted
+         * without an IDE: a live session can arm exactly these names and see whether the VM ever
+         * prepares them, which is the claim the index makes and the only one worth measuring.
+         * Everything around it -- wrapping each name in a request -- is the platform's.
+         *
+         * Empty for every ordinary reason there is nothing to read, and it is not an answer about
+         * the file: the caller watches every class instead.
+         */
+        @JvmStatic
+        fun classesToWatch(projectRoot: Path, sourceName: String): List<String> =
+            runCatching { FlixDebugIndex.read(projectRoot).classesFor(sourceName) }.getOrDefault(emptyList())
+
         /**
          * Namespaces excluded from the class-prepare watch.
          *

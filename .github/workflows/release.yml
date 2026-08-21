@@ -1,6 +1,17 @@
-# GitHub Actions Workflow created for handling the release process based on the draft release prepared with the Build workflow.
-# Running the publishPlugin task requires all the following secrets to be provided: PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD, CERTIFICATE_CHAIN.
-# See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html for more information.
+# Two channels, two jobs, and deliberately no path between them.
+#
+#   - a published GitHub Release  -> signed upload to JetBrains Marketplace, plus the release assets;
+#   - a prereleased one           -> signed ZIP on the release and a GitHub Pages feed, and nothing
+#                                    else. It never runs publishPlugin, and it is never given
+#                                    PUBLISH_TOKEN, so a mistake in it cannot reach Marketplace.
+#
+# Marketplace stays the stable, default install path. The Pages feed is opt-in: a user adds it under
+# Settings | Plugins | Manage Plugin Repositories, and the release asset remains the exact-build
+# rollback for anyone who wants a specific version back.
+#
+# Running publishPlugin requires PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD and
+# CERTIFICATE_CHAIN. Signing alone needs the last three.
+# See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html
 
 name: Release
 on:
@@ -12,6 +23,9 @@ jobs:
   # Prepare and publish the plugin to JetBrains Marketplace repository
   release:
     name: Publish Plugin
+    # `released` only. Without this the stable job would also run for a prerelease, which is exactly
+    # the behaviour this split exists to end.
+    if: github.event.action == 'released'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -98,3 +112,166 @@ jobs:
             --body "Current pull request contains patched \`CHANGELOG.md\` file for the \`$VERSION\` version." \
             --label "$LABEL" \
             --head $BRANCH
+
+  # Sign a prerelease, attach it to its GitHub Release, and build the Pages feed that advertises it.
+  #
+  # Everything is verified before anything is published: the site artifact is only uploaded once the
+  # asset has been downloaded back and checked, so a feed can never point at bytes nobody confirmed.
+  beta:
+    name: Publish Beta
+    if: github.event.action == 'prereleased'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+
+      - name: Maximize Build Space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          large-packages: false
+
+      - name: Fetch Sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v5.6.0
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6.2.0
+        with:
+          cache-read-only: true
+
+      # Refuse before signing anything if the tag already carries this asset. A GitHub Release asset
+      # is the rollback path, so it has to be immutable: re-uploading over one would change what a
+      # version means for anybody who downloads it afterwards.
+      - name: Refuse A Tag That Already Has The Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh release view "$TAG" --json assets --jq '.assets[].name' | grep -c '\.zip$' || true)
+          if [ "$EXISTING" != "0" ]; then
+            echo "::error::$TAG already carries $EXISTING zip asset(s). A release asset is the" \
+                 "rollback path and must not be replaced; cut a new prerelease instead."
+            gh release view "$TAG" --json assets --jq '.assets[].name'
+            exit 1
+          fi
+
+      # Structure first: a descriptor problem found here names the descriptor, while the same
+      # problem found by an IDE names only "the plugin could not be loaded".
+      - name: Verify Plugin Structure
+        run: ./gradlew verifyPluginStructure
+
+      # Every IDE build the feed will advertise. `pluginVerification { ides { recommended() } }`
+      # resolves those from the declared compatibility range, so this covers what the feed offers
+      # rather than a range chosen separately from it.
+      - name: Verify Plugin
+        run: ./gradlew verifyPlugin
+
+      - name: Sign Plugin
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+        run: ./gradlew signPlugin verifyPluginSignature
+
+      # The signed archive under the name a user will download it as.
+      #
+      # `signPlugin` writes `<name>-signed.zip` beside the unsigned archive `buildPlugin` produced,
+      # and only the signed one may be published. It is staged under the plain versioned name because
+      # that name is what a rollback asks for; `-signed` is a fact about the build, not about the
+      # release. Staging it in a directory of its own also keeps "the archive to publish" a single
+      # unambiguous file.
+      - name: Stage The Signed Archive
+        id: archive
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          SIGNED=(build/distributions/*-signed.zip)
+          if [ "${#SIGNED[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one signed archive, found ${#SIGNED[@]}: ${SIGNED[*]-none}"
+            exit 1
+          fi
+          NAME="$(basename "${SIGNED[0]}" -signed.zip).zip"
+          mkdir -p build/beta-asset
+          cp "${SIGNED[0]}" "build/beta-asset/$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "path=build/beta-asset/$NAME" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "build/beta-asset/$NAME" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Release Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ steps.archive.outputs.path }}"
+
+      # Download what was actually published, not what was built. The feed will send every user to
+      # this URL, so this is the only step that can catch a truncated upload, a redirect, or an asset
+      # that never arrived -- each of which a user meets as "the plugin failed to install".
+      - name: Verify The Published Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          NAME: ${{ steps.archive.outputs.name }}
+          EXPECTED: ${{ steps.archive.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/beta-downloaded
+          gh release download "$TAG" --pattern "$NAME" --dir build/beta-downloaded --clobber
+          ACTUAL=$(sha256sum "build/beta-downloaded/$NAME" | cut -d' ' -f1)
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::the published asset hashes $ACTUAL and the signed archive hashes $EXPECTED"
+            exit 1
+          fi
+          # The signature was verified on these exact bytes by verifyPluginSignature above; equal
+          # hashes carry that verdict across. What remains is that the archive itself is intact.
+          unzip -t "build/beta-downloaded/$NAME" > /dev/null
+          echo "published asset verified: $ACTUAL"
+
+      - name: Generate Beta Plugin Repository
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          NAME: ${{ steps.archive.outputs.name }}
+        run: |
+          set -euo pipefail
+          ./gradlew generateBetaPluginRepo \
+            -PbetaArchive="${{ steps.archive.outputs.path }}" \
+            -PbetaDownloadUrl="${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$NAME"
+
+      # The feed is XML an IDE will parse. A file it cannot parse is a repository that silently
+      # offers nothing, which is indistinguishable from no prerelease having been published.
+      - name: Validate The Feed
+        run: |
+          set -euo pipefail
+          python3 -c "import xml.dom.minidom,sys; xml.dom.minidom.parse(sys.argv[1])" \
+            build/beta-plugin-repo/updatePlugins-beta.xml
+          cat build/beta-plugin-repo/updatePlugins-beta.xml
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/beta-plugin-repo
+
+  # Deploy the feed. A separate job so that it runs only after every check above has passed, and so
+  # that `pages: write` and `id-token: write` are held by a job that builds nothing.
+  beta-pages:
+    name: Deploy Beta Feed
+    if: github.event.action == 'prereleased'
+    needs: beta
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy To GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

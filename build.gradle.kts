@@ -102,6 +102,10 @@ dependencies {
     testImplementation(project(":language"))
     testImplementation("junit:junit:4.13.2")
 
+    // Reads .github/workflows/release.yml, so that the two release channels cannot quietly merge.
+    // Test-scoped: nothing that ships parses YAML.
+    testImplementation("org.yaml:snakeyaml:2.6")
+
     // The UI smoke test drives a real IDE, so it needs JUnit 5 and Starter's own transitive
     // surface: the API returns Kodein `DI` and coroutine `Deferred` in public signatures.
     integrationTestImplementation("org.junit.jupiter:junit-jupiter:6.1.2")
@@ -223,3 +227,12 @@ apply(from = "gradle/integration-glue.gradle.kts")
 
 // The opt-in preview channel's feed. Marketplace stays the stable one.
 apply(from = "gradle/beta-plugin-repo.gradle.kts")
+
+// `FlixReleaseWorkflowTest` reads the release workflow, which no Gradle project owns and which
+// Gradle therefore cannot know is an input. Undeclared, the test task stays up to date across every
+// edit to the workflow, so the channel contract would be checked once and never again -- measured,
+// as three mutations of the workflow that all passed.
+tasks.test {
+    inputs.file(layout.projectDirectory.file(".github/workflows/release.yml"))
+        .withPropertyName("releaseWorkflow")
+}

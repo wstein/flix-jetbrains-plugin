@@ -218,6 +218,29 @@ internal object FlixValues {
     /** A closure's captured values, in order: `clo0`, `clo1`, … */
     val CAPTURE_FIELD: Regex = Regex("""clo(\d+)""")
 
+    /**
+     * The class an anonymous object is compiled to, before its id: `Anon$220078`.
+     *
+     * One field, `clo0`, `clo1`, per method it implements, holding the closure that implements it
+     * (`GenAnonymousClasses`), and the Java type it implements as its interface or superclass.
+     */
+    const val ANON_PREFIX: String = "Anon\$"
+
+    /** Whether `className` is an anonymous object. */
+    fun isAnonymous(className: String): Boolean = simpleNameOf(className).startsWith(ANON_PREFIX)
+
+    /**
+     * An anonymous object as the language writes one: `new Comparator { compare }`.
+     *
+     * The type is what identifies it -- `Anon$220078` is an id and nothing else -- and the method
+     * names say what it implements. What each method *does* is the closure behind it, which is one
+     * node down and renders as itself.
+     */
+    fun formatAnonymous(type: String, methods: List<String>): String {
+        val body = methods.joinToString(", ")
+        return if (body.isEmpty()) "new $type" else "new $type { $body }"
+    }
+
     /** The class a `lazy` expression is compiled to, before its type: `Lazy$Int32`. */
     const val LAZY_PREFIX: String = "Lazy\$"
 

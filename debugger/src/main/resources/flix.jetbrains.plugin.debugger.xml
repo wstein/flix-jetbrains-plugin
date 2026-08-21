@@ -106,6 +106,12 @@
         <debugger.compoundRendererProvider
                 implementation="dev.wstein.flixplugin.debugger.FlixLazyRenderer"/>
 
+        <!-- An anonymous object. Its own class name is an id, so what identifies it is the Java
+             type it implements and the methods it defines; each method's body is the closure held
+             beside it, which renders as itself. -->
+        <debugger.compoundRendererProvider
+                implementation="dev.wstein.flixplugin.debugger.FlixAnonymousRenderer"/>
+
         <!-- Lets a watch be written in Flix rather than in Java. IntelliJ's Java debugger still owns
              the session (ADR 0002); this only supplies the front end for a .flix context, so Java,
              Kotlin and Scala frames keep their own evaluators: `isContextAccepted` is what keeps

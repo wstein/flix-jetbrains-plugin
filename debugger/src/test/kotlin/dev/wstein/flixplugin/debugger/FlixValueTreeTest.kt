@@ -320,6 +320,48 @@ class FlixValueTreeTest {
         assertEquals("fn curriedMultiply(6)", FlixClosureRenderer().labelOf(closure))
     }
 
+    // --- anonymous objects --------------------------------------------------------------------
+
+    @Test
+    fun `an anonymous object reads as the type it implements`() {
+        val cmp = anonymous(
+            implements = "java.util.Comparator",
+            methods = listOf("<init>", "compare", "lambda\$bridge"),
+            closures = listOf(closure("Clo\$main\$dJc2zUjuyaG", "bias", int(7))),
+        )
+
+        assertEquals("new Comparator { compare }", FlixAnonymousRenderer().labelOf(cmp))
+        assertEquals(listOf("compare"), FlixAnonymousRenderer().childNamesOf(cmp))
+    }
+
+    @Test
+    fun `an anonymous object extending a class names the class`() {
+        // An interface is implemented and a class is extended, so where there is no interface the
+        // superclass is the answer.
+        val list = anonymous(
+            implements = null,
+            extends = "java.util.AbstractList",
+            methods = listOf("<init>", "get"),
+            closures = listOf(closure("Clo\$main\$x", "_", int(1))),
+        )
+
+        assertEquals("new AbstractList { get }", FlixAnonymousRenderer().labelOf(list))
+    }
+
+    @Test
+    fun `an object that implements nothing is not called an Object`() {
+        // `java.lang.Object` is what a class implementing an interface extends, not a type anyone
+        // wrote. With nothing else to go on the generated name is the honest answer.
+        val opaque = anonymous(
+            implements = null,
+            extends = "java.lang.Object",
+            methods = listOf("<init>", "run"),
+            closures = listOf(closure("Clo\$main\$x", "_", int(1))),
+        )
+
+        assertEquals(true, FlixAnonymousRenderer().labelOf(opaque).startsWith("new Anon\$"))
+    }
+
     // --- applicability, through the checker the platform actually calls ------------------------
 
     @Test
@@ -441,6 +483,26 @@ class FlixValueTreeTest {
         return head
     }
 
+    /** An anonymous object: one closure field per method it implements, plus the type it implements. */
+    private fun anonymous(
+        implements: String?,
+        extends: String = "java.lang.Object",
+        methods: List<String>,
+        closures: List<Value>,
+    ): ObjectReference = objectRef(
+        "dev.flix.gen.Anon\$220078",
+        closures.withIndex().associate { (i, v) -> "clo$i" to v },
+        superclass = extends,
+        interfaces = listOfNotNull(implements),
+        methods = methods,
+    )
+
+    private fun FlixAnonymousRenderer.labelOf(value: Value): String =
+        (valueLabelRenderer as FlixLabelRenderer).label(value)
+
+    private fun FlixAnonymousRenderer.childNamesOf(value: Value): List<String> =
+        (childrenRenderer as FlixChildrenRenderer).childrenOf(value).map { it.first }
+
     /**
      * A lifted lambda, with its captures in `clo0`, `clo1` and their names on the class.
      *
@@ -549,6 +611,7 @@ class FlixValueTreeTest {
         superclass: String? = null,
         interfaces: List<String> = emptyList(),
         statics: Map<String, Value?> = emptyMap(),
+        methods: List<String> = emptyList(),
     ): ObjectReference {
         val id = nextId++
         // Read from the map on every call rather than captured once. A cyclic fixture is built by
@@ -567,6 +630,7 @@ class FlixValueTreeTest {
                 "getValue" -> statics[(args?.get(0) as? Field)?.name()]
                 "superclass" -> superclass?.let { classType(it) }
                 "interfaces" -> interfaces.map { interfaceType(it) }
+                "methods" -> methods.map { declaredMethod(it) }
                 else -> null
             }
         }
@@ -593,6 +657,17 @@ class FlixValueTreeTest {
         when (method.name) {
             "name" -> name
             "superinterfaces" -> emptyList<InterfaceType>()
+            else -> null
+        }
+    }
+
+    /** A declared method, as JDI reports one: a name, and the flags that say what kind it is. */
+    private fun declaredMethod(name: String): com.sun.jdi.Method = proxy(com.sun.jdi.Method::class.java) { method, _ ->
+        when (method.name) {
+            "name" -> name
+            "isConstructor" -> name == "<init>"
+            "isStaticInitializer" -> name == "<clinit>"
+            "isBridge", "isSynthetic" -> name.endsWith("\$bridge")
             else -> null
         }
     }

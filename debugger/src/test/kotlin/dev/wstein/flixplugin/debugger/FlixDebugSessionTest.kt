@@ -349,11 +349,6 @@ class FlixDebugSessionTest {
         }
     }
 
-    /** Temporary hook for shape dumps. */
-    fun dumpSession(fixture: String, marker: String, body: (BreakpointEvent) -> Unit) {
-        session(fixture, marker) { _, stop, _ -> body(stop) }
-    }
-
     /** A struct, whose class names its fields by position and says nothing else about them. */
     private val structFixture = """
         mod Counter {
@@ -460,6 +455,41 @@ class FlixDebugSessionTest {
 
     private fun lazyLabel(stop: BreakpointEvent, name: String): String =
         (FlixLazyRenderer().valueLabelRenderer as FlixLabelRenderer).label(local(stop, name))
+
+    /** An anonymous object implementing a Java interface, with a capture in its method body. */
+    private val anonymousFixture = """
+        import java.util.Comparator
+
+        def main(): Unit \ IO =
+            let bias = 7;
+            let cmp = new Comparator[String] {
+                def compare(_this: Comparator[String], t: String, u: String): Int32 =
+                    String.length(t) - String.length(u) + bias
+            };
+            println(cmp.compare("a", "b"));
+            spin(2000000000)
+
+        def spin(i: Int32): Unit = if (i <= 0) () else spin(i - 1)
+    """.trimIndent() + "\n"
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `an anonymous object reads as what it implements, live`() {
+        // `{Anon$220078@3745}`: the class name is an id, so what identifies the value is the type it
+        // implements and the method it defines. The body is the closure beside it, one node down.
+        session(anonymousFixture, "println(cmp.compare") { _, stop, _ ->
+            val anon = local(stop, "cmp")
+            val renderer = FlixAnonymousRenderer()
+
+            assertEquals("new Comparator { compare }", (renderer.valueLabelRenderer as FlixLabelRenderer).label(anon))
+            val methods = (renderer.childrenRenderer as FlixChildrenRenderer).childrenOf(anon)
+            assertEquals(listOf("compare"), methods.map { it.first })
+            // And that node is the closure, which knows what it captured.
+            assertEquals(
+                "fn main(bias = 7)",
+                (FlixClosureRenderer().valueLabelRenderer as FlixLabelRenderer).label(methods.single().second),
+            )
+        }
+    }
 
     @Test(timeout = SESSION_TIMEOUT_MS)
     fun `a struct reads with the names its fields were given, live`() {

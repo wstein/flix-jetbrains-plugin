@@ -370,6 +370,79 @@ class FlixClosureRenderer : CompoundRendererProvider() {
 }
 
 /**
+ * Renders an anonymous object as `new Comparator { compare }` rather than `{Anon$220078@3745}`.
+ *
+ * `new Comparator[String] { def compare(…) = … }` compiles to a class implementing that interface
+ * with one field per method it implements, each holding the closure that implements it. The class's
+ * own name is an id, so what identifies the value is the type it implements and the methods it
+ * defines -- and what each method *does* is the closure one node down, which renders as itself.
+ *
+ * The methods are paired with `clo0`, `clo1` by position, which is the order
+ * `GenAnonymousClasses` writes both in. Constructors, bridges and synthetics are skipped: a bridge
+ * exists so a closure can call back into the object and implements nothing the source wrote.
+ */
+class FlixAnonymousRenderer : CompoundRendererProvider() {
+
+    override fun getName(): String = "Flix anonymous object"
+
+    override fun getClassName(): String = FlixValues.GEN_PACKAGE + FlixValues.ANON_PREFIX
+
+    public override fun getIsApplicableChecker(): Function<Type, CompletableFuture<Boolean>> =
+        Function { type: Type? -> completedFuture(type != null && FlixValues.isAnonymous(type.name())) }
+
+    override fun isEnabled(): Boolean = true
+
+    public override fun getValueLabelRenderer(): ValueLabelRenderer =
+        object : FlixLabelRenderer("FlixAnonymous") {
+            override fun label(value: Value?): String {
+                val anon = value as? ObjectReference ?: return ""
+                return FlixValues.formatAnonymous(
+                    implementedType(anon.referenceType()),
+                    implementations(anon).map { (method, _) -> method },
+                )
+            }
+        }
+
+    public override fun getChildrenRenderer(): ChildrenRenderer =
+        object : FlixChildrenRenderer("FlixAnonymousChildren") {
+            override fun childrenOf(value: Value?): List<Pair<String, Value?>> =
+                implementations(value as? ObjectReference ?: return emptyList())
+        }
+
+    /**
+     * The Java type this object implements.
+     *
+     * An interface is implemented and a class is extended, so the answer is the first interface or,
+     * where there is none, the superclass -- and `java.lang.Object` is not an answer: it is what a
+     * class that implements an interface extends.
+     */
+    private fun implementedType(type: ReferenceType): String {
+        val classType = type as? ClassType
+        val implemented = runCatching { classType?.interfaces()?.firstOrNull()?.name() }.getOrNull()
+            ?: runCatching { classType?.superclass()?.name() }.getOrNull()?.takeIf { it != "java.lang.Object" }
+        return FlixValues.simpleNameOf(implemented ?: type.name())
+    }
+
+    /** Each implemented method, paired with the closure that implements it. */
+    private fun implementations(anon: ObjectReference): List<Pair<String, Value?>> {
+        val closures = anon.referenceType().allFields()
+            .mapNotNull { field ->
+                FlixValues.CAPTURE_FIELD.matchEntire(field.name())?.groupValues?.get(1)?.toIntOrNull()
+                    ?.let { index -> index to field }
+            }
+            .sortedBy { it.first }
+        val methods = runCatching {
+            anon.referenceType().methods()
+                .filter { !it.isConstructor && !it.isStaticInitializer && !it.isBridge && !it.isSynthetic }
+                .map { it.name() }
+        }.getOrDefault(emptyList())
+        return closures.mapIndexed { position, (index, field) ->
+            (methods.getOrNull(position) ?: "clo$index") to anon.getValue(field)
+        }
+    }
+}
+
+/**
  * Renders a lazy value as `lazy 4` once it has been forced and `lazy <unforced>` before.
  *
  * Which of the two it is, is the thing worth knowing, and it is readable: the class keeps the

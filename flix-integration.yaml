@@ -82,6 +82,8 @@ registrations:
     com.intellij.debugger.compoundRendererProvider.closure: dev.wstein.flixplugin.debugger.FlixClosureRenderer
     # A lazy value, which says whether it has been forced without forcing it.
     com.intellij.debugger.compoundRendererProvider.lazy: dev.wstein.flixplugin.debugger.FlixLazyRenderer
+    # An anonymous object, named by the Java type it implements rather than by its generated id.
+    com.intellij.debugger.compoundRendererProvider.anonymous: dev.wstein.flixplugin.debugger.FlixAnonymousRenderer
     # Flix expressions in a watch. Scoped by `isContextAccepted` to a .flix context, so the Java,
     # Kotlin and Scala evaluators are untouched -- the platform asks every registered factory.
     com.intellij.debugger.codeFragmentFactory: dev.wstein.flixplugin.debugger.FlixCodeFragmentFactory

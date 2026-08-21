@@ -247,6 +247,11 @@ tests:
   same descriptor. Slots stay the table's business and are deliberately not repeated. Locals are
   **not** covered: they are named where `GenExpression` compiles them and their slots allocated
   there, so describing them would mean re-implementing slot allocation outside code generation.
+  The table also records each class's **defining symbol**, which is what makes it joinable: its own
+  recorded types are monomorphised (`Option$AxNJjn6TiM2`, arguments gone), so anything needing a
+  real type looks the definition up in the typed AST instead. That join is what
+  `flix/debugEval/compile` does — a custom LSP request that types an expression against the frame a
+  debugger is paused in, and runs nothing. Nothing in the plugin sends it yet.
 - **`flix run` does not run the program.** It builds and then starts the program in a JVM of its
   own, so an agent on that command line lands on the *compiler* and the program runs unwatched one
   process further down — with no error and no bound breakpoint. Never put the agent there.

@@ -122,6 +122,20 @@ class FlixEvaluatorAnswerTest {
     }
 
     @Test
+    fun `the part that says what to do comes first, because the cell truncates`() {
+        // A watch shows one line. Observed in a real session: a refusal opened with the local
+        // grammar and appended "(the compiler could not help: …Internal error)", so the reader saw
+        // everything except the sentence that mattered -- and could not tell whether the compiler
+        // had even been asked.
+        val message = refusalFor("33 + 44", FlixDebugEvalAnswer.Unavailable("no --Xdebug build"))
+
+        assertTrue(
+            "the specific cause must lead: $message",
+            message.startsWith("no --Xdebug build"),
+        )
+    }
+
+    @Test
     fun `when the compiler cannot help, the local limit is still explained`() {
         // No debug build, no server, a frame it cannot place. None of those is a verdict on the
         // expression, so none may replace one -- but the reason is worth appending, because "there
@@ -133,13 +147,14 @@ class FlixEvaluatorAnswerTest {
     }
 
     @Test
-    fun `with no compiler at all the message is the one from before`() {
-        // An IDE without LSP4IJ. The evaluator must not start talking about a language server the
-        // user has not installed and did not ask about.
+    fun `with no compiler at all, the message says so and then says what is possible`() {
+        // An IDE without LSP4IJ, or one whose server has not started. Saying "there is no server"
+        // first is what distinguishes it from "your expression is wrong", which is what the local
+        // limit alone reads as.
         val message = refusalFor("List.length(xs)", answer = null)
 
+        assertTrue("it does not say the server is missing: $message", message.startsWith("No Flix language server"))
         assertTrue("the local limit is missing: $message", message.contains(FlixExpressions.LIMIT))
-        assertFalse("it mentions a compiler that is not there: $message", message.contains("could not help"))
     }
 
     @Test

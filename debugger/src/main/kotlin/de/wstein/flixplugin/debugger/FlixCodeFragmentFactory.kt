@@ -182,7 +182,9 @@ internal class FlixExpressionEvaluator(
         // and a second check would be a branch no test could reach.
         val project = context?.project ?: throw EvaluateException(unsupported.reason)
         val answer = ask(context, unsupported.text, withArtifact = true)
-            ?: throw EvaluateException(unsupported.reason)
+            ?: throw EvaluateException(
+                "No Flix language server is available to compile this expression. " + unsupported.reason,
+            )
         val typed = answer as? FlixDebugEvalAnswer.Typed
             ?: throw EvaluateException(explain(unsupported, answer))
         val artifact = typed.artifact
@@ -221,8 +223,12 @@ internal class FlixExpressionEvaluator(
      * What to say about an expression this evaluator cannot read.
      *
      * Falls back to the local refusal whenever the compiler is not there to ask or has nothing to
-     * add. A message about record projections is a poor answer for `List.length(xs)`, but it is a
-     * better one than a message about a language server the user never asked about.
+     * add -- but never *only* to it, and never with the specific part last.
+     *
+     * A watch cell is one line wide and truncates. Observed: a refusal that opened with the local
+     * grammar and appended "(the compiler could not help: …Internal error)" showed the reader
+     * everything except the sentence that mattered. Whatever is particular to this failure now
+     * leads, and the general limit follows it.
      */
     private fun explain(unsupported: FlixNavigation.Unsupported, answer: FlixDebugEvalAnswer): String {
         return when (answer) {
@@ -231,17 +237,17 @@ internal class FlixExpressionEvaluator(
             is FlixDebugEvalAnswer.Invalid ->
                 answer.diagnostics.joinToString("\n").ifBlank { unsupported.reason }
 
-            // The expression is right and the tool is incomplete, which is a different thing to be
-            // told and the reason this path exists.
+            // Typed but not run, which only happens on a path that decided not to. Saying what it
+            // is remains more use than a refusal alone.
             is FlixDebugEvalAnswer.Typed ->
-                "`${unsupported.text}` is `${answer.type}` with effect `${answer.effect}`, and this session " +
-                    "can only read values out of the paused frame. Running it needs an evaluator in " +
-                    "the debuggee, which is not implemented yet."
+                "`${unsupported.text}` is `${answer.type}` with effect `${answer.effect}`, and this " +
+                    "session did not run it."
 
-            // Asked and got nothing: no debug build, no server, a frame it cannot place. Not a
-            // verdict on the expression, so it must not replace one.
+            // Asked and got nothing: no debug build, no server, a frame it cannot place, a compiler
+            // that failed. Not a verdict on the expression, so it must not replace one -- but it
+            // leads, because it is the part that says what to do, and a watch cell is one line wide.
             is FlixDebugEvalAnswer.Unavailable ->
-                unsupported.reason + " (the compiler could not help: " + answer.reason + ")"
+                answer.reason + " " + unsupported.reason
         }
     }
 

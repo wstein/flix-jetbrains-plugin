@@ -82,8 +82,8 @@ internal object FlixExpressions {
     private fun unsupported(text: String, because: String): FlixNavigation.Unsupported =
         FlixNavigation.Unsupported(
             text,
-            "Cannot evaluate `$text`: $because. A Flix debug session evaluates $LIMIT. " +
-                "Anything else has to be compiled and run in the debuggee, which is not implemented yet.",
+            "Cannot evaluate `$text`: $because. This session reads $LIMIT out of the paused frame; " +
+                "anything else is compiled by the Flix language server and run in the debuggee.",
         )
 
     /** The message for a name the paused frame does not hold. */

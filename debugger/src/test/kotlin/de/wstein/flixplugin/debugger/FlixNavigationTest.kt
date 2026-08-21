@@ -61,11 +61,14 @@ class FlixNavigationTest {
     }
 
     @Test
-    fun `a call is refused, and says compilation is what it would need`() {
+    fun `a call is refused, and names what does compile it`() {
         // Not "invalid expression". Calling `fileName()` is well-formed Flix; it is unsupported
-        // because running it means compiling a thunk and executing it in the debuggee.
+        // *here* because running it means compiling it and executing it in the debuggee -- which is
+        // what the language server does, so the refusal has to say so rather than say "not
+        // implemented". This path is the fallback, and a reader who is told nothing can run their
+        // expression will not go looking for the reason the server did not.
         val reason = refusal("fileName()")
-        assertTrue(reason, reason.contains("compiled and run in the debuggee"))
+        assertTrue(reason, reason.contains("compiled by the Flix language server and run in the debuggee"))
     }
 
     @Test

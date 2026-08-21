@@ -225,6 +225,37 @@ listOf("runIde", "runIdeSplitMode", "runIdeBackend", "runIdeFrontend").forEach {
 // Phase 5: the cross-module wiring contract and its checker.
 apply(from = "gradle/integration-glue.gradle.kts")
 
+// Signing credentials, when a release workflow supplies them as files.
+//
+// Files rather than the `CERTIFICATE_CHAIN` / `PRIVATE_KEY` environment variables the plugin also
+// accepts, and that is measured rather than preference: with the chain supplied as *content*,
+// `verifyPluginSignature` passes the PEM itself to the ZIP signer as an argument and dies with
+// `Invalid argument: -----BEGIN CERTIFICATE-----`. `signPlugin` accepts either. Files are the form
+// both tasks agree on.
+//
+// Absent, the properties are simply not set: `signPlugin` is then SKIPPED, which is right for an
+// ordinary local build and is why the release job checks that a signed archive actually appeared.
+intellijPlatform {
+    signing {
+        providers.gradleProperty("certificateChainFile").orNull?.let {
+            certificateChainFile = layout.projectDirectory.file(it)
+        }
+        providers.gradleProperty("privateKeyFile").orNull?.let {
+            privateKeyFile = layout.projectDirectory.file(it)
+        }
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+}
+
+// Verifying a signature is a statement about the archive `signPlugin` produces, and the plugin does
+// not say so itself: asking for both in one invocation fails with "Task ':verifyPluginSignature'
+// uses this output of task ':signPlugin' without declaring an explicit or implicit dependency", and
+// Gradle schedules the verification *first*, where it finds no file and reports NO-SOURCE. Measured,
+// with a throwaway key -- the release workflow's signing step would have failed on its first run.
+tasks.named("verifyPluginSignature") {
+    dependsOn(tasks.named("signPlugin"))
+}
+
 // The opt-in preview channel's feed. Marketplace stays the stable one.
 apply(from = "gradle/beta-plugin-repo.gradle.kts")
 

@@ -175,12 +175,39 @@ jobs:
       - name: Verify Plugin
         run: ./gradlew verifyPlugin
 
+      # The credentials as *files*, and only one task asked for.
+      #
+      # Both shapes were measured with a throwaway key, and both alternatives fail:
+      #
+      #   - with the chain in `CERTIFICATE_CHAIN`, `signPlugin` works and
+      #     `verifyPluginSignature` passes the PEM itself to the ZIP signer, dying with
+      #     `Invalid argument: -----BEGIN CERTIFICATE-----`;
+      #   - asking for `signPlugin verifyPluginSignature` in one invocation fails validation --
+      #     the verify task does not declare the dependency -- and Gradle schedules the
+      #     verification first, where it finds no archive and reports NO-SOURCE. The build file
+      #     now wires the dependency, so asking for the verification alone signs first.
+      #
+      # Written under RUNNER_TEMP rather than the workspace so a key cannot reach a build output.
       - name: Sign Plugin
         env:
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
-        run: ./gradlew signPlugin verifyPluginSignature
+        run: |
+          set -euo pipefail
+          if [ -z "${CERTIFICATE_CHAIN:-}" ] || [ -z "${PRIVATE_KEY:-}" ]; then
+            echo "::error::CERTIFICATE_CHAIN and PRIVATE_KEY must be set. Without them signPlugin is" \
+                 "SKIPPED and verifyPluginSignature reports NO-SOURCE -- a green build that signs" \
+                 "nothing and verifies nothing."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$CERTIFICATE_CHAIN" > "$RUNNER_TEMP/chain.pem"
+          printf '%s' "$PRIVATE_KEY" > "$RUNNER_TEMP/key.pem"
+          ./gradlew verifyPluginSignature \
+            -PcertificateChainFile="$RUNNER_TEMP/chain.pem" \
+            -PprivateKeyFile="$RUNNER_TEMP/key.pem"
+          rm -f "$RUNNER_TEMP/chain.pem" "$RUNNER_TEMP/key.pem"
 
       # The signed archive under the name a user will download it as.
       #
@@ -194,6 +221,8 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
+          # Also the check that signing actually happened: with no credentials `signPlugin` is
+          # SKIPPED rather than failed, so "no signed archive" is how that arrives here.
           SIGNED=(build/distributions/*-signed.zip)
           if [ "${#SIGNED[@]}" -ne 1 ]; then
             echo "::error::expected exactly one signed archive, found ${#SIGNED[@]}: ${SIGNED[*]-none}"

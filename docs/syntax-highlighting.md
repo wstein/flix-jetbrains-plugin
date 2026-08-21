@@ -31,11 +31,18 @@ invisible; a fallback with a palette of its own would make every file flicker th
 colour scheme on open. The table is in the annotator's docs and pinned by
 `FlixSemanticFallbackAnnotatorTest`.
 
-One row has no counterpart: `Effect` is a semantic token type Flix invented, and LSP4IJ's default
-colours provider answers `null` for anything outside the standard set — so an effect name is
-**uncoloured in the server's layer too**, and `FLIX_EFFECT_NAME` is the only colour it gets. (The
-wire value is lowercase `effect`; a client mapping written against `Effect` compiles, runs and
-colours nothing.)
+One row is Flix's own: `effect` is a semantic token type the standard does not have, and LSP4IJ's
+default colours provider returns `null` for anything outside the standard set — a `null` key means
+the span is not painted at all. So the one thing the server took the trouble to identify was the one
+thing no layer coloured. `FlixSemanticTokensFeature` claims that type and nothing else, mapping it
+to the same `FLIX_EFFECT_NAME` the fallback annotator gives an `eff` declaration, so one entry in
+the scheme governs both layers. Everything else is delegated to `super` rather than to the default
+provider, which keeps a user-registered `semanticTokensColorsProvider` in charge of the standard
+types.
+
+The wire value is lowercase `effect`. The compiler's constant is `Effect` and the prose here calls
+it that, so a mapping written against the capitalised name compiles, runs, matches nothing and
+colours nothing — the same shape as the token-name bug above.
 
 One row is invisible in the other direction. LSP4IJ ships colour schemes
 (`colorSchemes/SemanticTokens*.xml` in lsp4ij-0.20.1) and `LSP_TYPE_PARAMETER` is the only key in

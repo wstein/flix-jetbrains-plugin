@@ -22,15 +22,20 @@ public class FlixLanguageServerFactory implements LanguageServerFactory {
      * <em>name</em> decides
      * whether the server sees the project at all, and {@link FlixClientFeatures}
      * why a missing
-     * compiler is answered before a start rather than during one.
+     * compiler is answered before a start rather than during one, and
+     * {@link FlixSemanticTokensFeature} why an effect name needs a colour of its own.
      */
     @Override
     public @NotNull LSPClientFeatures createClientFeatures() {
-        return new FlixClientFeatures().setWorkspaceFolderFeature(new LSPWorkspaceFolderFeature() {
-            @Override
-            protected @NotNull WorkspaceFolderStrategy createStrategy() {
-                return new FlixWorkspaceFolderStrategy();
-            }
-        });
+        return new FlixClientFeatures()
+                .setWorkspaceFolderFeature(new LSPWorkspaceFolderFeature() {
+                    @Override
+                    protected @NotNull WorkspaceFolderStrategy createStrategy() {
+                        return new FlixWorkspaceFolderStrategy();
+                    }
+                })
+                // Flix names one token type the standard does not have, `effect`, and LSP4IJ paints
+                // nothing for a type it does not recognise. See FlixSemanticTokensFeature.
+                .setSemanticTokensFeature(new FlixSemanticTokensFeature());
     }
 }

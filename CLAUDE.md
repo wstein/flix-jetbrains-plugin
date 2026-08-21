@@ -246,7 +246,16 @@ tests:
   expression inside a paused program, in a child loader whose parent is the program's own. The
   plugin reaches it through `FlixRemoteEval`: the artifact crosses as one string, each primitive is
   boxed by invoking the debuggee's own `valueOf` (an `Object[]` element cannot hold one), and the
-  call is `INVOKE_SINGLE_THREADED` so it does not resume the rest of the program under the user. The
+  call goes through `DebugProcessImpl.invokeMethod` rather than JDI directly — an invocation that
+  loads a class fires a class-prepare event, and a request armed with a thread-suspend policy
+  suspends the very thread the call is running on. Measured as a fifteen-minute hang.
+
+  `DebugEvalSidecar` keeps the compiler between requests and remembers each answer, keyed by the
+  sources' digest, the scope, the expression and the policy — **not** by the frame's values, because
+  an artifact is code and reads `n` the same way whatever `n` holds. That is what makes a watch
+  affordable: it is re-evaluated on every step and asks the same question each time. Key it on the
+  manifest's `fingerprint` instead of `sourcesDigest` and it will answer from before a rebuild;
+  only the latter changes when a source file does. The
   `LocalVariableTable` already carries names, slots and ranges; what it cannot carry is
   the type, because the back end erases — an `Option[String]` and a `Result[Int32, Bool]` have the
   same descriptor. Slots stay the table's business and are deliberately not repeated. Locals are

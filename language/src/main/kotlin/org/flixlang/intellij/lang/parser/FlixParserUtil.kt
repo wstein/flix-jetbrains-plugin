@@ -38,8 +38,8 @@ import org.flixlang.intellij.lang.psi.FlixTypes
 object FlixParserUtil : GeneratedParserUtilBase() {
 
     private val TRAIT_MEMBER_START: Set<IElementType> = setOf(
-        FlixTypes.LAW_KW, FlixTypes.DEF_KW, FlixTypes.TYPE_KW,
-        FlixTypes.PUB_KW, FlixTypes.SEALED_KW, FlixTypes.LAWFUL_KW, FlixTypes.MUT_KW,
+        FlixTypes.DEF_KW, FlixTypes.TYPE_KW,
+        FlixTypes.PUB_KW, FlixTypes.SEALED_KW, FlixTypes.MUT_KW,
         FlixTypes.ANNOTATION, FlixTypes.COMMENT_DOC,
     )
 

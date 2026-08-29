@@ -80,8 +80,6 @@ INJECT_KW|"inject"|KeywordInject
 INSTANCE_KW|"instance"|KeywordInstance
 INSTANCEOF_KW|"instanceof"|KeywordInstanceOf
 INTO_KW|"into"|KeywordInto
-LAW_KW|"law"|KeywordLaw
-LAWFUL_KW|"lawful" (modifier, per TokenKind.isModifier)|KeywordLawful
 LAZY_KW|"lazy"|KeywordLazy
 LET_KW|"let"|KeywordLet
 MATCH_KW|"match"|KeywordMatch

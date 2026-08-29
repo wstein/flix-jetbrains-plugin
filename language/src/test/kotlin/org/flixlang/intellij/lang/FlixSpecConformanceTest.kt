@@ -455,8 +455,15 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
          *     in `recoveryMarkers` instead of merely mapped. 133/136 agree, 1258 nodes compared,
          *     depth 93%. The port and flix-spec's own comparison now report the same figures on the
          *     same inputs, which is the check that this file has not drifted again.
+         *   - 4, after adopting flix-spec 0.75.8 (Flix v0.75.2). Flix removed law declarations, so
+         *     `law` and `lawful` stopped being keywords and became ordinary identifiers. Removing
+         *     them from Flix.bnf, _Flix.flex and Flix.tokens.txt fixed a positive fixture this
+         *     grammar could not parse at all (`lexical__law-and-lawful-are-names.flix`), and the
+         *     one new divergence is the negative fixture that pairs with it: the reference and this
+         *     grammar recover differently from a `law` declaration that is now simply invalid.
+         *     134/138 agree, 1269 nodes compared, depth 93%.
          */
-        private const val DIVERGENCE_BASELINE = 3
+        private const val DIVERGENCE_BASELINE = 4
     }
 
     override fun getTestDataPath(): String = ""
@@ -668,6 +675,34 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
                 Conformance.kindTree(Json.parse(sb.toString()))!!
             }
         }
+
+    /**
+     * Every `mappings` target must exist in the artifact's own `ast/treekind.json`.
+     *
+     * flix-spec's `validateProjectionMap` enforces this, but that runs in flix-spec against a map
+     * path someone remembers to pass; nothing here did, so a canonical kind disappearing upstream
+     * was invisible on this side. It has now happened: Flix v0.75.2 removed law declarations and
+     * `Decl.Law` left the inventory, taking two other consumers' maps with it.
+     *
+     * A mapping onto a kind no tree can contain is not inert. Our node keeps standing where the
+     * canonical tree has none, so it manufactures divergences -- and the failure reads as a grammar
+     * regression rather than as a stale map, which is the expensive way to find out.
+     */
+    fun testProjectionMapTargetsExistInTheInventory() {
+        val jar = flixSpecJar()
+        val inventory =
+            JarFile(jar).use { jf ->
+                val entry = jf.getEntry("ast/treekind.json")
+                    ?: error("flix-spec artifact has no ast/treekind.json")
+                val text = jf.getInputStream(entry).use { it.readBytes().decodeToString() }
+                Json.parse(text).get("kinds")!!.asArray().map { it.get("name")!!.asString() }.toSet()
+            }
+        val absent = loadProjectionMap().mappings.values.toSortedSet().filterNot { inventory.contains(it) }
+        assertTrue(
+            "projection map targets kinds absent from this flix-spec artifact: $absent",
+            absent.isEmpty(),
+        )
+    }
 
     fun testConformanceAgainstReference() {
         val jar = flixSpecJar()

@@ -105,8 +105,6 @@
       INSTANCE_KW='instance'
       INSTANCEOF_KW='instanceof'
       INTO_KW='into'
-      LAW_KW='law'
-      LAWFUL_KW='lawful'
       LAZY_KW='lazy'
       LET_KW='let'
       MATCH_KW='match'
@@ -331,9 +329,9 @@ declaration ::= annotationList modifierList declarationBody {pin=3 recoverWhile=
 // instead of eating it and unbalancing everything after.
 private declarationRecover ::= !declarationStart
 private declarationStart ::=
-    MOD_KW | TRAIT_KW | INSTANCE_KW | DEF_KW | REDEF_KW | LAW_KW | ENUM_KW | STRUCT_KW
+    MOD_KW | TRAIT_KW | INSTANCE_KW | DEF_KW | REDEF_KW | ENUM_KW | STRUCT_KW
   | TYPE_KW | EFF_KW | RESTRICTABLE_KW
-  | PUB_KW | SEALED_KW | LAWFUL_KW | MUT_KW
+  | PUB_KW | SEALED_KW | MUT_KW
   | ANNOTATION | COMMENT_DOC
   | USE_KW | IMPORT_KW
   | CURLY_R
@@ -354,7 +352,7 @@ traitDecl ::= TRAIT_KW ident typeParameterList? typeConstraints? traitBody?
 // `{pin=1}` on the second alternative only: once CURLY_L is seen, commit -- without this,
 // `traitMember*` matching zero iterations (because the first member's own name is malformed and
 // its containing rule has no pin of its own, so it backtracks past even its leading DEF_KW/
-// LAW_KW/TYPE_KW, undoing everything) leaves the whole `(CURLY_L traitMember* CURLY_R)?` group
+// DEF_KW/TYPE_KW, undoing everything) leaves the whole `(CURLY_L traitMember* CURLY_R)?` group
 // requiring CURLY_R immediately after CURLY_L, which fails and rolls back CURLY_L itself too --
 // unlike `block`'s own pin attempt (reverted above), there's no sibling alternative here that
 // legitimately needs `traitBody` to fail and backtrack (a trait's body is never ambiguous with
@@ -363,7 +361,7 @@ traitDecl ::= TRAIT_KW ident typeParameterList? typeConstraints? traitBody?
 // pin has a rule of its own to attach to, the same reason `blockWithStatement` exists.)
 private traitBody ::= CURLY_L traitMember* CURLY_R {pin=1}
 
-// Fallback for a trait member that starts with neither LAW_KW/DEF_KW/TYPE_KW nor a modifier
+// Fallback for a trait member that starts with neither DEF_KW/TYPE_KW nor a modifier
 // (e.g. a member name that's an operator token, `<=>`, which lexes as ANGLED_EQUAL and can't
 // begin *anything* recognized here): mirrors Parser2.traitDecl's own hand-written recovery
 // (`while (!nth(0).isFirstInTraitDecl && !eat(CurlyR) && !eof()) advance()`), which a declarative
@@ -373,7 +371,7 @@ private traitBody ::= CURLY_L traitMember* CURLY_R {pin=1}
 // next iteration pick up from there, or consumes CURLY_R if that's what it hits (the trait body's
 // own closing brace, folded into this recovery the same way the reference does).
 traitMemberError ::= <<consumeUntilTraitMemberStart>>
-traitMember ::= annotationList modifierList (lawDecl | signatureDecl | associatedTypeSigDecl | traitMemberError)
+traitMember ::= annotationList modifierList (signatureDecl | associatedTypeSigDecl | traitMemberError)
 
 instanceDecl ::= INSTANCE_KW qualifiedName BRACKET_L type BRACKET_R typeConstraints? equalityConstraintList? (CURLY_L instanceMember* CURLY_R)?
 instanceMember ::= annotationList modifierList (defDecl | redefDecl | associatedTypeDefDecl)
@@ -424,8 +422,6 @@ defDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect ty
 
 redefDecl ::= REDEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement
 
-lawDecl ::= LAW_KW ident COLON FORALL_KW typeParameterList? parameterList? typeConstraints? equalityConstraintList? expr
-
 // `private`, a pure dispatcher on RESTRICTABLE_KW: the reference closes a different TreeKind
 // (Decl.RestrictableEnum vs Decl.Enum) purely based on that keyword's presence, which a single
 // Grammar-Kit rule can't do -- one rule always produces one node kind for every alternative. Split
@@ -461,7 +457,7 @@ effectOperation ::= annotationList modifierList DEF_KW ident typeParameterList? 
 
 // ---- shared declaration fragments ----
 
-modifierList ::= (PUB_KW | SEALED_KW | LAWFUL_KW | MUT_KW)*
+modifierList ::= (PUB_KW | SEALED_KW | MUT_KW)*
 annotationList ::= ANNOTATION*
 
 parameterList ::= PAREN_L (parameter (COMMA parameter)* COMMA?)? PAREN_R
@@ -909,8 +905,9 @@ private jvmMember ::= jvmConstructor | jvmMethod
 // themselves `declarationStart` (see that rule's own comment above `declaration`), since those
 // need to be left alone for `declaration`'s own recovery to find; and never for STATIC_UPPER_KW,
 // which `ident` itself already accepts as a legitimate name token. The list below is every other
-// keyword: all 79, minus declarationStart's 17 (MOD/TRAIT/INSTANCE/DEF/REDEF/LAW/ENUM/STRUCT/
-// TYPE/EFF/RESTRICTABLE/PUB/SEALED/LAWFUL/MUT/USE/IMPORT), minus STATIC_UPPER_KW.
+// keyword: all 77, minus declarationStart's 15 (MOD/TRAIT/INSTANCE/DEF/REDEF/ENUM/STRUCT/
+// TYPE/EFF/RESTRICTABLE/PUB/SEALED/MUT/USE/IMPORT), minus STATIC_UPPER_KW.
+// `law` and `lawful` were removed by Flix v0.75.2 and are now ordinary identifiers.
 jvmMethodNameError ::=
     ALIAS_KW | AND_KW | AS_KW | CASE_KW | CATCH_KW | CHECKED_CAST_KW
   | CHECKED_ECAST_KW | CHOOSE_KW | CHOOSE_STAR_KW | DISCARD_KW | ELSE_KW | EMATCH_KW

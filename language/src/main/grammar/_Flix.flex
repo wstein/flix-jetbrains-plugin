@@ -187,8 +187,6 @@ ESCAPE = "\\" [^]
     "instance"        { return INSTANCE_KW; }
     "instanceof"      { return INSTANCEOF_KW; }
     "into"            { return INTO_KW; }
-    "law"             { return LAW_KW; }
-    "lawful"          { return LAWFUL_KW; }
     "lazy"            { return LAZY_KW; }
     "let"             { return LET_KW; }
     "match"           { return MATCH_KW; }

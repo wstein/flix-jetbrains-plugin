@@ -126,9 +126,15 @@ final class FlixDebugEvalClient implements FlixDebugEval {
      * newer server may answer in a way this build cannot act on, and guessing which of the three
      * cases it meant would put words in the compiler's mouth.
      */
-    private static @NotNull FlixDebugEvalAnswer answerOf(FlixDebugEvalResponse response) {
+    static @NotNull FlixDebugEvalAnswer answerOf(FlixDebugEvalResponse response) {
         if (response == null || response.getStatus() == null) {
             return new FlixDebugEvalAnswer.Unavailable("the language server sent no answer");
+        }
+        if (response.getProtocolVersion() != FlixDebugEvalRequest.PROTOCOL_VERSION) {
+            return new FlixDebugEvalAnswer.Unavailable(
+                    "the language server uses debug-evaluation protocol " + response.getProtocolVersion()
+                            + ", but this plugin requires " + FlixDebugEvalRequest.PROTOCOL_VERSION
+                            + ". Update the plugin or compiler");
         }
         return switch (response.getStatus()) {
             case "ok" -> new FlixDebugEvalAnswer.Typed(

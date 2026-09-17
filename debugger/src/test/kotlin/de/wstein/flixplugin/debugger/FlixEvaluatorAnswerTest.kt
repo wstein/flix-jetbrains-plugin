@@ -61,6 +61,7 @@ class FlixEvaluatorAnswerTest {
         val evaluator = FlixExpressionEvaluator(
             FlixExpressions.parse("println(xs)"),
             compilerThatAnswers(FlixDebugEvalAnswer.Typed("Unit", "IO", artifact("dev.flix.gen.Def\u0024w"))),
+            { "test-build" },
         )
         val message = runCatching {
             evaluator.evaluate(contextIn("dev.flix.gen.Def\u0024describe", "staticApply", consent = true))
@@ -241,12 +242,14 @@ class FlixEvaluatorAnswerTest {
 
     /** Evaluates [text] against a frame that holds nothing, so only the decision is exercised. */
     private fun evaluatorFor(text: String, answer: FlixDebugEvalAnswer) =
-        FlixExpressionEvaluator(FlixExpressions.parse(text), compilerThatAnswers(answer))
+        FlixExpressionEvaluator(FlixExpressions.parse(text), compilerThatAnswers(answer), { "test-build" })
             .evaluate(contextIn("dev.flix.gen.Def\u0024describe", "staticApply"))
 
     /** The message a watch would show for [text], given what the compiler says about it. */
     private fun refusalFor(text: String, answer: FlixDebugEvalAnswer?): String {
-        val evaluator = FlixExpressionEvaluator(FlixExpressions.parse(text), compilerThatAnswers(answer))
+        val evaluator = FlixExpressionEvaluator(
+            FlixExpressions.parse(text), compilerThatAnswers(answer), { "test-build" },
+        )
         val thrown = runCatching {
             evaluator.evaluate(contextIn("dev.flix.gen.Def\$describe", "staticApply"))
         }.exceptionOrNull()
@@ -263,9 +266,11 @@ class FlixEvaluatorAnswerTest {
                     expression: String,
                     className: String,
                     methodName: String,
+                    buildId: String,
                     policy: FlixDebugEval.Policy,
                     withArtifact: Boolean,
                 ): FlixDebugEvalAnswer {
+                    assertEquals("test-build", buildId)
                     asked += Asked(expression, className, methodName, policy, withArtifact)
                     return it
                 }

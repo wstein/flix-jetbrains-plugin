@@ -128,6 +128,7 @@ internal object FlixEvaluatorBuilder : EvaluatorBuilder {
 internal class FlixExpressionEvaluator(
     private val expression: FlixNavigation,
     private val compiler: (Project) -> FlixDebugEval? = { FlixDebugEval.getInstance(it) },
+    private val buildIdentity: (EvaluationContext) -> String = { FlixRemoteEval.buildId(it) },
 ) : ExpressionEvaluator {
 
     override fun getModifier(): Modifier? = null
@@ -208,10 +209,6 @@ internal class FlixExpressionEvaluator(
             )
         }
 
-        if (context == null) {
-            throw EvaluateException("No frame is selected, so there is nothing to run the expression against.")
-        }
-
         return try {
             FlixRemoteEval.evaluate(artifact, context)
         } catch (failed: FlixRemoteEvalException) {
@@ -274,10 +271,12 @@ internal class FlixExpressionEvaluator(
         val location = runCatching { context.frameProxy?.location() }.getOrNull() ?: return null
         val service = compiler(project) ?: return null
         return runCatching {
+            val buildId = buildIdentity(context)
             service.compile(
                 unsupportedText,
                 location.declaringType().name(),
                 location.method().name(),
+                buildId,
                 // Typing an expression runs nothing, so the widest policy is the right one here:
                 // refusing to *type* an effectful expression would hide what it is, and what it is
                 // is exactly what the message needs to say. Whether it may be *run* is decided
@@ -285,7 +284,9 @@ internal class FlixExpressionEvaluator(
                 FlixDebugEval.Policy.ALLOW_EFFECTS,
                 withArtifact,
             )
-        }.getOrNull()
+        }.getOrElse { failed ->
+            FlixDebugEvalAnswer.Unavailable(failed.message ?: "the running debug build could not be identified")
+        }
     }
 
     /** How a value is described when it turns out not to be a record. */

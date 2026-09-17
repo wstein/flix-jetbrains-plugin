@@ -39,6 +39,7 @@ interface FlixDebugEval {
         expression: String,
         className: String,
         methodName: String,
+        buildId: String,
         policy: Policy,
         withArtifact: Boolean = false,
     ): FlixDebugEvalAnswer

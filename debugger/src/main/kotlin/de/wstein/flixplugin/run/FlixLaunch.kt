@@ -89,7 +89,7 @@ internal class FlixLaunch(
             spec.java(),
             spec.classpath(),
             mainClass,
-            ParametersListUtil.parse(vmOptions.orEmpty()),
+            ParametersListUtil.parse(vmOptions.orEmpty()) + "-Dflix.debug.buildId=${spec.debugBuildId()}",
             ParametersListUtil.parse(programParameters.orEmpty()),
             port,
             true,

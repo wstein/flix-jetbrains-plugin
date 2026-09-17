@@ -5,6 +5,15 @@ debugger, plus `FlixPositionManager` and `FlixJavaDebugAware`, actually debug Fl
 
 Recorded outcome: **Green** — see the results table at the end.
 
+## Compiler foundation compatibility (2026-09-17)
+
+The format-1 source index now resolves an exact source path before trying a unique
+basename. Duplicate basenames do not merge unrelated class lists: an ambiguous lookup
+returns no indexed hint and the position manager performs its normal source checks.
+The position manager supplies the breakpoint file's full path. The reader also decodes
+the compiler's JSON control-character and Unicode escapes. These cases have automated
+reader regressions; they do not constitute a new measurement of the manual gate below.
+
 > ### ⚠️ 2026-08-20 — the 2026-07-28 result was invalidated on 2026-08-12, and is green again
 >
 > Every row below was measured against a compiler in which `flix run` compiled **and ran** the

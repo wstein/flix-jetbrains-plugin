@@ -107,25 +107,24 @@ public final class FlixDebugIndex {
         } catch (IOException absent) {
             return empty();
         }
-        Matcher version = VERSION.matcher(text);
-        if (!version.find() || Integer.parseInt(version.group(1)) != FORMAT_VERSION) {
+        try {
+            Matcher version = VERSION.matcher(text);
+            if (!version.find() || Integer.parseInt(version.group(1)) != FORMAT_VERSION) {
+                return empty();
+            }
+            return new FlixDebugIndex(parse(text.substring(version.end())));
+        } catch (IllegalArgumentException malformed) {
             return empty();
         }
-        return new FlixDebugIndex(parse(text.substring(version.end())));
     }
 
     /**
-     * The classes that carry code from the source named {@code sourceName}, by base
-     * name.
+     * The classes that carry code from the source named {@code sourceName}.
      *
      * <p>
-     * By base name because that is what a debugger has: a breakpoint knows the file
-     * it is in, and
-     * the index keys are the source names the compiler emitted — an absolute path
-     * for a file on
-     * disk, a bare name for a library source. Comparing on the last segment answers
-     * both without
-     * needing to know which kind it is.
+     * Exact paths take precedence. A basename-only lookup is allowed only when a
+     * single source matches; ambiguity falls back to the position manager's
+     * authoritative source checks instead of combining unrelated sources.
      *
      * <p>
      * Empty when the file is not in the index, which a caller must not read as "no
@@ -133,14 +132,21 @@ public final class FlixDebugIndex {
      * an index that has never been written says nothing about anything.
      */
     public @NotNull List<String> classesFor(@NotNull String sourceName) {
+        List<String> exact = sources.get(sourceName);
+        if (exact != null) {
+            return List.copyOf(exact);
+        }
         String base = baseNameOf(sourceName);
-        List<String> matches = new ArrayList<>();
+        List<String> matches = null;
         for (Map.Entry<String, List<String>> entry : sources.entrySet()) {
             if (baseNameOf(entry.getKey()).equals(base)) {
-                matches.addAll(entry.getValue());
+                if (matches != null) {
+                    return List.of();
+                }
+                matches = entry.getValue();
             }
         }
-        return matches;
+        return matches == null ? List.of() : List.copyOf(matches);
     }
 
     /** Whether anything was read at all. */
@@ -180,7 +186,31 @@ public final class FlixDebugIndex {
     }
 
     private static String unescape(String s) {
-        return s.replace("\\\"", "\"").replace("\\\\", "\\");
+        StringBuilder result = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c != '\\') {
+                if (c < 0x20) throw new IllegalArgumentException("Unescaped JSON control character");
+                result.append(c);
+                continue;
+            }
+            if (++i == s.length()) throw new IllegalArgumentException("Incomplete JSON escape");
+            switch (s.charAt(i)) {
+                case '"', '\\', '/' -> result.append(s.charAt(i));
+                case 'b' -> result.append('\b');
+                case 'f' -> result.append('\f');
+                case 'n' -> result.append('\n');
+                case 'r' -> result.append('\r');
+                case 't' -> result.append('\t');
+                case 'u' -> {
+                    if (i + 4 >= s.length()) throw new IllegalArgumentException("Incomplete Unicode escape");
+                    result.append((char) Integer.parseInt(s.substring(i + 1, i + 5), 16));
+                    i += 4;
+                }
+                default -> throw new IllegalArgumentException("Unknown JSON escape");
+            }
+        }
+        return result.toString();
     }
 
     private static String baseNameOf(String path) {

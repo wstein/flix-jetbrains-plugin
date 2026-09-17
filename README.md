@@ -387,22 +387,19 @@ and evaluator inside the same debug process.
 
 ## Known gaps
 
-- **The native run/debug configuration has never been exercised in a live session.** It was built
-  after the debugger gate, which ran entirely through a hand-made Remote JVM Debug configuration.
-  With the DAP path removed there is no fallback if it misbehaves. Two blocking defects in it were
-  found by review and fixed (`GenericDebuggerRunner` requires `ModuleRunProfile` on the
-  configuration *and* `RemoteConnectionCreator` on the state); neither fix is confirmed live.
-- **Breakpoints on some Flix lines do not bind.** In `flix-lab`'s `Main.flix`, lines calling into
-  Kotlin/Scala/Groovy/JRuby do not bind while adjacent lines do. Artifact inspection has ruled out
-  bytecode presence, class coverage, SMAP mapping and reachability -- the failing and working lines
-  are indistinguishable in the class files. Tracked as row 9 of the
-  [verification coverage](docs/phase-8-verification.md).
-- **Flix values in CPS frames are not presented.** A `Clo$` continuation keeps its state in fields
-  (`l0`..`l8`, `pc`) rather than locals, because the frame must survive suspension and resumption,
-  so the variables view is empty for those frames. The values are present and reachable; reading
-  them needs Flix-aware renderers, which the plan places after this milestone. Direct `Def$` frames
-  show variables normally.
-- **`verifyPlugin` has never been run.** The task exists; nothing invokes it.
+- **Final IDEA UI qualification is manual.** Automated tests cover the two-phase launch command,
+  manifest and sidecar readers, native position manager, value renderers, evaluation bridge, and
+  14 real JDWP sessions. They do not click the gutter, inspect the rendered debugger tool window,
+  or repeat the workflow in Split Mode and each optional-language plugin combination.
+- **Test debugging is not part of the CLI program-launch increment.** The native run/debug
+  configuration launches the format-4 program entry point. `flix test` still runs tests through the
+  compiler process, and there is no dedicated IDEA test-debug configuration.
+- **Evaluation cannot safely stop arbitrary program code.** Pure expressions are the default and
+  effects require explicit opt-in, but a nonterminating or blocking expression invoked inside the
+  paused JVM has no rollback or safe timeout guarantee.
+- **HotSwap, Smart Step Into target selection, and rule-level Datalog debugging remain unclaimed.**
+  They require separate recompilation/mapping or cooperative-runtime designs; ordinary source
+  stepping and Datalog value rendering are covered.
 - **Exception breakpoints, JDK/library source attachment, class redefinition and stale-cache
   invalidation** have no coverage -- and no known failure either.
 - **Kotlin, Scala and Groovy interop is unmeasured.** `flix-lab` now carries a `Greeter` in five

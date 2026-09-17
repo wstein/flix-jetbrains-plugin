@@ -19,6 +19,15 @@ Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 > under the new launch (gate row 15). Rows 13–14 below record what the change added and what it
 > still does not establish.
 
+> **2026-09-17 debugger-foundation update.** Rows 18 and 39 below preserve the history of the
+> earlier typing-only increment; their statements that compiled Flix expressions cannot execute
+> are superseded. The compiler now returns bounded artifacts tied to the launched build identity,
+> `DebugEvalHost` loads and invokes them in the paused JVM, and `FlixRemoteEval` performs the
+> managed JDI invocation after snapshotting frame arguments. Pure evaluation is the default;
+> effectful evaluation requires the existing explicit setting. Compiler and plugin unit suites,
+> host execution tests, and the 14-case live JDWP session suite are automated. The final IDEA UI
+> click-through remains manual qualification.
+
 | | Meaning |
 | --- | --- |
 | ✅ | Established, with the test or gate row named |

@@ -15,11 +15,20 @@ import java.util.List;
  */
 public class FlixDebugEvalResponse {
 
+    private int protocolVersion;
     private String status;
     private String tpe;
     private String eff;
     private List<String> diagnostics;
     private String reason;
+
+    public int getProtocolVersion() {
+        return protocolVersion;
+    }
+
+    public void setProtocolVersion(int protocolVersion) {
+        this.protocolVersion = protocolVersion;
+    }
 
     public String getStatus() {
         return status;

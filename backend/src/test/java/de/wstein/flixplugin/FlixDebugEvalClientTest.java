@@ -1,6 +1,7 @@
 package de.wstein.flixplugin;
 
 import org.junit.Test;
+import org.flixlang.intellij.eval.FlixDebugEvalAnswer;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
@@ -41,5 +42,18 @@ public class FlixDebugEvalClientTest {
         request.setBuildId("fingerprint:sources");
 
         assertEquals("fingerprint:sources", request.getBuildId());
+        assertEquals(1, request.getProtocolVersion());
+    }
+
+    @Test
+    public void anAnswerFromAnotherProtocolIsRefused() {
+        FlixDebugEvalResponse response = new FlixDebugEvalResponse();
+        response.setProtocolVersion(2);
+        response.setStatus("ok");
+
+        FlixDebugEvalAnswer answer = FlixDebugEvalClient.answerOf(response);
+
+        assertTrue(answer instanceof FlixDebugEvalAnswer.Unavailable);
+        assertTrue(((FlixDebugEvalAnswer.Unavailable) answer).getReason().contains("protocol 2"));
     }
 }

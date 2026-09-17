@@ -63,9 +63,11 @@ internal object FlixRemoteEval {
 
     private const val ENTRY = "evaluate"
 
+    private const val ABI_VERSION = 1
+
     /** Reads the immutable identity captured by the debuggee at startup, without invoking it. */
     fun buildId(context: EvaluationContext): String {
-        val host = hostIn(context.frameProxy?.stackFrame?.virtualMachine()
+        val host = compatibleHostIn(context.frameProxy?.stackFrame?.virtualMachine()
             ?: throw FlixRemoteEvalException("No frame is selected, so its build cannot be identified."))
         val field = host.fieldByName("BUILD_ID")
             ?: throw FlixRemoteEvalException(
@@ -88,7 +90,7 @@ internal object FlixRemoteEval {
         val frame = context.frameProxy?.stackFrame
             ?: throw FlixRemoteEvalException("No frame is selected, so there is nothing to run the expression against.")
         val vm = frame.virtualMachine()
-        val host = hostIn(vm)
+        val host = compatibleHostIn(vm)
         val method = host.methodsByName(ENTRY).singleOrNull()
             ?: throw FlixRemoteEvalException(
                 "the debuggee's $HOST has no single `$ENTRY`, so this plugin and the compiler that " +
@@ -120,6 +122,23 @@ internal object FlixRemoteEval {
                 thrown,
             )
         }
+    }
+
+    /** Finds the runtime host and refuses a compiler whose JDI surface this plugin does not know. */
+    private fun compatibleHostIn(vm: VirtualMachine): ClassType {
+        val host = hostIn(vm)
+        val field = host.fieldByName("ABI_VERSION")
+            ?: throw FlixRemoteEvalException(
+                "the debuggee's $HOST has no ABI_VERSION. Update the plugin or compiler.",
+            )
+        val actual = (host.getValue(field) as? IntegerValue)?.value()
+        if (actual != ABI_VERSION) {
+            throw FlixRemoteEvalException(
+                "the debuggee's $HOST uses ABI ${actual ?: "unknown"}, but this plugin requires " +
+                    "$ABI_VERSION. Update the plugin or compiler.",
+            )
+        }
+        return host
     }
 
     /**

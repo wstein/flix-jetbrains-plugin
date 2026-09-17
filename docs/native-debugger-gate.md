@@ -14,6 +14,11 @@ The position manager supplies the breakpoint file's full path. The reader also d
 the compiler's JSON control-character and Unicode escapes. These cases have automated
 reader regressions; they do not constitute a new measurement of the manual gate below.
 
+Value and frame labels recognize the current compiler's twelve-character lowercase
+Base36 specialization suffix, as well as the legacy eleven-character Base58 suffix.
+Regression tests cover root-package class names and reject wrong-length or wrong-case
+suffixes rather than silently stripping arbitrary name segments.
+
 > ### ⚠️ 2026-08-20 — the 2026-07-28 result was invalidated on 2026-08-12, and is green again
 >
 > Every row below was measured against a compiler in which `flix run` compiled **and ran** the

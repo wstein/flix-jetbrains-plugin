@@ -111,19 +111,19 @@ internal object FlixEvaluatorBuilder : EvaluatorBuilder {
  * every step, and asking the language server to type `at` again on each one would spend a
  * compilation to confirm something already in hand.
  *
- * When the expression is outside what a read can do, the compiler is asked what it *is* -- see
- * [FlixDebugEval] -- and the refusal becomes an answer rather than a shrug:
+ * When the expression is outside what a read can do, the compiler is asked to type and compile it
+ * -- see [FlixDebugEval] -- and the returned artifact is invoked in the paused debuggee:
  *
  * | The compiler says | The watch shows |
  * | --- | --- |
  * | the expression is ill-typed | its own diagnostics, in its own words |
- * | it is well-typed | the type and effect, and that running it is not implemented |
+ * | it is well-typed and allowed by policy | the value returned by the debuggee |
+ * | it is effectful without opt-in | its type/effect and the setting that enables it |
  * | it cannot say | the local limit, and why the compiler was no help |
  *
- * The middle row is the one worth the wiring. "`List.length(xs)` is `Int32 \ Pure`, and running it
- * needs an evaluator in the debuggee" tells a reader that their expression is right and the tool is
- * incomplete. Before this the same expression got a sentence about record projections, which reads
- * as though the expression were wrong.
+ * Compilation is bound to the launched build identity, and invocation snapshots all JDI arguments
+ * before defining artifact classes. This prevents an IDE-triggered rebuild from evaluating against
+ * a different program and avoids invalidating mirrors halfway through managed invocation.
  */
 internal class FlixExpressionEvaluator(
     private val expression: FlixNavigation,

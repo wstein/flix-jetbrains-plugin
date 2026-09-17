@@ -31,6 +31,8 @@ import static org.junit.Assert.assertTrue;
  */
 public class FlixJarTest {
 
+    private static final String DIGEST = "a2697d875725a0dde6e793b8d54cb220e86167a6d49ec5f0ccb0832966c8c15a";
+
     @Rule
     public TemporaryFolder projectRoot = new TemporaryFolder();
 
@@ -89,6 +91,47 @@ public class FlixJarTest {
                 IllegalStateException.class,
                 () -> FlixJar.resolve(projectRoot.getRoot().getPath(), null));
         assertTrue(thrown.getMessage().contains("flix.jar"));
+    }
+
+    @Test
+    public void explicitEnvironmentOverrideWinsOverFlixwLocalSelection() throws IOException {
+        Path root = projectRoot.getRoot().toPath();
+        Files.writeString(root.resolve(FlixwProject.WRAPPER_POSIX), "#!/bin/sh\n");
+        Files.createDirectories(root.resolve(".flixw/local"));
+        Files.writeString(root.resolve(FlixwProject.LOCK), """
+                [compiler]
+                version = "0.75.2"
+                sha256 = "%s"
+                """.formatted(DIGEST));
+        Path local = newJar("local.jar");
+        Files.writeString(root.resolve(FlixwProject.LOCAL_COMPILER), """
+                path = "%s"
+                selected_sha256 = "%s"
+                """.formatted(local, DIGEST));
+
+        assertEquals(Path.of("/opt/flix/temporary.jar"),
+                FlixJar.resolve(root.toString(), "/opt/flix/temporary.jar"));
+    }
+
+    @Test
+    public void projectEnvrcWinsOverAmbientAndFlixwLocalSelection() throws IOException {
+        Path root = projectRoot.getRoot().toPath();
+        Files.writeString(root.resolve(FlixwProject.WRAPPER_POSIX), "#!/bin/sh\n");
+        Files.createDirectories(root.resolve(".flixw/local"));
+        Files.writeString(root.resolve(FlixwProject.LOCK), """
+                [compiler]
+                version = "0.75.2"
+                sha256 = "%s"
+                """.formatted(DIGEST));
+        Path local = newJar("local.jar");
+        Files.writeString(root.resolve(FlixwProject.LOCAL_COMPILER), """
+                path = "%s"
+                selected_sha256 = "%s"
+                """.formatted(local, DIGEST));
+        Path envrc = newJar("envrc.jar");
+        Files.writeString(root.resolve(FlixEnvrc.ENVRC), "export FLIX_JAR=\"%s\"\n".formatted(envrc));
+
+        assertEquals(envrc, FlixJar.resolve(root.toString(), "/opt/flix/ambient.jar"));
     }
 
     private Path newJar(String name) throws IOException {

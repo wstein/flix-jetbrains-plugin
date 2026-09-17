@@ -9,7 +9,8 @@ import java.nio.file.Path;
  * Which Flix compiler jar this plugin launches.
  *
  * <p>
- * {@code $FLIX_JAR} if set, otherwise {@code flix.jar} in the project root.
+ * A project/ambient {@code $FLIX_JAR} override, then flixw's local compiler selection, then
+ * flixw's release lock, and finally {@code flix.jar} in a project without flixw.
  * Everything this plugin starts — the
  * language server, and the run/debug configuration — must agree on that choice,
  * or a debug session
@@ -97,12 +98,9 @@ public final class FlixJar {
         }
         Path root = Path.of(basePath);
 
-        // A wrapper has already pinned a compiler and verified it against a digest,
-        // which is a
-        // better answer than a loose jar in the project root -- and the one `./flixw
-        // run` in a
-        // terminal would use, so the editor and the command line agree about what they
-        // analysed.
+        // A wrapper may have selected a machine-local compiler, or pinned and verified a
+        // release. FlixwProject preserves that order and refuses a broken local selection rather
+        // than silently substituting the release -- the same answer `./flixw run` gives.
         FlixwProject.Installation flixw = FlixwProject.resolve(root);
         if (flixw != null && flixw.hasJar()) {
             return flixw.jar();

@@ -103,7 +103,13 @@ class FlixDebugSessionTest {
                 1,
                 classes.size,
             )
-            assertEquals("one statement, one location in it", 1, classes.single().second.size)
+            val locations = classes.single().second
+            assertTrue("the source line must expose at least one bytecode location", locations.isNotEmpty())
+            assertTrue("the actual stop must be one of the line's locations", hit in locations)
+            assertTrue(
+                "every bytecode boundary returned for the line must map back to it",
+                locations.all { FlixSourceLocations.lineNumberOf(it) == line },
+            )
 
             // The rules this plugin resolves positions with, asked about a location it did not
             // construct.

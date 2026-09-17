@@ -19,6 +19,14 @@ Base36 specialization suffix, as well as the legacy eleven-character Base58 suff
 Regression tests cover root-package class names and reject wrong-length or wrong-case
 suffixes rather than silently stripping arbitrary name segments.
 
+Remote evaluation snapshots all requested frame values before allocating or boxing
+arguments. Managed JVM invocations can invalidate a JDI stack frame, so reading the
+next local after boxing the previous one is unsafe. The snapshot's object references,
+transport strings, and argument array are pinned only for the invocation and released
+in `finally`, including when boxing or evaluation fails. Unit regressions exercise
+frame invalidation and reference cleanup; compiler-side evaluation remains a separate
+requirement, not established by these transport tests.
+
 > ### ⚠️ 2026-08-20 — the 2026-07-28 result was invalidated on 2026-08-12, and is green again
 >
 > Every row below was measured against a compiler in which `flix run` compiled **and ran** the

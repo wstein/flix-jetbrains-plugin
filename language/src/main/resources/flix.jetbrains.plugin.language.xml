@@ -9,13 +9,21 @@
          own registrations the same way – language and editor extensions in an always-loaded
          module, indexing and tool-window extensions in a backend-only one.
 
-         No <dependencies> block either. Everything this module compiles against – PsiBuilder,
+         Platform dependencies do not need to be listed here. Everything this module compiles
+         against from IntelliJ – PsiBuilder,
          ParserDefinition, LexerBase, LanguageFileType, IElementType, Commenter, FoldingBuilderEx,
          ASTWrapperPsiElement, PsiFileBase, PairedBraceMatcher, SyntaxHighlighterBase,
          RunLineMarkerContributor – lives in a top-level lib/*.jar on the platform's boot
          classpath, so it resolves without being declared. Naming a module here would be worse than
          redundant: an unsatisfiable content-module dependency makes the platform skip the module
-         *silently*, taking every extension below with it and leaving no error to diagnose. -->
+         *silently*, taking every extension below with it and leaving no error to diagnose.
+
+         The project-owned shared module is different: task configurations use FlixTask,
+         FlixLaunchCommand and FlixJar from it, and content modules have isolated classloaders. -->
+
+    <dependencies>
+        <module name="flix.jetbrains.plugin.shared"/>
+    </dependencies>
 
     <extensions defaultExtensionNs="com.intellij">
         <fileType

@@ -26,7 +26,11 @@ Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 > managed JDI invocation after snapshotting frame arguments. Pure evaluation is the default;
 > effectful evaluation requires the existing explicit setting. Compiler and plugin unit suites,
 > host execution tests, and the 14-case live JDWP session suite are automated. The final IDEA UI
-> click-through remains manual qualification.
+> click-through remains manual qualification. Release qualification also found that the language
+> content module used `FlixTask` from the shared module without declaring that classloader
+> dependency: searchable-options generation logged `NoClassDefFoundError` while Plugin Verifier
+> still reported compatibility. The dependency is now explicit, pinned by
+> `FlixPluginDescriptorTest`, and `buildSearchableOptions` completes without that load failure.
 
 | | Meaning |
 | --- | --- |

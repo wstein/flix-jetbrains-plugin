@@ -83,8 +83,8 @@ public class FlixDebugScopesTest {
 
     @Test
     public void aNameNobodyRecordedIsAnsweredAsMissing() {
-        // The ordinary case for a `let`-bound local, which this table does not cover. Answering
-        // anything else would be reporting a type nobody wrote down.
+        // The ordinary case for a generated temporary or a source name outside this method.
+        // Answering anything else would be reporting a type nobody wrote down.
         FlixDebugScopes scopes = write(SCOPES);
 
         assertNull(scopes.typeOf("dev.flix.gen.Def$describe", "staticApply", "somethingElse"));
@@ -131,6 +131,22 @@ public class FlixDebugScopesTest {
 
         FlixDebugScopes scopes = write(SCOPES);
         assertFalse("nothing was read from the documented path", scopes.isEmpty());
+    }
+
+    @Test
+    public void decodesEveryJsonEscapeTheCompilerMayWrite() {
+        FlixDebugScopes scopes = write(SCOPES.replace(
+                "\"name\":\"prefix\",\"type\":\"String\"",
+                "\"name\":\"pre\\u0066ix\",\"type\":\"A\\tB\""));
+
+        assertEquals("A\tB", scopes.typeOf("dev.flix.gen.Clo$main$626ZYxrpg1N", "staticApply", "prefix"));
+    }
+
+    @Test
+    public void malformedEscapesFailClosedInsteadOfPublishingPartialTypes() {
+        FlixDebugScopes scopes = write(SCOPES.replace("Option[String]", "Option[\\q]"));
+
+        assertTrue(scopes.isEmpty());
     }
 
     private FlixDebugScopes write(String contents) {

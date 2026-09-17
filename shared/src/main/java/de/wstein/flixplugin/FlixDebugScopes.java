@@ -33,10 +33,10 @@ import java.util.regex.Pattern;
  *
  * <h2>What it does not cover</h2>
  *
- * <p>Parameters and captures only. A {@code let}-bound local is named by the compiler where it is
- * compiled and its slot allocated there, so describing it would mean re-implementing slot allocation
- * outside code generation. A local therefore still reads with its erased type, exactly as everything
- * did before this existed — which is why {@link #typeOf} answers {@code null} rather than guessing.
+ * <p>Parameters, captures, source {@code let} bindings, and pattern variables are recorded. The
+ * sidecar remains method-wide: the JVM {@code LocalVariableTable}, not this reader, decides whether
+ * one of those names is live at the paused instruction. A generated temporary has no entry, and
+ * {@link #typeOf} answers {@code null} rather than guessing.
  *
  * <p>A function's <em>result</em> type is erased even here: {@code Int32 -> String} is recorded as
  * {@code (Int32) -> java.lang.Object}, because the back end had already erased it before the table
@@ -104,15 +104,19 @@ public final class FlixDebugScopes {
         } catch (IOException absent) {
             return empty();
         }
-        Matcher version = VERSION.matcher(text);
-        if (!version.find() || Integer.parseInt(version.group(1)) != FORMAT_VERSION) {
+        try {
+            Matcher version = VERSION.matcher(text);
+            if (!version.find() || Integer.parseInt(version.group(1)) != FORMAT_VERSION) {
+                return empty();
+            }
+            Matcher classes = CLASSES.matcher(text);
+            if (!classes.find(version.end())) {
+                return empty();
+            }
+            return new FlixDebugScopes(parse(text.substring(classes.end())));
+        } catch (IllegalArgumentException malformed) {
             return empty();
         }
-        Matcher classes = CLASSES.matcher(text);
-        if (!classes.find(version.end())) {
-            return empty();
-        }
-        return new FlixDebugScopes(parse(text.substring(classes.end())));
     }
 
     /**
@@ -196,6 +200,30 @@ public final class FlixDebugScopes {
     }
 
     private static String unescape(String s) {
-        return s.replace("\\\"", "\"").replace("\\\\", "\\");
+        StringBuilder result = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c != '\\') {
+                if (c < 0x20) throw new IllegalArgumentException("Unescaped JSON control character");
+                result.append(c);
+                continue;
+            }
+            if (++i == s.length()) throw new IllegalArgumentException("Incomplete JSON escape");
+            switch (s.charAt(i)) {
+                case '"', '\\', '/' -> result.append(s.charAt(i));
+                case 'b' -> result.append('\b');
+                case 'f' -> result.append('\f');
+                case 'n' -> result.append('\n');
+                case 'r' -> result.append('\r');
+                case 't' -> result.append('\t');
+                case 'u' -> {
+                    if (i + 4 >= s.length()) throw new IllegalArgumentException("Incomplete Unicode escape");
+                    result.append((char) Integer.parseInt(s.substring(i + 1, i + 5), 16));
+                    i += 4;
+                }
+                default -> throw new IllegalArgumentException("Unknown JSON escape");
+            }
+        }
+        return result.toString();
     }
 }

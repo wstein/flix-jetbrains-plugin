@@ -96,6 +96,17 @@ class FlixPluginDescriptorTest {
     }
 
     @Test
+    fun `language module can load the shared task runtime`() {
+        val language = parse("language/src/main/resources/flix.jetbrains.plugin.language.xml")
+        assertTrue(
+            "The language module constructs FlixTask run configurations and must declare the " +
+                "shared content module that owns FlixTask, FlixJar, and FlixLaunchCommand",
+            language.childrenNamed("module")
+                .any { it.getAttribute("name") == "flix.jetbrains.plugin.shared" },
+        )
+    }
+
+    @Test
     fun `language module registers exactly the intended extensions`() {
         val extensions = languageExtensions()
         assertEquals(

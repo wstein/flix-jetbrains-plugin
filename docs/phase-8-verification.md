@@ -31,6 +31,14 @@ Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 > dependency: searchable-options generation logged `NoClassDefFoundError` while Plugin Verifier
 > still reported compatibility. The dependency is now explicit, pinned by
 > `FlixPluginDescriptorTest`, and `buildSearchableOptions` completes without that load failure.
+> Final automated qualification paired compiler
+> `96c6b5f479137b2062ef22977fc0f7334c06935c6` with plugin
+> `6b0f8ea7d2896925efe7b0845f1f802f5324a8df`: the complete Gradle `test` graph passed,
+> including all 14 live JDWP cases. Plugin Verifier reported **Compatible** for IU 261,
+> 262, and 263, with six deprecated-API and 29 experimental-API usages and no
+> compatibility failures. The local compiler checkout intentionally differs from the
+> upstream grammar/spec pin, so its dedicated pin check was run with the documented
+> `flixSpec.allowPinMismatch` test override rather than rewriting that pin.
 
 | | Meaning |
 | --- | --- |

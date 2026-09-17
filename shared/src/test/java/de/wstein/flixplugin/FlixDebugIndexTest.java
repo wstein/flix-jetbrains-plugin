@@ -63,6 +63,26 @@ public class FlixDebugIndexTest {
   }
 
   @Test
+  public void exactPathsDisambiguateDuplicateBasenames() throws IOException {
+    FlixDebugIndex index = read("""
+        {"formatVersion":1,"sources":{
+          "/project/one/Types.flix":["One.Def$types"],
+          "/project/two/Types.flix":["Two.Def$types"]
+        }}
+        """);
+    assertEquals(List.of("One.Def$types"), index.classesFor("/project/one/Types.flix"));
+    assertTrue(index.classesFor("Types.flix").isEmpty());
+  }
+
+  @Test
+  public void decodesCompilerJsonEscapesInSourcePaths() throws IOException {
+    FlixDebugIndex index = read("""
+        {"formatVersion":1,"sources":{"/project/a\\u005d\\tTypes.flix":["Def$types"]}}
+        """);
+    assertEquals(List.of("Def$types"), index.classesFor("/project/a]\tTypes.flix"));
+  }
+
+  @Test
   public void aBuildWithoutAnIndexReadsAsEmpty() throws IOException {
     // No build yet, a build without `--Xdebug`, or one made by a compiler that
     // predates the

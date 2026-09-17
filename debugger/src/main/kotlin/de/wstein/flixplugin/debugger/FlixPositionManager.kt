@@ -338,7 +338,7 @@ class FlixPositionManager(private val debugProcess: DebugProcess) :
      */
     private fun namedClassesFor(target: Target): List<String> {
         val basePath = debugProcess.project.basePath ?: return emptyList()
-        return classesToWatch(Path.of(basePath), target.baseName)
+        return classesToWatch(Path.of(basePath), target.file.path)
     }
 
     /**

@@ -306,7 +306,9 @@ class FlixDebugSessionTest {
 
     /** The class of `one`, whose captured chain is still on the heap and no longer describes the run. */
     private fun staleType(stop: BreakpointEvent): ReferenceType? =
-        stop.virtualMachine().allClasses().firstOrNull { it.name() == "dev.flix.gen.Def\$one" }
+        stop.virtualMachine().allClasses().firstOrNull {
+            FlixValues.simpleNameOf(it.name()) == "Def\$one"
+        }
 
     /**
      * A program whose `println` pulls code in from another file of the standard library, which is

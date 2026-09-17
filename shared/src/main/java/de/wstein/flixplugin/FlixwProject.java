@@ -16,9 +16,8 @@ import java.util.regex.Pattern;
  * already decided.
  *
  * <p>
- * flixw pins a compiler version in the project, verifies the downloaded jar
- * against a digest
- * recorded in {@code .flixw/lock.toml}, and keeps the verified jars in a shared
+ * flixw may select a machine-local compiler in {@code .flixw/local/compiler.toml}, or pin a
+ * release, verify it against the digest in {@code .flixw/lock.toml}, and keep it in a shared
  * cache. A project
  * with a wrapper has therefore already answered the question this plugin would
  * otherwise ask, and
@@ -121,6 +120,9 @@ public final class FlixwProject {
      */
     static final String LOCK = ".flixw/lock.toml";
 
+    /** Machine-local compiler choice written by {@code flixw pin --local}. */
+    static final String LOCAL_COMPILER = ".flixw/local/compiler.toml";
+
     /**
      * The variable that relocates the cache, which the wrapper honours and so must
      * this.
@@ -167,8 +169,8 @@ public final class FlixwProject {
     /**
      * What a wrapper pinned: which jar, and which {@code java} to run it with.
      *
-     * @param jar  the verified compiler jar, or {@code null} when nothing is pinned
-     *             yet
+     * @param jar  the selected local or verified release compiler jar, or {@code null} when none
+     *             is available
      * @param java the JDK flixw installed, or {@code null} when this cannot tell
      */
     public record Installation(@Nullable Path jar, @Nullable Path java) {
@@ -209,7 +211,9 @@ public final class FlixwProject {
      * no wrapper.
      *
      * <p>
-     * Never throws. Every failure — no wrapper, an unreadable lock, a digest that
+     * A malformed or missing local compiler selection throws rather than falling
+     * through to the release lock. Failures of the release lock — no wrapper,
+     * an unreadable lock, a digest that
      * is not one, a
      * jar the cache no longer holds — answers "nothing pinned", because the caller
      * already has a
@@ -234,8 +238,77 @@ public final class FlixwProject {
             return null;
         }
         Path cache = cacheHome(root);
+        LocalCompiler local = readLocalCompiler(root.resolve(LOCAL_COMPILER));
+        if (local != null) {
+            if (!Files.isRegularFile(local.path()) || !Files.isReadable(local.path())) {
+                throw new IllegalStateException("The selected local Flix compiler " + local.path()
+                        + " is not a readable file. Run `./flixw pin --stock` to restore the locked compiler.");
+            }
+            return new Installation(local.path(), installedJdk(cache));
+        }
         Lock lock = readLock(root.resolve(LOCK));
         return new Installation(lock == null ? null : existingJar(cache, lock), installedJdk(cache));
+    }
+
+    /** The persistent local compiler selection, whose digest is selection metadata, not a launch-time check. */
+    record LocalCompiler(@NotNull Path path, @NotNull String selectedSha256) {
+    }
+
+    /**
+     * Reads the exact generated {@code compiler.toml} shape. Absence means no local selection;
+     * malformed content is fatal because silently using the release lock would run different code.
+     */
+    static @Nullable LocalCompiler readLocalCompiler(@NotNull Path file) {
+        if (!Files.exists(file)) {
+            return null;
+        }
+        final List<String> lines;
+        try {
+            lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw malformedLocalCompiler(file, "cannot be read");
+        }
+        String path = null;
+        String sha256 = null;
+        for (String line : lines) {
+            String text = line.strip();
+            if (text.isEmpty() || text.startsWith("#")) {
+                continue;
+            }
+            Matcher entry = ENTRY.matcher(line);
+            if (!entry.matches()) {
+                throw malformedLocalCompiler(file, "does not parse");
+            }
+            switch (entry.group(1)) {
+                case "path" -> {
+                    if (path != null) throw malformedLocalCompiler(file, "repeats `path`");
+                    path = entry.group(2);
+                }
+                case "selected_sha256" -> {
+                    if (sha256 != null) throw malformedLocalCompiler(file, "repeats `selected_sha256`");
+                    sha256 = entry.group(2);
+                }
+                default -> throw malformedLocalCompiler(file, "contains unknown key `" + entry.group(1) + "`");
+            }
+        }
+        if (path == null || sha256 == null || !DIGEST.matcher(sha256).matches()) {
+            throw malformedLocalCompiler(file, "needs quoted `path` and 64-digit lowercase `selected_sha256` values");
+        }
+        final Path jar;
+        try {
+            jar = Path.of(path);
+        } catch (Exception e) {
+            throw malformedLocalCompiler(file, "contains an invalid path");
+        }
+        if (!jar.isAbsolute()) {
+            throw malformedLocalCompiler(file, "names a non-absolute path");
+        }
+        return new LocalCompiler(jar, sha256);
+    }
+
+    private static IllegalStateException malformedLocalCompiler(Path file, String problem) {
+        return new IllegalStateException(file + " " + problem
+                + ". Correct it, or run `./flixw pin --stock` to restore the locked compiler.");
     }
 
     /**

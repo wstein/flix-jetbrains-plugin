@@ -78,11 +78,14 @@ public final class FlixBuildSpec {
     private final String java;
     private final String mainClass;
     private final List<String> runtimeClasspath;
+    private final String debugBuildId;
 
-    private FlixBuildSpec(String java, @Nullable String mainClass, List<String> runtimeClasspath) {
+    private FlixBuildSpec(String java, @Nullable String mainClass, List<String> runtimeClasspath,
+            String debugBuildId) {
         this.java = java;
         this.mainClass = mainClass;
         this.runtimeClasspath = List.copyOf(runtimeClasspath);
+        this.debugBuildId = debugBuildId;
     }
 
     /** The absolute {@code java} the program must be started with. */
@@ -101,6 +104,11 @@ public final class FlixBuildSpec {
      */
     public @NotNull List<String> runtimeClasspath() {
         return runtimeClasspath;
+    }
+
+    /** The exact compiler options, dependencies, and sources represented by this build. */
+    public @NotNull String debugBuildId() {
+        return debugBuildId;
     }
 
     /** The manifest of the development build under {@code projectRoot}. */
@@ -149,7 +157,13 @@ public final class FlixBuildSpec {
         if (java == null) {
             throw new IllegalStateException(manifest + " records no `java` to start the program with.");
         }
-        return new FlixBuildSpec(java, stringField(launch, "mainClass"), stringArrayField(launch, "runtimeClasspath"));
+        String fingerprint = stringField(json, "fingerprint");
+        String sourcesDigest = stringField(json, "sourcesDigest");
+        if (fingerprint == null || sourcesDigest == null) {
+            throw new IllegalStateException(manifest + " records no complete debug build identity. Rebuild the project.");
+        }
+        return new FlixBuildSpec(java, stringField(launch, "mainClass"),
+                stringArrayField(launch, "runtimeClasspath"), fingerprint + ":" + sourcesDigest);
     }
 
     /**

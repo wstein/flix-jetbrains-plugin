@@ -78,6 +78,7 @@ final class FlixDebugEvalClient implements FlixDebugEval {
             @NotNull String expression,
             @NotNull String className,
             @NotNull String methodName,
+            @NotNull String buildId,
             @NotNull Policy policy,
             boolean withArtifact) {
 
@@ -85,6 +86,7 @@ final class FlixDebugEvalClient implements FlixDebugEval {
         request.setExpression(expression);
         request.setClassName(className);
         request.setMethodName(methodName);
+        request.setBuildId(buildId);
         request.setPolicy(policy.getWireName());
         request.setWithArtifact(withArtifact);
 

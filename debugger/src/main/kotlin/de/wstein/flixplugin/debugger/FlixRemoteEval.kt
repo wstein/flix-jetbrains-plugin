@@ -63,6 +63,21 @@ internal object FlixRemoteEval {
 
     private const val ENTRY = "evaluate"
 
+    /** Reads the immutable identity captured by the debuggee at startup, without invoking it. */
+    fun buildId(context: EvaluationContext): String {
+        val host = hostIn(context.frameProxy?.stackFrame?.virtualMachine()
+            ?: throw FlixRemoteEvalException("No frame is selected, so its build cannot be identified."))
+        val field = host.fieldByName("BUILD_ID")
+            ?: throw FlixRemoteEvalException(
+                "the debuggee's $HOST has no BUILD_ID, so this plugin and compiler do not agree on the evaluation protocol",
+            )
+        val value = host.getValue(field) as? com.sun.jdi.StringReference
+        return value?.value()?.takeIf { it.isNotBlank() }
+            ?: throw FlixRemoteEvalException(
+                "the running program has no debug build identity. Restart it from a fresh --Xdebug build.",
+            )
+    }
+
     /**
      * Runs [artifact] against the values [frame] holds, and returns what it produced.
      *

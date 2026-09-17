@@ -3,6 +3,7 @@ package de.wstein.flixplugin;
 import org.junit.Test;
 
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 /**
  * How long the client waits, and why it is not one number.
@@ -32,5 +33,13 @@ public class FlixDebugEvalClientTest {
         // An unbounded wait on a debugger thread is a frozen Variables view with no way out.
         assertTrue(FlixDebugEvalClient.SERVER_TIMEOUT_SECONDS > 0);
         assertTrue(FlixDebugEvalClient.ANSWER_TIMEOUT_SECONDS > 0);
+    }
+
+    @Test
+    public void requestCarriesThePausedProgramsBuildIdentity() {
+        FlixDebugEvalRequest request = new FlixDebugEvalRequest();
+        request.setBuildId("fingerprint:sources");
+
+        assertEquals("fingerprint:sources", request.getBuildId());
     }
 }

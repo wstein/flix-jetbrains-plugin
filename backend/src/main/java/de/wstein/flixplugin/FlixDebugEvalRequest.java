@@ -11,6 +11,7 @@ public class FlixDebugEvalRequest {
     private String className;
     private String methodName;
     private String expression;
+    private String buildId;
     private String policy = "pure";
 
     public String getClassName() {
@@ -35,6 +36,14 @@ public class FlixDebugEvalRequest {
 
     public void setExpression(String expression) {
         this.expression = expression;
+    }
+
+    public String getBuildId() {
+        return buildId;
+    }
+
+    public void setBuildId(String buildId) {
+        this.buildId = buildId;
     }
 
     /**

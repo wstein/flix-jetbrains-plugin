@@ -16,6 +16,14 @@ import org.junit.Test
  */
 class FlixValuesTest {
 
+    @Test
+    fun `current stable JVM suffixes use twelve lowercase base36 digits`() {
+        assertEquals("compute", FlixValues.withoutStableHash("compute\$0abc123xyz09"))
+        assertEquals("List.Cons", FlixValues.tagOf("Tagged\$", "List\$0abc123xyz09.Cons"))
+        assertEquals("compute\$0ABC123XYZ09", FlixValues.withoutStableHash("compute\$0ABC123XYZ09"))
+        assertEquals("compute\$0abc123xyz0", FlixValues.withoutStableHash("compute\$0abc123xyz0"))
+    }
+
     // --- records ------------------------------------------------------------------------------
 
     @Test

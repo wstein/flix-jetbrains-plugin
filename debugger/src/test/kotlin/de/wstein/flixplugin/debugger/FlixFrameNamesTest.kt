@@ -15,6 +15,13 @@ import org.junit.Test
 class FlixFrameNamesTest {
 
     @Test
+    fun `current root package frames strip the stable name table suffix`() {
+        assertEquals("compute", FlixFrames.definitionOf("Def\$compute\$0abc123xyz09"))
+        assertEquals("main", FlixFrames.definitionOf("Clo\$main\$0abc123xyz09"))
+        assertEquals("Tuning.path", FlixFrames.definitionOf("Tuning\$Def\$path\$0abc123xyz09"))
+    }
+
+    @Test
     fun `a definition in the root namespace is its own name`() {
         assertEquals("readTuning", FlixFrames.definitionOf("dev.flix.gen.Def\$readTuning"))
     }

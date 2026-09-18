@@ -2,6 +2,7 @@ package org.flixlang.intellij.run
 
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.PsiDocumentManager
 import org.flixlang.intellij.lang.psi.FlixDeclaration
 import org.flixlang.intellij.lang.psi.FlixDefDecl
 import org.flixlang.intellij.lang.psi.FlixIdent
@@ -71,3 +72,16 @@ fun exactTestPattern(symbols: Collection<String>): String? = symbols
     .sorted()
     .takeIf(List<String>::isNotEmpty)
     ?.joinToString(separator = "|", prefix = "(?:", postfix = ")") { Regex.escape(it) }
+
+/** The same location URL emitted by the compiler test protocol for this definition. */
+fun FlixDefDecl.testLocationUrlOrNull(): String? {
+    if (testSymbolOrNull() == null) return null
+    val file = containingFile ?: return null
+    val virtualFile = file.virtualFile ?: return null
+    val document = PsiDocumentManager.getInstance(project).getDocument(file) ?: return null
+    val declaration = PsiTreeUtil.getParentOfType(this, FlixDeclaration::class.java, true) ?: return null
+    val offset = declaration.textOffset.coerceAtLeast(0)
+    val line = document.getLineNumber(offset)
+    val column = offset - document.getLineStartOffset(line)
+    return "file://${virtualFile.path}:${line + 1}:${column + 1}"
+}

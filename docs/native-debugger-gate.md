@@ -857,7 +857,7 @@ What remains is a follow-up feature rather than a gap in the proof:
 | Item | Row | State |
 | --- | --- | --- |
 | Duplicate bare base names | 10 | not reachable, with evidence |
-| Variables in a **CPS** frame | 7 | see *Why some Flix frames show no variables* below — a follow-up feature, not a gate failure |
+| Variables in a **CPS** frame | 7 | implemented after this gate; the historical cause and the current PC-keyed solution are recorded below |
 
 ### Why some Flix frames show no variables
 
@@ -902,11 +902,10 @@ was compiled:
 
 A direct, effect-free call compiles to an ordinary method and debugs like ordinary Java. A CPS
 continuation keeps its state in **fields** — `l0`…`l8` plus `pc` — because the frame must survive
-being suspended and resumed, and fields are not locals, so nothing appears in the variables view.
-
-That makes Flix value presentation a *feature to build*, not a defect to fix: the values are present
-and reachable, under names the debugger cannot interpret unaided. The plan already places custom
-Flix value renderers after this milestone, and this is the evidence for what they must do.
+being suspended and resumed. At the time of this gate those fields produced no Variables children.
+Debug builds now add PC-keyed `frameSlots` metadata, and the plugin presents only the fields live
+at that suspension under their source names and Flix types. They remain read-only snapshots; the
+live frame alone owns evaluation and assignment.
 
 One further observation from the same class, worth keeping: `Clo$main$400241.applyFrame` reports
 lines `69, 48, 70, 71, …` — line 48 is `helloFromJava`'s body, inlined between two lines of `main`.

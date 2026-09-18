@@ -5,6 +5,7 @@ import com.sun.jdi.ClassType
 import com.sun.jdi.Location
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
+import com.sun.jdi.StringReference
 import com.sun.jdi.Value
 import com.sun.jdi.VirtualMachine
 import com.sun.jdi.event.BreakpointEvent
@@ -54,9 +55,9 @@ import kotlin.io.path.writeText
  * the `Flix` stratum constant leaves this test green. The SMAP branch stays covered by stubs, which
  * is what stubs are for when the shape cannot be produced.
  *
- * **Effects.** The fixture has none, deliberately, so that what is asserted here is line binding
- * rather than the trampoline. The continuation reconstruction is asserted to stay silent, which is
- * the only claim a program without effects can make about it.
+ * **Effects.** The first fixture has none, deliberately, so its line-binding claims do not depend
+ * on the trampoline. A separate effectful fixture measures the reconstructed chain, resume lines,
+ * logical Step Out target, and source-named values saved in a suspended continuation.
  *
  * **The gesture.** Pressing Debug, and which evaluator the IDE picks per frame, are above JDI.
  *
@@ -262,7 +263,8 @@ class FlixDebugSessionTest {
 
         def main(): Unit \ IO =
             run {
-                println(both())
+                let label = "root";
+                println(label + both())
             } with handler Ask {
                 def ask(resume) = resume("!")
             }
@@ -271,8 +273,8 @@ class FlixDebugSessionTest {
     @Test(timeout = SESSION_TIMEOUT_MS)
     fun `the reconstructed chain names the call each frame is waiting on`() {
         // Stopped in `both`, between its two effectful calls. `main` is on the chain above it, and
-        // what it should say is where `main` *is* -- at `println(both())` on line 16, the call it is
-        // waiting on -- not at `def main` on line 14, which is where every entry used to point.
+        // what it should say is where `main` *is* -- at its `println(label + both())` call, not
+        // at the `def main` declaration where every entry used to point.
         //
         // That position is the continuation's `pc`, and a `pc` is a tableswitch key: only the
         // `pcLines` constant a `--Xdebug` build records makes it readable without disassembling the
@@ -283,12 +285,39 @@ class FlixDebugSessionTest {
             val entries = chain.mapNotNull { provider.definitionLocation(it) }
                 .map { FlixFrames.labelOf(it).toString() }
 
-            assertEquals(listOf("main(), Main.flix:16"), entries)
+            val callerLine = effectfulFixture.lines().indexOfFirst { it.contains("println(label + both())") } + 1
+            assertEquals(listOf("main(), Main.flix:$callerLine"), entries)
             val stepOut = FlixSteppingCommands.stepOutTargetOf(stop.thread(), stop.location().declaringType())
             assertTrue(stepOut?.className?.startsWith("Clo\$main\$") == true)
             assertEquals("applyFrame", stepOut?.methodName)
             assertTrue(stepOut?.sourceName?.endsWith("Main.flix") == true)
-            assertEquals(16, stepOut?.line)
+            assertEquals(callerLine, stepOut?.line)
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `a suspended caller exposes its live source variables read only`() {
+        session(effectfulFixture, "let b = two()") { _, stop, _ ->
+            val continuation = FlixContinuations.callChain(
+                stop.thread(),
+                stop.location().declaringType(),
+            ).single()
+
+            val saved = FlixContinuationSlots.valuesOf(continuation)
+            assertEquals(listOf("label"), saved.map { it.slot.name })
+            assertEquals("l0", saved.single().slot.field)
+            assertEquals("String", saved.single().slot.type)
+            assertEquals("local", saved.single().slot.kind)
+            assertEquals("root", (saved.single().value as StringReference).value())
+
+            val entry = FlixAsyncStackTraceProvider()
+                .chainOf(stop.thread(), stop.location().declaringType())
+                ?.single() as? FlixStackFrameItem
+            assertEquals(
+                "the async frame must carry the exact values read from its continuation",
+                saved,
+                entry?.savedValues,
+            )
         }
     }
 

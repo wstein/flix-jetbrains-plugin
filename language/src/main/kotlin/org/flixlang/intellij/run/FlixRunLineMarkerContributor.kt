@@ -2,6 +2,8 @@ package org.flixlang.intellij.run
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
 import com.intellij.icons.AllIcons
+import com.intellij.execution.TestStateStorage
+import com.intellij.execution.testframework.TestIconMapper
 import com.intellij.psi.PsiElement
 import org.flixlang.intellij.lang.psi.FlixDefDecl
 import org.flixlang.intellij.lang.psi.FlixIdent
@@ -18,11 +20,18 @@ import org.flixlang.intellij.lang.psi.FlixIdent
  */
 class FlixRunLineMarkerContributor : RunLineMarkerContributor() {
     override fun getInfo(element: PsiElement): Info? {
-        if (
-            !isRunnableEntryPointAnchor(element) &&
-            !isRunnableTestAnchor(element)
-        ) return null
-        return withExecutorActions(AllIcons.RunConfigurations.TestState.Run)
+        if (isRunnableEntryPointAnchor(element)) {
+            return withExecutorActions(AllIcons.RunConfigurations.TestState.Run)
+        }
+        if (!isRunnableTestAnchor(element)) return null
+
+        val declaration = (element.parent as FlixIdent).parent as FlixDefDecl
+        val record = declaration.testLocationUrlOrNull()?.let {
+            TestStateStorage.getInstance(element.project).getState(it)
+        }
+        val icon = record?.let { TestIconMapper.getIcon(TestIconMapper.getMagnitude(it.magnitude)) }
+            ?: AllIcons.RunConfigurations.TestState.Run
+        return withExecutorActions(icon)
     }
 
     companion object {

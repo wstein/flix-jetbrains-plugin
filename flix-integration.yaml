@@ -46,6 +46,7 @@ registrations:
     com.intellij.lineIndentProvider: org.flixlang.intellij.lang.editor.FlixLineIndentProvider
     com.intellij.lang.braceMatcher: org.flixlang.intellij.lang.editor.FlixBraceMatcher
     com.intellij.lang.commenter: org.flixlang.intellij.lang.editor.FlixCommenter
+    com.intellij.fileTypeFactory: org.flixlang.intellij.lang.FlixPackageFileTypeFactory
     com.intellij.lang.quoteHandler: org.flixlang.intellij.lang.editor.FlixQuoteHandler
     com.intellij.lang.foldingBuilder: org.flixlang.intellij.lang.editor.FlixFoldingBuilder
     # The Flix subcommands (build, check, test, doc, ...). Language, not backend or debugger:
@@ -86,6 +87,7 @@ registrations:
     com.intellij.debugger.positionManagerFactory: de.wstein.flixplugin.debugger.FlixPositionManagerFactory
     com.intellij.debugger.extraSteppingFilter: de.wstein.flixplugin.debugger.FlixSteppingFilter
     com.intellij.debugger.jvmSteppingCommandProvider: de.wstein.flixplugin.debugger.FlixSteppingCommands
+    com.intellij.debugger.jvmSmartStepIntoHandler: de.wstein.flixplugin.debugger.FlixSmartStepIntoHandler
     com.intellij.configurationType: de.wstein.flixplugin.run.FlixRunConfigurationType
     com.intellij.runConfigurationProducer: de.wstein.flixplugin.run.FlixRunConfigurationProducer
     # Debug's first phase -- `flix build --Xdebug` -- on a background thread. Registered

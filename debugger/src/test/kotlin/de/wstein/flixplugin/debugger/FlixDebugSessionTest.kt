@@ -14,6 +14,7 @@ import com.sun.jdi.event.VMDisconnectEvent
 import com.sun.jdi.event.VMStartEvent
 import com.sun.jdi.request.EventRequest
 import de.wstein.flixplugin.FlixBuildSpec
+import de.wstein.flixplugin.FlixDebugCalls
 import de.wstein.flixplugin.FlixLaunchCommand
 import de.wstein.flixplugin.FlixTask
 import de.wstein.flixplugin.run.FlixTestLaunch
@@ -212,6 +213,33 @@ class FlixDebugSessionTest {
         } finally {
             debuggee.destroyForcibly()
             debuggee.waitFor(10, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `smart step into reaches the selected resolved definition in a live VM`() {
+        val calls = """
+            def first(x: Int32): Int32 = x + 1
+            def second(x: Int32): Int32 = x * 2
+
+            def main(): Unit \ IO =
+                println(second(first(40)))
+        """.trimIndent() + "\n"
+
+        session(calls, "println(second", arm = { vm, source, line ->
+            stopAt(vm, source, line, EventRequest.SUSPEND_ALL)
+        }) { vm, stop, line ->
+            val recorded = FlixDebugCalls.read(project).callsOn(project.resolve("src/Main.flix").toString(), line)
+            val target = recorded.singleOrNull { it.label().substringAfterLast('.') == "second" }
+                ?: throw AssertionError("the compiler did not record exactly one `second` call: ${recorded.map { it.label() }}")
+
+            val landed = runToSmartTarget(vm, target)
+
+            assertEquals(target.className(), landed.declaringType().name())
+            assertEquals(target.methodName(), landed.method().name())
+            assertTrue("the chosen target landed in runtime trampoline machinery: $landed",
+                !landed.declaringType().name().startsWith("dev.flix.runtime."))
+            assertTrue("the selected generated definition is not recognised as Flix", FlixSourceLocations.isFlixLocation(landed))
         }
     }
 
@@ -936,8 +964,17 @@ class FlixDebugSessionTest {
      * and this is that arrangement carried out for real.
      */
     private fun stopAt(vm: VirtualMachine, sourceName: String, line: Int): BreakpointEvent {
+        return stopAt(vm, sourceName, line, EventRequest.SUSPEND_EVENT_THREAD)
+    }
+
+    private fun stopAt(
+        vm: VirtualMachine,
+        sourceName: String,
+        line: Int,
+        suspendPolicy: Int,
+    ): BreakpointEvent {
         val prepare = vm.eventRequestManager().createClassPrepareRequest()
-        prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+        prepare.setSuspendPolicy(suspendPolicy)
         prepare.enable()
         vm.resume()
 
@@ -971,7 +1008,7 @@ class FlixDebugSessionTest {
                         val locations = locationsIn(event.referenceType(), sourceName, line)
                         if (locations.isNotEmpty()) {
                             val request = vm.eventRequestManager().createBreakpointRequest(locations.first())
-                            request.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+                            request.setSuspendPolicy(suspendPolicy)
                             request.enable()
                             armed = true
                         }
@@ -1053,6 +1090,57 @@ class FlixDebugSessionTest {
                 "none of the ${named.size} class(es) the index named for $sourceName holds line " +
                     "$line, or none of them ever prepared: $named"
             },
+        )
+    }
+
+    /** Resumes the real call site to the exact class and method selected by Smart Step Into. */
+    private fun runToSmartTarget(
+        vm: VirtualMachine,
+        target: FlixDebugCalls.Call,
+    ): Location {
+        fun arm(type: ReferenceType): Boolean {
+            val method = type.methodsByName(target.methodName()).firstOrNull() ?: return false
+            val request = vm.eventRequestManager().createBreakpointRequest(method.location())
+            request.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+            request.enable()
+            return true
+        }
+
+        var armed = vm.classesByName(target.className()).any(::arm)
+        if (!armed) {
+            val prepare = vm.eventRequestManager().createClassPrepareRequest()
+            prepare.addClassFilter(target.className())
+            prepare.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD)
+            prepare.enable()
+        }
+        vm.resume()
+
+        val deadline = System.currentTimeMillis() + HIT_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            val events = vm.eventQueue().remove(POLL_MS) ?: continue
+            for (event in events) {
+                when (event) {
+                    is BreakpointEvent -> {
+                        val location = event.location()
+                        if (FlixSmartMethodFilter.matches(target, location.declaringType().name(), location.method().name())) {
+                            return location
+                        }
+                    }
+                    is ClassPrepareEvent -> {
+                        if (event.referenceType().name() == target.className()) {
+                            armed = arm(event.referenceType()) || armed
+                        }
+                    }
+                    is VMDisconnectEvent ->
+                        throw AssertionError("the program exited before Smart Step Into reached ${target.label()}")
+                    else -> Unit
+                }
+            }
+            events.resume()
+        }
+        throw AssertionError(
+            if (armed) "the selected target ${target.className()}.${target.methodName()} was armed but never reached"
+            else "the selected target class ${target.className()} never prepared",
         )
     }
 

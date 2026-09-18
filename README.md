@@ -413,9 +413,10 @@ and evaluator inside the same debug process.
 - **Evaluation cannot safely stop arbitrary program code.** Pure expressions are the default and
   effects require explicit opt-in, but a nonterminating or blocking expression invoked inside the
   paused JVM has no rollback or safe timeout guarantee.
-- **HotSwap, Smart Step Into target selection, and rule-level Datalog debugging remain unclaimed.**
-  They require separate recompilation/mapping or cooperative-runtime designs; ordinary source
-  stepping and Datalog value rendering are covered.
+- **HotSwap and rule-level Datalog debugging remain unclaimed.** They require separate
+  recompilation/mapping or cooperative-runtime designs. Smart Step Into is compiler-resolved
+  through `debug-calls.json`; a live JDWP test proves the selected generated definition is reached
+  rather than trampoline machinery.
 - **Exception breakpoints, JDK/library source attachment, class redefinition and stale-cache
   invalidation** have no coverage -- and no known failure either.
 - **Kotlin, Scala and Groovy interop is unmeasured.** `flix-lab` now carries a `Greeter` in five

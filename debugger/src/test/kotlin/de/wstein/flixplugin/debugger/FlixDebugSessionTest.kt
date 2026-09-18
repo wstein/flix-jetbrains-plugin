@@ -15,6 +15,8 @@ import com.sun.jdi.event.VMStartEvent
 import com.sun.jdi.request.EventRequest
 import de.wstein.flixplugin.FlixBuildSpec
 import de.wstein.flixplugin.FlixLaunchCommand
+import de.wstein.flixplugin.FlixTask
+import de.wstein.flixplugin.run.FlixTestLaunch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -142,6 +144,74 @@ class FlixDebugSessionTest {
             // And a list, which is a chain of `Cons` cells in the debuggee and read as one until
             // the compiler started recording which enum a case belongs to.
             assertEquals("-96.0 :: -64.0 :: -36.0 :: Nil", labelOf(stop, "xs"))
+        }
+    }
+
+    @Test(timeout = SESSION_TIMEOUT_MS)
+    fun `an individual test debug launch attaches to the JVM that runs the selected test`() {
+        val compiler = compilerJar()
+        assumeTrue("No compiler jar: set FLIX_JAR, or put flix.jar in the repository root.", compiler != null)
+
+        val fixture = """
+            @Test
+            def selected(): Unit \ IO =
+                let answer = 40 + 2;
+                println(answer)
+
+            @Test
+            def excluded(): Unit \ IO =
+                println("excluded")
+        """.trimIndent() + "\n"
+        project = Files.createTempDirectory("flix-test-debug-session")
+        val source = project.resolve("src/TestMain.flix")
+        source.parent.createDirectories()
+        source.writeText(fixture)
+        val line = lineOf(source, "println(answer)")
+
+        val port = FlixLaunchCommand.findFreePort()
+        val ordinaryTestCommand = FlixLaunchCommand.task(
+            javaExecutable(),
+            compiler!!,
+            FlixTask.TEST.command(),
+            emptyList(),
+            listOf("--events-json", "--filter", "\\Qselected\\E"),
+        )
+        val launch = FlixTestLaunch.debug(ordinaryTestCommand, port, null)
+        val debuggee = ProcessBuilder(launch.command)
+            .directory(project.toFile())
+            .redirectErrorStream(true)
+            .start()
+
+        try {
+            try {
+                val vm = attach(port)
+                try {
+                    val stop = stopAt(vm, "TestMain.flix", line)
+                    assertEquals(line, FlixSourceLocations.lineNumberOf(stop.location()))
+                    assertTrue(
+                        "the selected test did not expose its source local",
+                        stop.thread().frame(0).visibleVariableByName("answer") != null,
+                    )
+                } finally {
+                    runCatching { vm.dispose() }
+                }
+            } catch (failure: AssertionError) {
+                debuggee.waitFor(10, TimeUnit.SECONDS)
+                val output = debuggee.inputStream.bufferedReader().readText()
+                throw AssertionError(
+                    "${failure.message}\ntest process output:\n$output",
+                    failure,
+                )
+            }
+
+            assertTrue("the test process did not finish", debuggee.waitFor(2, TimeUnit.MINUTES))
+            val output = debuggee.inputStream.bufferedReader().readText()
+            assertEquals("the selected test failed:\n$output", 0, debuggee.exitValue())
+            assertTrue("the selected test was not reported:\n$output", output.contains("\"name\":\"selected\""))
+            assertFalse("the filter ran the excluded test:\n$output", output.contains("\"name\":\"excluded\""))
+        } finally {
+            debuggee.destroyForcibly()
+            debuggee.waitFor(10, TimeUnit.SECONDS)
         }
     }
 
@@ -872,6 +942,7 @@ class FlixDebugSessionTest {
         vm.resume()
 
         var armed = false
+        val matchingClasses = mutableListOf<String>()
         val deadline = System.currentTimeMillis() + HIT_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
             val events = vm.eventQueue().remove(POLL_MS) ?: continue
@@ -879,8 +950,24 @@ class FlixDebugSessionTest {
                 when (event) {
                     is BreakpointEvent -> return event
                     is VMDisconnectEvent ->
-                        throw AssertionError("the program exited without hitting the breakpoint")
+                        throw AssertionError(
+                            "the program exited without hitting $sourceName:$line; prepared source classes: " +
+                                matchingClasses.joinToString(),
+                        )
                     is ClassPrepareEvent -> {
+                        val sourceLines = runCatching {
+                            event.referenceType().allLineLocations()
+                                .filter { FlixSourceLocations.sourceNameOf(it)?.endsWith(sourceName) == true }
+                                .mapNotNull(FlixSourceLocations::lineNumberOf)
+                                .distinct()
+                        }.getOrElse { emptyList() }
+                        val sourceNames = runCatching {
+                            event.referenceType().sourceNames(null)
+                        }.getOrElse { emptyList() }
+                        if (sourceNames.any { it.endsWith(sourceName) }) {
+                            matchingClasses +=
+                                "${event.referenceType().name()} sources=$sourceNames lines=$sourceLines"
+                        }
                         val locations = locationsIn(event.referenceType(), sourceName, line)
                         if (locations.isNotEmpty()) {
                             val request = vm.eventRequestManager().createBreakpointRequest(locations.first())

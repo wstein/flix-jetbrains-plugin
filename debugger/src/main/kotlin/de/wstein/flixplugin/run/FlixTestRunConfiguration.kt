@@ -32,8 +32,8 @@ class FlixTestRunConfiguration(
 
     override fun checkConfiguration() {
         super.checkConfiguration()
-        if (task != FlixTask.TEST || testFilter.isNullOrBlank()) {
-            throw RuntimeConfigurationError("Select a Flix @Test definition to run or debug.")
+        if (task != FlixTask.TEST || (testFilter.isNullOrBlank() && testPattern.isNullOrBlank())) {
+            throw RuntimeConfigurationError("Select a Flix test or source scope to run or debug.")
         }
     }
 

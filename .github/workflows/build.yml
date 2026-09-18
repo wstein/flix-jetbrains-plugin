@@ -134,6 +134,45 @@ jobs:
           name: tests-result
           path: ${{ github.workspace }}/build/reports/tests
 
+  # The plugin and compiler own opposite ends of the structured test-event protocol. Unit fixtures
+  # cannot prove that the two current branches still agree, so qualify them together on every CI
+  # run rather than allowing the integration test to skip for lack of FLIX_JAR.
+  test-protocol:
+    name: Test protocol compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch plugin sources
+        uses: actions/checkout@v7
+
+      - name: Fetch Flix compiler
+        uses: actions/checkout@v7
+        with:
+          repository: wstein/flix-fork
+          ref: feat/test-filter
+          path: flix-fork
+
+      - name: Setup Java
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6.3.0
+        with:
+          cache-read-only: true
+
+      - name: Build Flix compiler
+        working-directory: flix-fork
+        run: ./mill flix.assembly
+
+      - name: Verify compiler and plugin protocol
+        env:
+          FLIX_JAR: ${{ github.workspace }}/flix-fork/out/flix/assembly.dest/out.jar
+        run: >-
+          ./gradlew :language:test
+          --tests org.flixlang.intellij.run.FlixCompilerTestProtocolIntegrationTest
+
   # Run plugin structure verification along with IntelliJ Plugin Verifier
   verify:
     name: Verify plugin

@@ -150,6 +150,12 @@ predating any of them behaves as though the plugin is at fault:
 If breakpoints on some lines refuse to bind while adjacent ones work, rebuild the fork before
 looking anywhere else.
 
+Smart Step Into requires `build/development/debug-calls.json` format 2 from the same debug build.
+The file is keyed first by source identity; each call records a compact source range, a clean
+unmangled definition name, and its exact generated JVM target. The reader indexes those calls by source and
+line once when loading the sidecar. Format 1 is intentionally unsupported rather than merged with
+the new contract.
+
 ### When a breakpoint does not bind
 
 Check the class before suspecting the plugin:

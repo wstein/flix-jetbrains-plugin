@@ -16,16 +16,22 @@ public class FlixDebugCallsTest {
         Path sidecar = project.resolve(FlixDebugCalls.CALLS_PATH);
         Files.createDirectories(sidecar.getParent());
         Files.writeString(sidecar, """
-                {"formatVersion":1,"calls":[
-                  {"source":"/work/src/Main.flix","startLine":7,"startCol":9,"endLine":7,"endCol":15,"label":"Tuning.path","className":"dev.flix.gen.Tuning$Def$path","methodName":"staticApply"}
-                ]}
+                {"formatVersion":2,"sources":{
+                  "/work/src/Main.flix":[
+                    {"range":[7,9,7,15],"name":"Tuning.path","target":{"className":"dev.flix.gen.Tuning$Def$path"}},
+                    {"range":[9,4,10,12],"name":"Worker.run","target":{"className":"Worker.Def$run","methodName":"applyFrame"}}
+                  ]
+                }}
                 """);
 
         var calls = FlixDebugCalls.read(project).callsOn("Main.flix", 7);
         assertEquals(1, calls.size());
         assertEquals("Tuning.path", calls.getFirst().label());
         assertEquals("dev.flix.gen.Tuning$Def$path", calls.getFirst().className());
+        assertEquals("staticApply", calls.getFirst().methodName());
         assertTrue(FlixDebugCalls.read(project).callsOn("Main.flix", 8).isEmpty());
+        assertEquals("applyFrame", FlixDebugCalls.read(project).callsOn("Main.flix", 9).getFirst().methodName());
+        assertEquals("Worker.run", FlixDebugCalls.read(project).callsOn("Main.flix", 10).getFirst().label());
     }
 
     @Test
@@ -34,9 +40,11 @@ public class FlixDebugCallsTest {
         assertTrue(FlixDebugCalls.read(project).isEmpty());
         Path sidecar = project.resolve(FlixDebugCalls.CALLS_PATH);
         Files.createDirectories(sidecar.getParent());
-        Files.writeString(sidecar, "{\"formatVersion\":2,\"calls\":[]}");
+        Files.writeString(sidecar, "{\"formatVersion\":3,\"sources\":{}}");
         assertTrue(FlixDebugCalls.read(project).isEmpty());
-        Files.writeString(sidecar, "{\"formatVersion\":1,\"calls\":[{broken}]}");
+        Files.writeString(sidecar, "{\"formatVersion\":1,\"calls\":[]}");
+        assertTrue(FlixDebugCalls.read(project).isEmpty());
+        Files.writeString(sidecar, "{\"formatVersion\":2,\"sources\":{\"Main.flix\":[{broken}]}}");
         assertTrue(FlixDebugCalls.read(project).isEmpty());
     }
 
@@ -46,10 +54,10 @@ public class FlixDebugCallsTest {
         Path sidecar = project.resolve(FlixDebugCalls.CALLS_PATH);
         Files.createDirectories(sidecar.getParent());
         Files.writeString(sidecar, """
-                {"formatVersion":1,"calls":[
-                  {"source":"/one/Main.flix","startLine":1,"startCol":1,"endLine":1,"endCol":4,"label":"one","className":"Def$one","methodName":"staticApply"},
-                  {"source":"/two/Main.flix","startLine":1,"startCol":1,"endLine":1,"endCol":4,"label":"two","className":"Def$two","methodName":"staticApply"}
-                ]}
+                {"formatVersion":2,"sources":{
+                  "/one/Main.flix":[{"range":[1,1,1,4],"name":"one","target":{"className":"Def$one"}}],
+                  "/two/Main.flix":[{"range":[1,1,1,4],"name":"two","target":{"className":"Def$two"}}]
+                }}
                 """);
 
         assertTrue(FlixDebugCalls.read(project).callsOn("Main.flix", 1).isEmpty());

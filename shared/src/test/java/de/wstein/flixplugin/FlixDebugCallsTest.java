@@ -39,4 +39,20 @@ public class FlixDebugCallsTest {
         Files.writeString(sidecar, "{\"formatVersion\":1,\"calls\":[{broken}]}");
         assertTrue(FlixDebugCalls.read(project).isEmpty());
     }
+
+    @Test
+    public void aBareNameDoesNotMergeDuplicateSources() throws Exception {
+        Path project = Files.createTempDirectory("flix-debug-calls-test");
+        Path sidecar = project.resolve(FlixDebugCalls.CALLS_PATH);
+        Files.createDirectories(sidecar.getParent());
+        Files.writeString(sidecar, """
+                {"formatVersion":1,"calls":[
+                  {"source":"/one/Main.flix","startLine":1,"startCol":1,"endLine":1,"endCol":4,"label":"one","className":"Def$one","methodName":"staticApply"},
+                  {"source":"/two/Main.flix","startLine":1,"startCol":1,"endLine":1,"endCol":4,"label":"two","className":"Def$two","methodName":"staticApply"}
+                ]}
+                """);
+
+        assertTrue(FlixDebugCalls.read(project).callsOn("Main.flix", 1).isEmpty());
+        assertEquals("one", FlixDebugCalls.read(project).callsOn("/one/Main.flix", 1).getFirst().label());
+    }
 }

@@ -97,4 +97,12 @@ class FlixEntryPointSymbolTest : ParsingTestCase("", "flix", FlixParserDefinitio
 
         assertEquals("(?:\\QSuite.nested\\E|\\Qtop\\E)", file.testPatternOrNull())
     }
+
+    fun testExactTestPatternsAreStableAndDeduplicated() {
+        assertEquals(
+            "(?:\\QA.first\\E|\\QZ.last+case\\E)",
+            exactTestPattern(listOf("Z.last+case", "A.first", "A.first")),
+        )
+        assertNull(exactTestPattern(emptyList()))
+    }
 }

@@ -8,6 +8,8 @@ import com.intellij.execution.testframework.sm.SMCustomMessagesParsing
 import com.intellij.execution.testframework.sm.runner.OutputToGeneralTestEventsConverter
 import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
+import com.intellij.execution.testframework.actions.AbstractRerunFailedTestsAction
+import com.intellij.execution.ui.ConsoleView
 import java.nio.file.Path
 
 /**
@@ -47,6 +49,9 @@ class FlixTestConsoleProperties(
         FlixTestEventConverter(testFrameworkName, consoleProperties, workingDirectory)
 
     override fun getTestLocator(): SMTestLocator = FileUrlProvider.INSTANCE
+
+    override fun createRerunFailedTestsAction(consoleView: ConsoleView): AbstractRerunFailedTestsAction =
+        FlixRerunFailedTestsAction(consoleView).also { it.init(this) }
 
     companion object {
         /** What the tree calls this runner, and the prefix on any problem it logs. */

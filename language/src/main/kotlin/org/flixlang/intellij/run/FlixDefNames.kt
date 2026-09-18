@@ -61,5 +61,13 @@ fun FlixFile.testPatternOrNull(): String? {
         .distinct()
         .sorted()
     if (symbols.isEmpty()) return null
-    return symbols.joinToString(separator = "|", prefix = "(?:", postfix = ")") { Regex.escape(it) }
+    return exactTestPattern(symbols)
 }
+
+/** One compiler regex whose alternatives each match one complete test symbol. */
+fun exactTestPattern(symbols: Collection<String>): String? = symbols
+    .filter(String::isNotBlank)
+    .distinct()
+    .sorted()
+    .takeIf(List<String>::isNotEmpty)
+    ?.joinToString(separator = "|", prefix = "(?:", postfix = ")") { Regex.escape(it) }

@@ -3,6 +3,7 @@ package de.wstein.flixplugin;
 import com.intellij.openapi.project.Project;
 import com.redhat.devtools.lsp4ij.LanguageServerFactory;
 import com.redhat.devtools.lsp4ij.client.features.LSPClientFeatures;
+import com.redhat.devtools.lsp4ij.client.LanguageClientImpl;
 import com.redhat.devtools.lsp4ij.client.features.LSPWorkspaceFolderFeature;
 import com.redhat.devtools.lsp4ij.features.workspaceFolder.WorkspaceFolderStrategy;
 import com.redhat.devtools.lsp4ij.server.StreamConnectionProvider;
@@ -25,6 +26,11 @@ public class FlixLanguageServerFactory implements LanguageServerFactory {
     @Override
     public @NotNull Class<? extends LanguageServer> getServerInterface() {
         return FlixLanguageServerApi.class;
+    }
+
+    @Override
+    public @NotNull LanguageClientImpl createLanguageClient(@NotNull Project project) {
+        return new FlixLanguageClient(project);
     }
 
     /**

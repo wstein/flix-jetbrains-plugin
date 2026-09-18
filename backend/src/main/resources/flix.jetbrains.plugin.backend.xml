@@ -68,6 +68,9 @@
         <projectService
                 serviceInterface="org.flixlang.intellij.eval.FlixDebugEval"
                 serviceImplementation="de.wstein.flixplugin.FlixDebugEvalClient"/>
+        <projectService
+                serviceInterface="org.flixlang.intellij.run.FlixLspTestRunner"
+                serviceImplementation="de.wstein.flixplugin.FlixLspTestRunnerImpl"/>
 
         <!-- The gutter run arrow beside `def main`.
              Registered here, not in the always-loaded language module, because line markers are

@@ -103,7 +103,31 @@ class FlixSteppingFilter : ExtraSteppingFilter {
             return true
         }
 
+        if (isOutsideStepOutScope(context, location)) return true
         return isOutsideStepOverScope(context, location)
+    }
+
+    /** Carries Step Out to the immediate caller stored in the continuation chain. */
+    private fun isOutsideStepOutScope(context: SuspendContext?, location: Location): Boolean {
+        val process = context?.debugProcess ?: return false
+        val scope = FlixSteppingCommands.stepOutScopeOf(process) ?: return false
+        val arrived = scope.hasArrived(
+            className = runCatching { location.declaringType().name() }.getOrNull(),
+            methodName = runCatching { location.method().name() }.getOrNull(),
+            sourceName = FlixSourceLocations.sourceNameOf(location),
+            line = FlixSourceLocations.lineNumberOf(location),
+        )
+        if (arrived) {
+            LOG.debug("arrived at suspended caller ${scope.target}")
+            FlixSteppingCommands.clearStepOutScope(process)
+            return false
+        }
+        if (!scope.consume()) {
+            LOG.debug("step-out budget exhausted before reaching ${scope.target}; stopping here")
+            FlixSteppingCommands.clearStepOutScope(process)
+            return false
+        }
+        return true
     }
 
     /**

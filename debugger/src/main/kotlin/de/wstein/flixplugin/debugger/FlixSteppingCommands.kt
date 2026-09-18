@@ -63,6 +63,7 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
 
         val key = FlixDefinitionScope.keyOf(position)
         val scope = key?.let { StepOverScope(it, callerKeyOf(process, context), depthOf(context)) }
+        process.putUserData(STEP_OUT_SCOPE, null)
         process.putUserData(STEP_OVER_SCOPE, scope)
         LOG.debug(
             when {
@@ -122,14 +123,37 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
     override fun getStepOutCommand(
         context: SuspendContextImpl?,
         stepSize: Int,
-    ): DebugProcessImpl.ResumeCommand? = clearAndDecline(context)
+    ): DebugProcessImpl.ResumeCommand? {
+        val process = context?.debugProcess ?: return null
+        process.putUserData(STEP_OVER_SCOPE, null)
+
+        val target = stepOutTargetOf(context)
+        process.putUserData(STEP_OUT_SCOPE, target?.let(::StepOutScope))
+        LOG.debug(
+            if (target == null) "step out with no suspended Flix caller"
+            else "step out to ${target.className}.${target.methodName}:${target.line}",
+        )
+        // Keep the platform's ordinary Step Out command. When it reaches the trampoline,
+        // FlixSteppingFilter changes subsequent requests to STEP_INTO until this target arrives.
+        return null
+    }
 
     // Run to Cursor is deliberately not overridden. It is not a step, so it never consults the
     // filter, and clearing there would only add a path with nothing to clear.
 
     private fun clearAndDecline(context: SuspendContextImpl?): DebugProcessImpl.ResumeCommand? {
-        context?.debugProcess?.let { it.putUserData(STEP_OVER_SCOPE, null) }
+        context?.debugProcess?.let {
+            it.putUserData(STEP_OVER_SCOPE, null)
+            it.putUserData(STEP_OUT_SCOPE, null)
+        }
         return null
+    }
+
+    /** Finds the immediate logical caller stored in the current continuation chain. */
+    private fun stepOutTargetOf(context: SuspendContextImpl): StepOutTarget? {
+        val thread = context.thread?.threadReference ?: return null
+        val current = runCatching { context.location?.declaringType() }.getOrNull() ?: return null
+        return stepOutTargetOf(thread, current)
     }
 
     /**
@@ -193,12 +217,59 @@ class FlixSteppingCommands : JvmSteppingCommandProvider() {
         /** Internal rather than private so a test can set up the state the platform would. */
         internal val STEP_OVER_SCOPE = Key.create<StepOverScope?>("flix.stepOverScope")
 
+        internal val STEP_OUT_SCOPE = Key.create<StepOutScope?>("flix.stepOutScope")
+
         /** The definition a Step Over is currently confined to, or `null` if none is in progress. */
         fun scopeOf(process: DebugProcess?): StepOverScope? = process?.getUserData(STEP_OVER_SCOPE)
+
+        fun stepOutScopeOf(process: DebugProcess?): StepOutScope? = process?.getUserData(STEP_OUT_SCOPE)
 
         /** Abandons the current Step Over scope, leaving stepping to the platform's own rules. */
         fun clearScope(process: DebugProcess) = process.putUserData(STEP_OVER_SCOPE, null)
 
+        fun clearStepOutScope(process: DebugProcess) = process.putUserData(STEP_OUT_SCOPE, null)
+
+        /** Resolves the immediate logical caller of [current] from [thread]'s continuation chain. */
+        internal fun stepOutTargetOf(
+            thread: com.sun.jdi.ThreadReference,
+            current: com.sun.jdi.ReferenceType?,
+        ): StepOutTarget? {
+            val caller = runCatching { FlixContinuations.callChain(thread, current).firstOrNull() }.getOrNull()
+                ?: return null
+            val location = FlixAsyncStackTraceProvider().definitionLocation(caller) ?: return null
+            return StepOutTarget(
+                className = runCatching { location.declaringType().name() }.getOrNull() ?: return null,
+                methodName = runCatching { location.method().name() }.getOrNull() ?: return null,
+                sourceName = FlixSourceLocations.sourceNameOf(location) ?: return null,
+                line = FlixSourceLocations.lineNumberOf(location) ?: return null,
+            )
+        }
+
         private val LOG = Logger.getInstance(FlixSteppingCommands::class.java)
+    }
+
+    /** Exact source destination of the immediate logical caller of an effectful Flix frame. */
+    internal data class StepOutTarget(
+        val className: String,
+        val methodName: String,
+        val sourceName: String,
+        val line: Int,
+    )
+
+    /** Bounded search for a [StepOutTarget] through the runtime trampoline. */
+    internal class StepOutScope(val target: StepOutTarget) {
+        private var remaining = MAX_INTERMEDIATE_STOPS
+
+        fun hasArrived(className: String?, methodName: String?, sourceName: String?, line: Int?): Boolean =
+            className == target.className &&
+                methodName == target.methodName &&
+                sourceName == target.sourceName &&
+                line == target.line
+
+        fun consume(): Boolean {
+            if (remaining <= 0) return false
+            remaining--
+            return true
+        }
     }
 }

@@ -101,6 +101,60 @@ class FlixSteppingPolicyTest {
         assertFalse("an exhausted scope stays exhausted", scope.consume())
     }
 
+    // --- trampoline-aware Step Out ----------------------------------------------------------
+
+    @Test
+    fun `step out stops only at the immediate suspended caller`() {
+        val target = FlixSteppingCommands.StepOutTarget(
+            className = "Def\$main",
+            methodName = "applyFrame",
+            sourceName = "Main.flix",
+            line = 16,
+        )
+        val scope = FlixSteppingCommands.StepOutScope(target)
+
+        assertFalse(scope.hasArrived("Def\$both", "applyFrame", "Main.flix", 10))
+        assertFalse(scope.hasArrived("Def\$main", "applyFrame", "Main.flix", 14))
+        assertFalse(scope.hasArrived("Def\$main", "staticApply", "Main.flix", 16))
+        assertTrue(scope.hasArrived("Def\$main", "applyFrame", "Main.flix", 16))
+    }
+
+    @Test
+    fun `step out target includes canonical source identity`() {
+        val scope = FlixSteppingCommands.StepOutScope(
+            FlixSteppingCommands.StepOutTarget(
+                className = "Lib.Def\$read",
+                methodName = "applyFrame",
+                sourceName = "jar:file:///tmp/lib.fpkg!/src/Lib.flix",
+                line = 27,
+            ),
+        )
+
+        assertFalse(scope.hasArrived("Lib.Def\$read", "applyFrame", "Lib.flix", 27))
+        assertTrue(
+            scope.hasArrived(
+                "Lib.Def\$read",
+                "applyFrame",
+                "jar:file:///tmp/lib.fpkg!/src/Lib.flix",
+                27,
+            ),
+        )
+    }
+
+    @Test
+    fun `step out traversal has a finite budget`() {
+        val scope = FlixSteppingCommands.StepOutScope(
+            FlixSteppingCommands.StepOutTarget("Def\$main", "applyFrame", "Main.flix", 16),
+        )
+        var granted = 0
+        while (scope.consume()) {
+            granted++
+            if (granted > 100_000) break
+        }
+        assertTrue("the budget must be finite", granted in 1..100_000)
+        assertFalse("an exhausted scope stays exhausted", scope.consume())
+    }
+
     // --- JDI stubs ---------------------------------------------------------------------------
 
     /** A class compiled from a `.flix` file, as JDI reports it. */

@@ -98,6 +98,14 @@ Two things follow, and they are the reason this is recorded here rather than as 
    identical bytecode and the identical problem, with none of the cross-language benefit. The
    trade-off is that Flix stepping needs code the Java case gets for free.
 
+Step Out needs the same policy plus a destination. For a suspended effectful call, the immediate
+caller is not a JVM caller: it is the first continuation in the heap chain. The stepping command
+resolves that continuation through the compiler-authored `pcLines` metadata and records its exact
+class, method, canonical source identity, and line. The platform begins its normal Step Out; after
+it reaches the trampoline, `FlixSteppingFilter` advances with `STEP_INTO` until that exact logical
+caller arrives. The traversal is bounded and falls back to the platform when the chain or metadata
+is unavailable. Synchronous and non-Flix Step Out therefore remain native debugger operations.
+
 The correction not to make: the DAP adapter's broad `com.*`/`org.*`/`net.*` step exclusions. They
 would remove user Java, Kotlin and Scala from stepping — the frames this architecture exists to
 reach — to fix a problem confined to Flix's own generated bridges.

@@ -8,10 +8,22 @@ package de.wstein.flixplugin;
  */
 public class FlixDebugEvalRequest {
 
+    public static final int PROTOCOL_VERSION = 1;
+
+    private int protocolVersion = PROTOCOL_VERSION;
     private String className;
     private String methodName;
     private String expression;
+    private String buildId;
     private String policy = "pure";
+
+    public int getProtocolVersion() {
+        return protocolVersion;
+    }
+
+    public void setProtocolVersion(int protocolVersion) {
+        this.protocolVersion = protocolVersion;
+    }
 
     public String getClassName() {
         return className;
@@ -35,6 +47,14 @@ public class FlixDebugEvalRequest {
 
     public void setExpression(String expression) {
         this.expression = expression;
+    }
+
+    public String getBuildId() {
+        return buildId;
+    }
+
+    public void setBuildId(String buildId) {
+        this.buildId = buildId;
     }
 
     /**

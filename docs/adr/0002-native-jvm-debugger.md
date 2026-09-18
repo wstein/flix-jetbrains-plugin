@@ -212,8 +212,9 @@ LSP4IJ remains the LSP client. Only its DAP client is no longer used.
   guarantee this plugin owes them is non-interference.
 - The debugging half gains a hard dependency on the Java plugin, so it is scoped to its own
   content module. The language half must keep loading in IDEs without Java support.
-- Flix expression evaluation, Smart Step Into for Flix call targets and custom Flix value
-  renderers are follow-up features, not prerequisites.
+- Flix expression evaluation and custom Flix value renderers now build on this single-owner design:
+  the compiler produces an artifact, and IntelliJ invokes it through managed JDI on the selected
+  Flix frame. Smart Step Into target selection remains a follow-up feature.
 - Flix HotSwap is not claimed until recompilation and SMAP class-redefinition behavior are
   separately proven.
 - Datalog rule-level debugging is explicitly **not** solved by this decision. The solver is

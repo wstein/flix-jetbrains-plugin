@@ -111,7 +111,7 @@ class FlixLaunchTest {
             FlixJar.DEFAULT_JAVA,
             jar,
             "Main.main",
-            vmOptions = "-Xmx2g -Dflix.mode=test",
+            vmOptions = "-Xmx2g -Dflix.mode=test -Dflix.debug.buildId=user",
             programParameters = "one \"two words\"",
             debugPort = 5005,
             projectRoot = root,
@@ -124,10 +124,17 @@ class FlixLaunchTest {
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005",
                 "-Xmx2g",
                 "-Dflix.mode=test",
+                "-Dflix.debug.buildId=user",
+                "-Dflix.debug.buildId=f:d",
                 "-cp",
             ),
-            command.take(5),
+            command.take(7),
         )
         assertEquals(listOf("one", "two words"), command.takeLast(2))
+        assertTrue(command.contains("-Dflix.debug.buildId=f:d"))
+        assertTrue(
+            "the manifest identity must override a conflicting user property",
+            command.indexOf("-Dflix.debug.buildId=f:d") > command.indexOf("-Dflix.debug.buildId=user"),
+        )
     }
 }

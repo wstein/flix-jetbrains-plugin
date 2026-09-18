@@ -1,8 +1,10 @@
 package de.wstein.flixplugin;
 
 import org.junit.Test;
+import org.flixlang.intellij.eval.FlixDebugEvalAnswer;
 
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
 /**
  * How long the client waits, and why it is not one number.
@@ -32,5 +34,26 @@ public class FlixDebugEvalClientTest {
         // An unbounded wait on a debugger thread is a frozen Variables view with no way out.
         assertTrue(FlixDebugEvalClient.SERVER_TIMEOUT_SECONDS > 0);
         assertTrue(FlixDebugEvalClient.ANSWER_TIMEOUT_SECONDS > 0);
+    }
+
+    @Test
+    public void requestCarriesThePausedProgramsBuildIdentity() {
+        FlixDebugEvalRequest request = new FlixDebugEvalRequest();
+        request.setBuildId("fingerprint:sources");
+
+        assertEquals("fingerprint:sources", request.getBuildId());
+        assertEquals(1, request.getProtocolVersion());
+    }
+
+    @Test
+    public void anAnswerFromAnotherProtocolIsRefused() {
+        FlixDebugEvalResponse response = new FlixDebugEvalResponse();
+        response.setProtocolVersion(2);
+        response.setStatus("ok");
+
+        FlixDebugEvalAnswer answer = FlixDebugEvalClient.answerOf(response);
+
+        assertTrue(answer instanceof FlixDebugEvalAnswer.Unavailable);
+        assertTrue(((FlixDebugEvalAnswer.Unavailable) answer).getReason().contains("protocol 2"));
     }
 }

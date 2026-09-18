@@ -127,21 +127,23 @@ internal object FlixValues {
     /**
      * A name with the compiler's stable-hash suffix removed, if it carries one.
      *
-     * `StableHash.xxh3_64Base58` is eleven characters of an alphabet without `0`, `O`, `I` or `l`,
-     * and the compiler appends it after a `$` wherever it needs a name to be unique without being
-     * a source name: a monomorphised enum ([[withoutSpecialization]]) and a lifted lambda
-     * ([[FlixFrames]]) both carry one.
+     * Current `JvmNameTable` suffixes are twelve lowercase Base36 digits. Older builds use
+     * eleven Base58 characters; retain support for those artifacts as well. Both appear after
+     * `$` on specialized symbols and lifted lambdas.
      */
     fun withoutStableHash(name: String): String {
         val separator = name.lastIndexOf('$')
         if (separator <= 0) return name
         val suffix = name.substring(separator + 1)
-        val isHash = suffix.length == HASH_LENGTH && suffix.all { it in BASE58 }
+        val isHash = (suffix.length == 12 && suffix.all { it in BASE36 }) ||
+            (suffix.length == HASH_LENGTH && suffix.all { it in BASE58 })
         return if (isHash) name.substring(0, separator) else name
     }
 
     /** `StableHash.HashLength`. */
     private const val HASH_LENGTH: Int = 11
+
+    private const val BASE36: String = "0123456789abcdefghijklmnopqrstuvwxyz"
 
     /** `StableHash.Base58Alphabet` -- no `0`, `O`, `I` or `l`. */
     private const val BASE58: String = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"

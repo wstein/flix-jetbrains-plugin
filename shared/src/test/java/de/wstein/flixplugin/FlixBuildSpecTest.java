@@ -61,6 +61,7 @@ public class FlixBuildSpecTest {
         assertEquals("/opt/jdk/bin/java", spec.java());
         assertEquals("Main", spec.mainClass());
         assertEquals(List.of("/p/build/development/class", "/p/lib/external/core.jar"), spec.runtimeClasspath());
+        assertEquals("f:d", spec.debugBuildId());
     }
 
     @Test

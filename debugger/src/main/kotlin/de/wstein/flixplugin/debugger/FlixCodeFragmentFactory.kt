@@ -111,23 +111,24 @@ internal object FlixEvaluatorBuilder : EvaluatorBuilder {
  * every step, and asking the language server to type `at` again on each one would spend a
  * compilation to confirm something already in hand.
  *
- * When the expression is outside what a read can do, the compiler is asked what it *is* -- see
- * [FlixDebugEval] -- and the refusal becomes an answer rather than a shrug:
+ * When the expression is outside what a read can do, the compiler is asked to type and compile it
+ * -- see [FlixDebugEval] -- and the returned artifact is invoked in the paused debuggee:
  *
  * | The compiler says | The watch shows |
  * | --- | --- |
  * | the expression is ill-typed | its own diagnostics, in its own words |
- * | it is well-typed | the type and effect, and that running it is not implemented |
+ * | it is well-typed and allowed by policy | the value returned by the debuggee |
+ * | it is effectful without opt-in | its type/effect and the setting that enables it |
  * | it cannot say | the local limit, and why the compiler was no help |
  *
- * The middle row is the one worth the wiring. "`List.length(xs)` is `Int32 \ Pure`, and running it
- * needs an evaluator in the debuggee" tells a reader that their expression is right and the tool is
- * incomplete. Before this the same expression got a sentence about record projections, which reads
- * as though the expression were wrong.
+ * Compilation is bound to the launched build identity, and invocation snapshots all JDI arguments
+ * before defining artifact classes. This prevents an IDE-triggered rebuild from evaluating against
+ * a different program and avoids invalidating mirrors halfway through managed invocation.
  */
 internal class FlixExpressionEvaluator(
     private val expression: FlixNavigation,
     private val compiler: (Project) -> FlixDebugEval? = { FlixDebugEval.getInstance(it) },
+    private val buildIdentity: (EvaluationContext) -> String = { FlixRemoteEval.buildId(it) },
 ) : ExpressionEvaluator {
 
     override fun getModifier(): Modifier? = null
@@ -208,10 +209,6 @@ internal class FlixExpressionEvaluator(
             )
         }
 
-        if (context == null) {
-            throw EvaluateException("No frame is selected, so there is nothing to run the expression against.")
-        }
-
         return try {
             FlixRemoteEval.evaluate(artifact, context)
         } catch (failed: FlixRemoteEvalException) {
@@ -274,10 +271,12 @@ internal class FlixExpressionEvaluator(
         val location = runCatching { context.frameProxy?.location() }.getOrNull() ?: return null
         val service = compiler(project) ?: return null
         return runCatching {
+            val buildId = buildIdentity(context)
             service.compile(
                 unsupportedText,
                 location.declaringType().name(),
                 location.method().name(),
+                buildId,
                 // Typing an expression runs nothing, so the widest policy is the right one here:
                 // refusing to *type* an effectful expression would hide what it is, and what it is
                 // is exactly what the message needs to say. Whether it may be *run* is decided
@@ -285,7 +284,9 @@ internal class FlixExpressionEvaluator(
                 FlixDebugEval.Policy.ALLOW_EFFECTS,
                 withArtifact,
             )
-        }.getOrNull()
+        }.getOrElse { failed ->
+            FlixDebugEvalAnswer.Unavailable(failed.message ?: "the running debug build could not be identified")
+        }
     }
 
     /** How a value is described when it turns out not to be a record. */

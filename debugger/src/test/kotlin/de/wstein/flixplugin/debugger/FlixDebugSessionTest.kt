@@ -103,7 +103,13 @@ class FlixDebugSessionTest {
                 1,
                 classes.size,
             )
-            assertEquals("one statement, one location in it", 1, classes.single().second.size)
+            val locations = classes.single().second
+            assertTrue("the source line must expose at least one bytecode location", locations.isNotEmpty())
+            assertTrue("the actual stop must be one of the line's locations", hit in locations)
+            assertTrue(
+                "every bytecode boundary returned for the line must map back to it",
+                locations.all { FlixSourceLocations.lineNumberOf(it) == line },
+            )
 
             // The rules this plugin resolves positions with, asked about a location it did not
             // construct.
@@ -300,7 +306,9 @@ class FlixDebugSessionTest {
 
     /** The class of `one`, whose captured chain is still on the heap and no longer describes the run. */
     private fun staleType(stop: BreakpointEvent): ReferenceType? =
-        stop.virtualMachine().allClasses().firstOrNull { it.name() == "dev.flix.gen.Def\$one" }
+        stop.virtualMachine().allClasses().firstOrNull {
+            FlixValues.simpleNameOf(it.name()) == "Def\$one"
+        }
 
     /**
      * A program whose `println` pulls code in from another file of the standard library, which is

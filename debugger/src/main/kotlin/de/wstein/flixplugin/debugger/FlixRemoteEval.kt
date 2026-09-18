@@ -2,7 +2,6 @@ package de.wstein.flixplugin.debugger
 
 import com.intellij.debugger.engine.evaluation.EvaluateException
 import com.intellij.debugger.engine.evaluation.EvaluationContext
-import com.sun.jdi.ArrayReference
 import com.sun.jdi.ArrayType
 import com.sun.jdi.BooleanValue
 import com.sun.jdi.ByteValue
@@ -15,7 +14,6 @@ import com.sun.jdi.LongValue
 import com.sun.jdi.ObjectReference
 import com.sun.jdi.PrimitiveValue
 import com.sun.jdi.ShortValue
-import com.sun.jdi.StackFrame
 import com.sun.jdi.Value
 import com.sun.jdi.VirtualMachine
 import org.flixlang.intellij.eval.FlixDebugEvalArtifact
@@ -65,6 +63,23 @@ internal object FlixRemoteEval {
 
     private const val ENTRY = "evaluate"
 
+    private const val ABI_VERSION = 1
+
+    /** Reads the immutable identity captured by the debuggee at startup, without invoking it. */
+    fun buildId(context: EvaluationContext): String {
+        val host = compatibleHostIn(context.frameProxy?.stackFrame?.virtualMachine()
+            ?: throw FlixRemoteEvalException("No frame is selected, so its build cannot be identified."))
+        val field = host.fieldByName("BUILD_ID")
+            ?: throw FlixRemoteEvalException(
+                "the debuggee's $HOST has no BUILD_ID, so this plugin and compiler do not agree on the evaluation protocol",
+            )
+        val value = host.getValue(field) as? com.sun.jdi.StringReference
+        return value?.value()?.takeIf { it.isNotBlank() }
+            ?: throw FlixRemoteEvalException(
+                "the running program has no debug build identity. Restart it from a fresh --Xdebug build.",
+            )
+    }
+
     /**
      * Runs [artifact] against the values [frame] holds, and returns what it produced.
      *
@@ -75,23 +90,28 @@ internal object FlixRemoteEval {
         val frame = context.frameProxy?.stackFrame
             ?: throw FlixRemoteEvalException("No frame is selected, so there is nothing to run the expression against.")
         val vm = frame.virtualMachine()
-        val host = hostIn(vm)
+        val host = compatibleHostIn(vm)
         val method = host.methodsByName(ENTRY).singleOrNull()
             ?: throw FlixRemoteEvalException(
                 "the debuggee's $HOST has no single `$ENTRY`, so this plugin and the compiler that " +
                     "built the program do not agree on the evaluation protocol",
             )
 
-        val arguments = listOf(
+        val strings = listOf(
             vm.mirrorOf(artifact.classes),
             vm.mirrorOf(artifact.entryClass),
             vm.mirrorOf(artifact.entryMethod),
             vm.mirrorOf(artifact.valueField),
-            argumentArray(artifact.parameters, context, frame),
         )
-
+        val objectArray = vm.classesByName("java.lang.Object[]").filterIsInstance<ArrayType>().singleOrNull()
+            ?: throw FlixRemoteEvalException("the debuggee has no java.lang.Object[] type")
         return try {
-            context.debugProcess.invokeMethod(context, host, method, arguments)
+            FlixEvaluationArguments.use(artifact.parameters, frame, retained = strings,
+                create = { context.debugProcess.newInstance(objectArray, it) },
+                box = { boxed(it, context, vm) },
+                invoke = { array ->
+                    context.debugProcess.invokeMethod(context, host, method, strings + array)
+                })
         } catch (thrown: EvaluateException) {
             val exception = thrown.exceptionFromTargetVM
             if (exception != null) {
@@ -102,6 +122,23 @@ internal object FlixRemoteEval {
                 thrown,
             )
         }
+    }
+
+    /** Finds the runtime host and refuses a compiler whose JDI surface this plugin does not know. */
+    private fun compatibleHostIn(vm: VirtualMachine): ClassType {
+        val host = hostIn(vm)
+        val field = host.fieldByName("ABI_VERSION")
+            ?: throw FlixRemoteEvalException(
+                "the debuggee's $HOST has no ABI_VERSION. Update the plugin or compiler.",
+            )
+        val actual = (host.getValue(field) as? IntegerValue)?.value()
+        if (actual != ABI_VERSION) {
+            throw FlixRemoteEvalException(
+                "the debuggee's $HOST uses ABI ${actual ?: "unknown"}, but this plugin requires " +
+                    "$ABI_VERSION. Update the plugin or compiler.",
+            )
+        }
+        return host
     }
 
     /**
@@ -117,33 +154,6 @@ internal object FlixRemoteEval {
                 "the running program has no $HOST. It was not built with --Xdebug, so there is " +
                     "nothing in it that can define and run an expression.",
             )
-
-    /**
-     * The frame's values for [names], in order, as an `Object[]` inside the debuggee.
-     *
-     * A name the frame does not hold is refused rather than passed as null: the compiler named these
-     * from the same build the debuggee is running, so a missing one means the two have diverged, and
-     * a null would arrive as a `NullPointerException` from inside generated code.
-     */
-    private fun argumentArray(names: List<String>, context: EvaluationContext, frame: StackFrame): ArrayReference {
-        val vm = frame.virtualMachine()
-        val objectArray = vm.classesByName("java.lang.Object[]").filterIsInstance<ArrayType>().singleOrNull()
-            ?: throw FlixRemoteEvalException("the debuggee has no java.lang.Object[] type")
-
-        val array = context.debugProcess.newInstance(objectArray, names.size)
-        // Kept alive across the calls that follow: each boxing invocation resumes the thread, and a
-        // young array with no reference from the debuggee's own stack can be collected in between.
-        array.disableCollection()
-        names.forEachIndexed { index, name ->
-            val variable = frame.visibleVariableByName(name)
-                ?: throw FlixRemoteEvalException(
-                    "the frame does not hold `$name`, which the compiler named for it. The debuggee " +
-                        "is running a different build than the one that produced this expression.",
-                )
-            array.setValue(index, boxed(frame.getValue(variable), context, vm))
-        }
-        return array
-    }
 
     /**
      * [value] as something an `Object[]` can hold.

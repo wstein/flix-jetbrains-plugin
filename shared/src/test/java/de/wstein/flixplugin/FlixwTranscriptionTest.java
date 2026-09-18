@@ -167,6 +167,26 @@ public class FlixwTranscriptionTest {
                         .contains("cacheHome().resolve(\"jdks\").resolve(\"default\")"));
     }
 
+    @Test
+    public void localCompilerSelectionStillPrecedesTheReleaseLock() throws IOException {
+        Path wrapper = wrapperSource();
+        if (wrapper == null) {
+            failIfRequired();
+            return;
+        }
+        String source = Files.readString(wrapper, StandardCharsets.UTF_8);
+        assertTrue("flixw moved its persistent local compiler selection",
+                source.contains("resolve(WRAPPER_DIR).resolve(\"local\").resolve(\"compiler.toml\")"));
+        assertTrue("flixw no longer gives FLIX_JAR priority over the local selection",
+                source.contains("LocalCompiler local = fj == null ? readLocalCompiler(root) : null"));
+        int localBranch = source.indexOf("if (override) {");
+        int releaseBranch = source.indexOf("else jar = acquire(lock)");
+        assertTrue("flixw no longer has the expected local compiler branch", localBranch >= 0);
+        assertTrue("flixw no longer has the expected release-lock branch", releaseBranch >= 0);
+        assertTrue("flixw no longer gives the local selection priority over the release lock",
+                localBranch < releaseBranch);
+    }
+
     /**
      * The body of the method whose declaration starts with {@code signature},
      * whitespace collapsed.

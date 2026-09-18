@@ -25,8 +25,13 @@ Status as of 2026-07-28, at `4e7b8a8`. 230 automated tests, 0 failures.
 > `DebugEvalHost` loads and invokes them in the paused JVM, and `FlixRemoteEval` performs the
 > managed JDI invocation after snapshotting frame arguments. Pure evaluation is the default;
 > effectful evaluation requires the existing explicit setting. Compiler and plugin unit suites,
-> host execution tests, and the 15-case live JDWP session suite are automated. The final IDEA UI
-> click-through remains manual qualification. Release qualification also found that the language
+> host execution tests, and the 15-case live JDWP session suite are automated. On 2026-09-18 the
+> core IDEA click-through was reported successful against compiler
+> `6c41de23baf59ab06973636b513316b6fa5a505b` and plugin
+> `a42837287cf4a3fb5675c137acb0a40578ec889f`: Run and Debug gestures, breakpoint
+> binding, Step Over and logical Step Out, async stack/Variables rendering, live-frame evaluation,
+> and termination behaved as expected. Split Mode and optional-language combinations were not part
+> of that report. Release qualification also found that the language
 > content module used `FlixTask` from the shared module without declaring that classloader
 > dependency: searchable-options generation logged `NoClassDefFoundError` while Plugin Verifier
 > still reported compatibility. The dependency is now explicit, pinned by
@@ -278,13 +283,13 @@ Three findings came out of getting this far, none of which any other test could 
 
 Ordered by what blocks the milestone rather than by matrix position.
 
-1. **The manual smoke test's Run and Debug rows.** The run configuration has never been exercised in
-   a session, and three defects were found in it by review rather than by use — including two that
-   made a debug session impossible. With DAP retired there is no fallback, so this is the highest
-   risk item and the one that unblocks the most. It is now also the *narrowest*: everything the IDE
-   would do after pressing the arrow — launch, attach, bind, hit, walk mixed stacks, catch
-   exceptions, detach — has been exercised over JDWP against the same command line. What remains
-   unproven is the gesture and its wiring.
+The core Run/Debug click-through described in item 1 below passed on 2026-09-18. That item is
+retained as historical rationale; the remaining manual variants are Split Mode, optional-language
+profiles, and the narrower evaluator/source-attachment cases listed separately.
+
+1. **The manual smoke test's Run and Debug rows — complete.** The gesture and wiring were exercised
+   successfully on 2026-09-18 after the downstream launch, attach, bind, stepping, async Variables,
+   evaluation, termination, and detach paths had already been covered over JDWP.
 2. **The per-frame evaluator**, interop row 2's last clause. Which evaluator the IDE offers when
    stopped in a Kotlin frame is decided by the IDE, so no JDI probe can observe it. Breakpoints,
    binding and the mixed stack are proven; this one clause needs the IDE.

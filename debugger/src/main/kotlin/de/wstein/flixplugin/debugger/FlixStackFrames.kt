@@ -10,7 +10,15 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.ui.EmptyIcon
 import com.intellij.xdebugger.frame.XStackFrame
 import com.intellij.xdebugger.frame.XStackFrameUiPresentationContainer
+import com.intellij.xdebugger.frame.XCompositeNode
+import com.intellij.xdebugger.frame.XNamedValue
+import com.intellij.xdebugger.frame.XValueChildrenList
+import com.intellij.xdebugger.frame.XValueNode
+import com.intellij.xdebugger.frame.XValuePlace
+import com.intellij.xdebugger.frame.presentation.XRegularValuePresentation
 import com.sun.jdi.Location
+import com.sun.jdi.StringReference
+import com.sun.jdi.Value
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -85,11 +93,15 @@ internal class FlixStackFrame(
  * `XStackFrameWithSeparatorAbove`, and a plain `XStackFrame` would silently lose the *Async stack
  * trace* line that says what the entries below it are.
  */
-internal class FlixStackFrameItem(location: Location, private val label: FlixFrameLabel) :
+internal class FlixStackFrameItem(
+    location: Location,
+    private val label: FlixFrameLabel,
+    internal val savedValues: List<FlixContinuationSlots.SavedValue> = emptyList(),
+) :
     StackFrameItem(location, null) {
 
     override fun createFrame(debugProcess: DebugProcessImpl, sourcePosition: SourcePosition?): XStackFrame =
-        FlixCapturedFrame(debugProcess, this, sourcePosition, label)
+        FlixCapturedFrame(debugProcess, this, sourcePosition, label, savedValues)
 }
 
 private class FlixCapturedFrame(
@@ -97,7 +109,18 @@ private class FlixCapturedFrame(
     item: StackFrameItem,
     sourcePosition: SourcePosition?,
     private val label: FlixFrameLabel,
+    private val savedValues: List<FlixContinuationSlots.SavedValue>,
 ) : StackFrameItem.CapturedStackFrame(debugProcess, item, sourcePosition) {
+
+    override fun computeChildren(node: XCompositeNode) {
+        if (savedValues.isEmpty()) {
+            super.computeChildren(node)
+            return
+        }
+        val children = XValueChildrenList(savedValues.size)
+        savedValues.forEach { saved -> children.add(FlixContinuationValue(saved)) }
+        node.addChildren(children, true)
+    }
 
     override fun customizePresentation(component: ColoredTextContainer) {
         // The empty icon the platform gives a captured frame, so the chain stays aligned with the
@@ -115,5 +138,25 @@ private class FlixCapturedFrame(
         val container = XStackFrameUiPresentationContainer()
         customizePresentation(container)
         return flowOf(container)
+    }
+}
+
+/** A cached, read-only value saved in a heap continuation rather than a live JVM stack frame. */
+internal class FlixContinuationValue(
+    private val saved: FlixContinuationSlots.SavedValue,
+) : XNamedValue(saved.slot.name) {
+
+    override fun computePresentation(node: XValueNode, place: XValuePlace) {
+        node.setPresentation(
+            null,
+            XRegularValuePresentation(display(saved.value), saved.slot.type),
+            false,
+        )
+    }
+
+    private fun display(value: Value?): String = when (value) {
+        null -> "null"
+        is StringReference -> "\"${value.value()}\""
+        else -> value.toString()
     }
 }

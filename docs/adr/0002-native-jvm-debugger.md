@@ -113,6 +113,11 @@ accepts only that version and those field shapes, and fails closed for malformed
 fields, unknown PCs, release builds, and older compiler artifacts. It never guesses a source name
 from a positional field.
 
+An async stack entry exposes those saved values through its captured frame's Variables node. The
+values are labelled with the recorded Flix name and type, but remain snapshots of heap fields:
+there is no evaluator context or assignment modifier for a suspended frame. This keeps inspection
+honest while leaving evaluation and mutation attached only to the live JVM frame.
+
 The correction not to make: the DAP adapter's broad `com.*`/`org.*`/`net.*` step exclusions. They
 would remove user Java, Kotlin and Scala from stepping — the frames this architecture exists to
 reach — to fix a problem confined to Flix's own generated bridges.

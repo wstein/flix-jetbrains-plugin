@@ -6,6 +6,10 @@ import com.sun.jdi.ObjectReference
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.StringReference
 import com.sun.jdi.Value
+import com.intellij.xdebugger.frame.presentation.XValuePresentation
+import com.intellij.xdebugger.frame.XValueNode
+import com.intellij.xdebugger.frame.XValuePlace
+import com.intellij.openapi.editor.colors.TextAttributesKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -57,6 +61,29 @@ class FlixContinuationSlotsTest {
         assertTrue(slots.single().value === value)
     }
 
+    @Test
+    fun `a suspended value is presented with its Flix name and type and is read only`() {
+        val saved = FlixContinuationSlots.SavedValue(
+            FlixContinuationSlots.Slot("l0", "answer", "Option[String]", "local"),
+            string("hello"),
+        )
+        val presentations = mutableListOf<XValuePresentation>()
+        val node = proxy(XValueNode::class.java) { method, args ->
+            if (method.name == "setPresentation") {
+                (args?.firstOrNull { it is XValuePresentation } as? XValuePresentation)?.let(presentations::add)
+            }
+            null
+        }
+
+        val value = FlixContinuationValue(saved)
+        value.computePresentation(node, XValuePlace.TREE)
+
+        assertEquals("answer", value.name)
+        assertEquals(null, value.modifier)
+        assertEquals("Option[String]", presentations.single().type)
+        assertEquals("\"hello\"", presentations.single().renderValueForTest())
+    }
+
     private fun field(name: String): Field = proxy(Field::class.java) { method, _ ->
         if (method.name == "name") name else null
     }
@@ -100,4 +127,22 @@ class FlixContinuationSlotsTest {
                 else -> handler(method, args)
             }
         } as T
+}
+
+private fun XValuePresentation.renderValueForTest(): String {
+    var result = ""
+    renderValue(object : XValuePresentation.XValueTextRenderer {
+        override fun renderValue(value: String) { result += value }
+        override fun renderValue(value: String, key: TextAttributesKey) { result += value }
+        override fun renderStringValue(value: String) { result += "\"$value\"" }
+        override fun renderStringValue(value: String, additionalSpecialCharsToHighlight: String?, maxLength: Int) {
+            result += "\"$value\""
+        }
+        override fun renderNumericValue(value: String) { result += value }
+        override fun renderKeywordValue(value: String) { result += value }
+        override fun renderComment(comment: String) { result += comment }
+        override fun renderSpecialSymbol(symbol: String) { result += symbol }
+        override fun renderError(error: String) { result += error }
+    })
+    return result
 }

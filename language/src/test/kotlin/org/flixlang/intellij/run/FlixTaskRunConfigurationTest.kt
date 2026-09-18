@@ -101,6 +101,37 @@ class FlixTaskRunConfigurationTest : BasePlatformTestCase() {
         }
     }
 
+    fun testAnIndividualTestUsesAnExactCompilerFilter() {
+        val configuration = configuration()
+        configuration.arguments = "--filter Other\\..* --threads 2 -- --filter program-value"
+        configuration.task = FlixTask.TEST
+        configuration.testFilter = "Suite.Inner.test+value"
+
+        val command = configuration.commandFor(java.nio.file.Path.of("/tmp/flix.jar"))
+        val filter = command.indexOf(FlixTaskRunConfiguration.TEST_FILTER)
+        assertTrue("the test filter is missing: $command", filter >= 0)
+        val separator = command.indexOf("--")
+        assertEquals("\\QSuite.Inner.test+value\\E", command[filter + 1])
+        assertTrue(
+            "the event protocol must follow the filter: $command",
+            command.indexOf(FlixTaskRunConfiguration.EVENTS_JSON) in (filter + 1)..<separator,
+        )
+        assertFalse("a previous filter would widen the run: $command", command.any { it.contains("Other") })
+        assertTrue("unrelated arguments were lost: $command", command.containsAll(listOf("--threads", "2")))
+        assertEquals(listOf("--filter", "program-value"), command.drop(separator + 1))
+    }
+
+    fun testAStoredTestFilterNeverLeaksIntoAnotherTask() {
+        val configuration = configuration()
+        configuration.testFilter = "Suite.selected"
+        configuration.task = FlixTask.BUILD
+
+        val command = configuration.commandFor(java.nio.file.Path.of("/tmp/flix.jar"))
+        assertFalse(command.contains(FlixTaskRunConfiguration.TEST_FILTER))
+        assertFalse(command.any { it.contains("Suite.selected") })
+        assertNull(configuration.testFilter)
+    }
+
     fun testTheRunTestsLensHandlerRunsTheTestTask() {
         // The lens says "Run Tests"; the action behind it has to be the test task and not, say, the
         // one that happens to be first in the enum.

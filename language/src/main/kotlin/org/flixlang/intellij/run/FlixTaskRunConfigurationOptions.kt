@@ -15,6 +15,7 @@ class FlixTaskRunConfigurationOptions : LocatableRunConfigurationOptions() {
 
     private val taskProperty = string(FlixTask.BUILD.command()).provideDelegate(this, "task")
     private val argumentsProperty = string("").provideDelegate(this, "arguments")
+    private val testFilterProperty = string().provideDelegate(this, "testFilter")
 
     /** The subcommand, as [FlixTask.command] spells it. */
     var task: String?
@@ -25,4 +26,9 @@ class FlixTaskRunConfigurationOptions : LocatableRunConfigurationOptions() {
     var arguments: String?
         get() = argumentsProperty.getValue(this)
         set(value) = argumentsProperty.setValue(this, value)
+
+    /** The exact fully-qualified test symbol selected by a gutter/context run, if any. */
+    var testFilter: String?
+        get() = testFilterProperty.getValue(this)
+        set(value) = testFilterProperty.setValue(this, value)
 }

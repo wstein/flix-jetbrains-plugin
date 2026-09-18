@@ -2,6 +2,7 @@ package org.flixlang.intellij.run
 
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
+import org.flixlang.intellij.lang.psi.FlixDeclaration
 import org.flixlang.intellij.lang.psi.FlixDefDecl
 import org.flixlang.intellij.lang.psi.FlixIdent
 import org.flixlang.intellij.lang.psi.FlixModuleDecl
@@ -41,4 +42,13 @@ fun FlixDefDecl.entryPointSymbolOrNull(): String? {
         .toList()
         .asReversed()
     return (namespace + name).joinToString(".")
+}
+
+/** The fully-qualified symbol accepted by `flix test --filter`, only for an actual `@Test` def. */
+fun FlixDefDecl.testSymbolOrNull(): String? {
+    val declaration = PsiTreeUtil.getParentOfType(this, FlixDeclaration::class.java, true) ?: return null
+    val isTest = PsiTreeUtil.collectElements(declaration.annotationList) {
+        it.firstChild == null && it.text == "@Test"
+    }.isNotEmpty()
+    return if (isTest) entryPointSymbolOrNull() else null
 }

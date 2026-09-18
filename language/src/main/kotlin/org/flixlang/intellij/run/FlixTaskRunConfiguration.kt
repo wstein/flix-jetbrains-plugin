@@ -65,12 +65,19 @@ class FlixTaskRunConfiguration(
         get() = FlixTask.byCommand(options.task).orElse(FlixTask.BUILD)
         set(value) {
             options.task = value.command()
+            if (value != FlixTask.TEST) options.testFilter = null
         }
 
     var arguments: String?
         get() = options.arguments
         set(value) {
             options.arguments = value
+        }
+
+    internal var testFilter: String?
+        get() = options.testFilter
+        set(value) {
+            options.testFilter = value
         }
 
     override fun getConfigurationEditor(): SettingsEditor<out LocatableConfigurationBase<FlixTaskRunConfigurationOptions>> =
@@ -108,6 +115,12 @@ class FlixTaskRunConfiguration(
      */
     internal fun commandFor(jar: Path): List<String> {
         val settings = FlixSettings.getInstance(project)
+        val configuredArguments = settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty())
+        val taskArguments = if (task == FlixTask.TEST && testFilter != null) {
+            withoutTestFilters(configuredArguments)
+        } else {
+            configuredArguments
+        }
         return FlixLaunchCommand.task(
             // The JDK a flixw wrapper pinned, else the one on PATH. A pinned compiler on an
             // unpinned runtime is the half-reproducible state the wrapper exists to prevent.
@@ -115,9 +128,51 @@ class FlixTaskRunConfiguration(
             jar,
             task.command(),
             settings.jvmArguments,
-            settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty()) + eventsFlag(),
+            withTestProtocol(taskArguments),
         )
     }
+
+    /** Inserts compiler-owned test flags before the program-argument separator. */
+    private fun withTestProtocol(arguments: List<String>): List<String> {
+        val protocol = testFilterArguments() + eventsFlag()
+        if (protocol.isEmpty()) return arguments
+
+        val separator = arguments.indexOf("--")
+        return if (separator < 0) {
+            arguments + protocol
+        } else {
+            arguments.take(separator) + protocol + arguments.drop(separator)
+        }
+    }
+    /**
+     * Removes filters that would widen a source-selected test run.
+     *
+     * Repeated compiler filters are ORed, so merely appending the exact symbol is insufficient.
+     * Arguments after `--` are program arguments and remain byte-for-byte untouched.
+     */
+    private fun withoutTestFilters(arguments: List<String>): List<String> {
+        val result = mutableListOf<String>()
+        var index = 0
+        var programArguments = false
+        while (index < arguments.size) {
+            val argument = arguments[index]
+            when {
+                programArguments -> result += argument
+                argument == "--" -> {
+                    result += argument
+                    programArguments = true
+                }
+                argument == TEST_FILTER -> index += 1
+                argument.startsWith("$TEST_FILTER=") -> Unit
+                else -> result += argument
+            }
+            index += 1
+        }
+        return result
+    }
+    /** A whole-name regular expression for the test selected from source. */
+    private fun testFilterArguments(): List<String> =
+        testFilter?.takeIf { task == FlixTask.TEST }?.let { listOf(TEST_FILTER, Regex.escape(it)) }.orEmpty()
 
     /**
      * `--events-json` for the test task, nothing for any other.
@@ -193,5 +248,6 @@ class FlixTaskRunConfiguration(
          * tests assert are one string.
          */
         internal const val EVENTS_JSON: String = "--events-json"
+        internal const val TEST_FILTER: String = "--filter"
     }
 }

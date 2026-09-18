@@ -49,6 +49,10 @@ and every other JVM language in the same process.
   checked against `flix --help` by `FlixTaskTest` rather than reviewed — an unknown one is not
   rejected by the compiler, it is demoted to a file argument and reported as
   `Unrecognized file extension`.
+  Test tasks use the compiler's JSONL event stream to populate IntelliJ's native test tree. An
+  `@Test` definition has its own gutter action: running it creates a temporary *Flix Task*
+  configuration with an exact, escaped `--filter` for that fully-qualified test symbol, while the
+  project-wide *Run Tests* lens retains the run-all behavior.
 - **Show AST**: *Tools > Flix > Show AST*. `ShowAstProvider` has been in the compiler all along,
   reachable only through `lsp/showAst` on Flix's VS Code protocol, which negotiates no capabilities
   and which no other client speaks — the same shape the diagram was in. The server now serves it as
@@ -73,8 +77,9 @@ and every other JVM language in the same process.
   fail with *"Missing 'flix.cmdTests' command"* because LSP4IJ resolves a server-defined command
   through `ActionManager` and only the first had an action —
   `FlixAssembledPluginTest` now pins both.
-- **Gutter run arrow beside `def main`**: anchored on the declaration's name leaf, delegating to the
-  platform's generic `ExecutorAction`.
+- **Gutter run arrows beside `def main` and `@Test` definitions**: anchored on each declaration's
+  name leaf and delegated to the platform's generic `ExecutorAction`; a test arrow runs only that
+  fully-qualified test.
 - **Split Mode**: live-verified as an actual frontend+backend process pair
   (`./gradlew runIdeSplitMode`), with everything registered backend-side and the frontend a thin
   client. One real bug found getting here: an XML comment containing `--` made the *entire plugin*

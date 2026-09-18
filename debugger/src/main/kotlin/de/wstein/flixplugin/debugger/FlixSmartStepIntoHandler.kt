@@ -48,6 +48,26 @@ class FlixSmartStepIntoHandler : JvmSmartStepIntoHandler() {
         val endLine = (call.endLine() - 1).coerceIn(line, document.lineCount - 1)
         val end = (document.getLineStartOffset(endLine) + call.endCol() - 1)
             .coerceIn(start, document.textLength)
+
+        // The compiler span describes the whole application. That is authoritative for deciding
+        // which call this is, but is a poor visual anchor: an infix application and its left-hand
+        // call begin at the same column. Prefer the source spelling inside that span so IntelliJ
+        // can draw a distinct inline Smart Step Into marker on `List.foldLeft`, `|>`, and
+        // `Option.map` rather than stacking the first two at the start of the expression.
+        val spelling = sourceSpelling(call.label())
+        val occurrence = document.charsSequence.indexOf(spelling, start).takeIf {
+            it >= start && it + spelling.length <= end
+        }
+        if (occurrence != null) {
+            val leaf = file.findElementAt(occurrence)
+            if (leaf != null) {
+                return generateSequence(leaf) { it.parent }
+                    .takeWhile { it.textRange.startOffset >= occurrence && it.textRange.endOffset <= occurrence + spelling.length }
+                    .lastOrNull { it.text == spelling }
+                    ?: leaf
+            }
+        }
+
         val leaf = file.findElementAt(start) ?: return null
         return generateSequence(leaf) { it.parent }
             .takeWhile { it.textRange.startOffset >= start && it.textRange.endOffset <= end }
@@ -60,14 +80,17 @@ internal class FlixSmartStepTarget(
     val call: FlixDebugCalls.Call,
     highlight: PsiElement,
 ) : SmartStepTarget(
-    "${call.label()}()",
+    "${sourceSpelling(call.label())}()",
     highlight,
     false,
     Range(call.startLine() - 1, call.endLine() - 1),
 ) {
     override fun getClassName(): String = call.className()
-    override fun getPresentation(): String = "${call.label()}()"
+    override fun getPresentation(): String = "${sourceSpelling(call.label())}()"
 }
+
+/** Drops the compiler's numeric overload/specialization identity, which is not source text. */
+private fun sourceSpelling(label: String): String = label.replace(Regex("\\$[0-9]+$"), "")
 
 /** Stops only in the generated definition selected by the compiler for this source call. */
 internal class FlixSmartMethodFilter(private val target: FlixSmartStepTarget) : MethodFilter {

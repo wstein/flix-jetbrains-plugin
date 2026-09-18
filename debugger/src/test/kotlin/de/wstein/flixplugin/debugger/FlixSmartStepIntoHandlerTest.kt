@@ -27,6 +27,28 @@ class FlixSmartStepIntoHandlerTest : ParsingTestCase("", "flix", FlixParserDefin
         assertEquals(listOf("println", "one"), targets.map { requireNotNull(it.highlightElement).text })
     }
 
+    fun testPipelineCallsHaveDistinctVisibleAnchorsDespiteOverlappingCompilerSpans() {
+        val file = parse("List.foldLeft(selectBest, None, candidates) |> Option.map(fst)")
+        val position = position(file)
+        val calls = listOf(
+            call("List.foldLeft\$292200", 1, 1, 1, 44, "List.Def\$foldLeft\$specialized"),
+            call("|>\$292197", 1, 1, 1, 63, "Def\$pipe\$specialized"),
+            call("Option.map\$292210", 1, 48, 1, 63, "Option.Def\$map\$specialized"),
+        )
+
+        val targets = FlixSmartStepIntoHandler().targetsAt(position, calls)
+
+        assertEquals(
+            listOf("List", "|>", "Option"),
+            targets.map { requireNotNull(it.highlightElement).text },
+        )
+        assertEquals(3, targets.map { requireNotNull(it.highlightElement).textOffset }.distinct().size)
+        assertEquals(
+            listOf("List.foldLeft()", "|>()", "Option.map()"),
+            targets.map { it.presentation },
+        )
+    }
+
     private fun parse(code: String): PsiFile = createPsiFile("Main", code).also { ensureParsed(it) }
 
     private fun position(file: PsiFile): SourcePosition = object : SourcePosition() {

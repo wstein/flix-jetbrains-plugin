@@ -1,6 +1,7 @@
 package de.wstein.flixplugin
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
+import com.intellij.ide.highlighter.ArchiveFileType
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.lang.Language
@@ -9,8 +10,14 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.LanguageFileType
+import com.intellij.openapi.vfs.JarFileSystem
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * What the *assembled* plugin actually registers, as the platform sees it.
@@ -60,6 +67,28 @@ class FlixAssembledPluginTest : BasePlatformTestCase() {
                 "every PSI-based feature would silently do nothing",
             LanguageParserDefinitions.INSTANCE.forLanguage(flix),
         )
+    }
+
+    fun testFpkgFilesAreMountedAsSourceArchives() {
+        assertSame(
+            "`.fpkg` must be an archive so package sources are navigable through JarFileSystem",
+            ArchiveFileType.INSTANCE,
+            FileTypeManager.getInstance().getFileTypeByExtension("fpkg"),
+        )
+
+        val archive = Files.createTempFile("flix package with spaces ", ".fpkg")
+        ZipOutputStream(Files.newOutputStream(archive)).use { output ->
+            output.putNextEntry(ZipEntry("src/example/Main.flix"))
+            output.write("pub def answer(): Int32 = 42\n".toByteArray(StandardCharsets.UTF_8))
+            output.closeEntry()
+        }
+        val localArchive = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(archive)
+        assertNotNull(localArchive)
+        val root = JarFileSystem.getInstance().getJarRootForLocalFile(localArchive!!)
+        val source = root?.findFileByRelativePath("src/example/Main.flix")
+
+        assertNotNull("JarFileSystem must expose the exact .flix entry inside an .fpkg", source)
+        assertEquals("pub def answer(): Int32 = 42\n", String(source!!.contentsToByteArray()))
     }
 
     fun testExactlyOneRunLineMarkerContributesToFlix() {

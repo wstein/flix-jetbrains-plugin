@@ -1,13 +1,18 @@
 package de.wstein.flixplugin.debugger
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
+import de.wstein.flixplugin.FlixJar
 import org.flixlang.intellij.lang.FlixFileType
+import java.net.URI
+import java.nio.file.Path
 
 /**
  * Resolves the `.flix` file a JDI location came from.
@@ -23,10 +28,73 @@ internal object FlixSourceFiles {
      * name. Returns `null` rather than guessing.
      */
     fun find(project: Project, sourceName: String, sourcePath: String?): PsiFile? {
-        val file = byAbsolutePath(sourceName, sourcePath)
-            ?: byIndex(project, sourceName, sourcePath)
-            ?: return null
+        val archive = listOfNotNull(sourcePath, sourceName).firstNotNullOfOrNull(::archiveEntryOf)
+        val file = byAbsolutePath(sourceName, sourcePath) ?: when (archive) {
+            // A canonical archive identity is authoritative. If its archive or entry is gone,
+            // resolving an unrelated same-named project file would show the wrong source.
+            null -> byBundledLibrary(project, sourceName, sourcePath)
+                ?: byIndex(project, sourceName, sourcePath)
+                ?: return null
+            else -> inArchive(archive.archive, archive.entry) ?: return null
+        }
         return PsiManager.getInstance(project).findFile(file)
+    }
+
+    /** A decoded source entry in a local archive. */
+    data class ArchiveEntry(val archive: Path, val entry: String)
+
+    /**
+     * Decodes the compiler's canonical `jar:file:///archive.fpkg!/entry.flix` identity.
+     *
+     * The URI is parsed before it is handed to IntelliJ's VFS. Treating the URI text as a path
+     * leaves `%20` and other escaped characters encoded, so packages below a directory containing
+     * spaces cannot be opened.
+     */
+    fun archiveEntryOf(identity: String): ArchiveEntry? {
+        if (!identity.startsWith(ARCHIVE_PREFIX)) return null
+        val separator = identity.indexOf(ARCHIVE_SEPARATOR, ARCHIVE_PREFIX.length)
+        if (separator < 0) return null
+        val entry = identity.substring(separator + ARCHIVE_SEPARATOR.length)
+            .replace('\\', '/')
+            .trimStart('/')
+        if (entry.isEmpty() || entry.split('/').any { it == ".." }) return null
+
+        return runCatching {
+            val uri = URI.create(identity.substring(ARCHIVE_PREFIX.length, separator))
+            if (uri.scheme != FILE_SCHEME) return null
+            ArchiveEntry(Path.of(uri).toAbsolutePath().normalize(), entry)
+        }.getOrNull()
+    }
+
+    /** The exact compiler-jar entry for a bundled-library source attribute. */
+    fun libraryEntryOf(sourceName: String, sourcePath: String?): String? {
+        val candidate = listOfNotNull(sourcePath, sourceName).firstOrNull { value ->
+            !value.startsWith(ARCHIVE_PREFIX) && !value.isAbsolutePath()
+        } ?: return null
+        val normalized = candidate.replace('\\', '/').trimStart('/')
+        val parts = normalized.split('/')
+        if (normalized.isEmpty() || parts.any { it == ".." } || URI_SCHEME.containsMatchIn(normalized)) {
+            return null
+        }
+        return if (normalized.startsWith(LIBRARY_ROOT)) normalized else LIBRARY_ROOT + normalized
+    }
+
+    /** Resolves bundled source from the same compiler jar used by this project. */
+    private fun byBundledLibrary(project: Project, sourceName: String, sourcePath: String?): VirtualFile? {
+        val entry = libraryEntryOf(sourceName, sourcePath) ?: return null
+        val compilerJar = runCatching {
+            FlixJar.resolve(project.basePath, System.getenv(FlixJar.JAR_ENV))
+        }.getOrNull() ?: return null
+        return inArchive(compilerJar, entry)
+    }
+
+    /** Looks up one exact entry in a jar-compatible archive. */
+    private fun inArchive(archive: Path, entry: String): VirtualFile? {
+        val archivePath = FileUtil.toSystemIndependentName(archive.toAbsolutePath().normalize().toString())
+        val localArchive = LocalFileSystem.getInstance().findFileByPath(archivePath) ?: return null
+        val root = JarFileSystem.getInstance().getJarRootForLocalFile(localArchive) ?: return null
+        return root.findFileByRelativePath(entry)
+            ?.takeIf { it.extension.equals(FLIX_EXTENSION, ignoreCase = true) }
     }
 
     /**
@@ -134,4 +202,11 @@ internal object FlixSourceFiles {
 
     /** A drive-letter root, for example `C:/`. */
     private val WINDOWS_ROOT = Regex("^[A-Za-z]:/")
+
+    private val URI_SCHEME = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
+    private const val ARCHIVE_PREFIX = "jar:"
+    private const val ARCHIVE_SEPARATOR = "!/"
+    private const val FILE_SCHEME = "file"
+    private const val LIBRARY_ROOT = "src/library/"
+    private const val FLIX_EXTENSION = "flix"
 }

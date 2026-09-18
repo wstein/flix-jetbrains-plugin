@@ -40,11 +40,11 @@ import com.sun.jdi.ThreadReference
  * function entries, and for a chain of calls in flight it is wrong for every frame but the
  * innermost.
  *
- * Entries carry no variables. A continuation's fields are its captured state under compiled names
- * (`clo0`, `arg0`, `l0`), and the frame they belong to is not the one the evaluator is pointed at,
- * so presenting them as that frame's variables would show values that cannot be read back or
- * evaluated against. Selecting one says "Variables are not available in async stacks", which is
- * true; the variables view keeps showing the live frame, which is where those names belong.
+ * A debug continuation also describes the captured state live at that exact `pc`. Selecting an
+ * async entry presents those heap fields under their source names and pre-erasure Flix types. They
+ * are snapshots, not live JVM locals, so they are intentionally read-only and cannot be evaluated
+ * or assigned through the selected async frame. Older and release builds simply retain the
+ * platform's no-variables presentation.
  *
  * ## Why only the topmost frame is answered for
  *
@@ -90,7 +90,8 @@ class FlixAsyncStackTraceProvider : AsyncStackTraceProvider {
             // Falling back to the platform's own item rather than dropping the entry: a compiled
             // label still names a call that happened, and a chain with a hole in it does not.
             val label = runCatching { FlixFrames.labelOf(location) }.getOrNull()
-            if (label != null) FlixStackFrameItem(location, label) else StackFrameItem(location, null)
+            val savedValues = runCatching { FlixContinuationSlots.valuesOf(continuation) }.getOrDefault(emptyList())
+            if (label != null) FlixStackFrameItem(location, label, savedValues) else StackFrameItem(location, null)
         }
         // Null rather than an empty list: an empty one still draws the separator, which would
         // promise a reconstruction and then show nothing under it.

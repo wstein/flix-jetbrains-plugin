@@ -13,6 +13,8 @@ public final class FlixTestRunEvent {
     private List<String> output = new ArrayList<>();
     private List<String> diagnostics = new ArrayList<>();
     private boolean cancelled;
+    private String coverageJson;
+    private boolean partial;
 
     public int getProtocolVersion() { return protocolVersion; }
     public void setProtocolVersion(int value) { protocolVersion = value; }
@@ -32,6 +34,10 @@ public final class FlixTestRunEvent {
     public void setDiagnostics(List<String> value) { diagnostics = value; }
     public boolean isCancelled() { return cancelled; }
     public void setCancelled(boolean value) { cancelled = value; }
+    public String getCoverageJson() { return coverageJson; }
+    public void setCoverageJson(String value) { coverageJson = value; }
+    public boolean isPartial() { return partial; }
+    public void setPartial(boolean value) { partial = value; }
 
     public static final class TestRef {
         private String name;

@@ -1,11 +1,14 @@
 package de.wstein.flixplugin.ui
 
 import com.intellij.driver.client.service
+import com.intellij.driver.client.utility
+import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.openFile
 import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.toggleLineBreakpoint
 import com.intellij.driver.sdk.ui.components.common.gutter
 import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.components.common.codeEditorForFile
 import com.intellij.driver.sdk.waitForIndicators
 import com.intellij.driver.sdk.waitForProjectOpen
 import com.intellij.ide.starter.driver.engine.runIdeWithDriver
@@ -68,6 +71,10 @@ class FlixUiSmokeTest {
      */
     private val printlnLine = 44
 
+    private val passingTestLine = 7
+
+    private val waitingTestLine = 10
+
     @Test
     fun `exactly one run marker sits beside def main`() {
         // What this catches is the marker going *missing*, which is a live failure mode: when the
@@ -96,6 +103,64 @@ class FlixUiSmokeTest {
                     "the marker is on the wrong line: $where",
                 )
             }
+        }
+    }
+
+    @Test
+    fun `tests stream into the native runner and Stop cancels the LSP run`() {
+        runInIde { driver ->
+            driver.openFile("src/Tests.flix")
+
+            driver.ideFrame {
+                val icons = gutter().getGutterIcons()
+                val where = icons.map { "line ${it.line}: ${it.getIconPath()}" }
+                assertEquals(
+                    listOf(passingTestLine, waitingTestLine),
+                    icons.map { it.line }.sorted(),
+                    "expected one runnable marker per @Test definition, got $where",
+                )
+            }
+
+            // The robot cannot click these icon-only gutter renderers reliably (SmoothRobot reports
+            // the hit as unsuccessful). Put the caret on the same declaration and invoke the same
+            // Run-context action. The marker assertion above still proves the user affordance;
+            // this exercises its configuration producer and executor without a pixel-coordinate race.
+            runAtLine(driver, passingTestLine)
+
+            val project = driver.singleProject()
+            val manager = driver.utility(ExecutionManagerUtilRef::class).getInstance(project)
+            var passing: ProcessHandlerRef? = null
+            waitUntil("the passing LSP test run starts", 2.minutes) {
+                passing = manager.getRunningProcesses().firstOrNull { !it.isProcessTerminated() }
+                passing != null
+            }
+            val passingHandler = requireNotNull(passing)
+            waitUntil("the passing LSP test run finishes", 2.minutes) {
+                passingHandler.isProcessTerminated()
+            }
+            assertEquals(0, passingHandler.getExitCode(), "the streamed passing test run must succeed")
+
+            // TestStateStorage is written by the native SM runner when the streamed `passed`
+            // event arrives. Read it directly: opening the Run toolwindow introduces a second
+            // editor gutter, making an unqualified visual gutter lookup ambiguous.
+            val testState = driver.utility(TestStateStorageUtilRef::class).getInstance(project)
+            waitUntil("the streamed passing result reaches TestStateStorage", 5.minutes) {
+                testState.getKeys().any { it.contains("Tests.flix") }
+            }
+
+            runAtLine(driver, waitingTestLine)
+
+            var running: ProcessHandlerRef? = null
+            waitUntil("the slow LSP test run starts", 2.minutes) {
+                running = manager.getRunningProcesses().firstOrNull { !it.isProcessTerminated() }
+                running != null
+            }
+            val handler = requireNotNull(running)
+            handler.destroyProcess()
+            waitUntil("Stop terminates the LSP test run", 1.minutes) {
+                handler.isProcessTerminated()
+            }
+            assertEquals(130, handler.getExitCode(), "Stop must report the cooperative-cancellation exit code")
         }
     }
 
@@ -273,6 +338,14 @@ class FlixUiSmokeTest {
             Thread.sleep(POLL_MS)
         }
         throw AssertionError("timed out after $timeout waiting for: $what")
+    }
+
+    private fun runAtLine(driver: com.intellij.driver.client.Driver, line: Int) {
+        driver.ideFrame {
+            val editor = codeEditorForFile("Tests.flix")
+            editor.goToLine(line + 1)
+            driver.invokeAction("RunClass", component = editor.component)
+        }
     }
 
     private companion object {

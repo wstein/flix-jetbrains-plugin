@@ -5,6 +5,7 @@ import com.intellij.debugger.actions.JvmSmartStepIntoHandler
 import com.intellij.debugger.actions.SmartStepTarget
 import com.intellij.debugger.engine.DebugProcessImpl
 import com.intellij.debugger.engine.MethodFilter
+import com.intellij.openapi.application.ReadAction
 import com.intellij.psi.PsiElement
 import com.intellij.util.Range
 import com.sun.jdi.Location
@@ -19,8 +20,20 @@ class FlixSmartStepIntoHandler : JvmSmartStepIntoHandler() {
         // stale table simply makes findSmartStepTargets return no choices.
         position.file.virtualFile?.extension == "flix"
 
-    override fun findSmartStepTargets(position: SourcePosition): List<SmartStepTarget> =
-        targetsAt(position, callsAt(position))
+    override fun findSmartStepTargets(position: SourcePosition): List<SmartStepTarget> {
+        // IDEA 2026.1 asks from a debugger coroutine, not the EDT and not a read action. Capture
+        // PSI-backed identity under the read lock, parse the potentially large sidecar outside it,
+        // then reacquire the lock only while locating the visible call-head elements.
+        val query = ReadAction.computeBlocking<CallQuery?, RuntimeException> {
+            val root = position.file.project.basePath?.let(Path::of) ?: return@computeBlocking null
+            val source = position.file.virtualFile?.path ?: position.file.name
+            CallQuery(root, source, position.line + 1)
+        } ?: return emptyList()
+        val calls = FlixDebugCalls.read(query.root).callsOn(query.source, query.line)
+        return ReadAction.computeBlocking<List<SmartStepTarget>, RuntimeException> {
+            targetsAt(position, calls)
+        }
+    }
 
     internal fun targetsAt(
         position: SourcePosition,
@@ -32,12 +45,6 @@ class FlixSmartStepIntoHandler : JvmSmartStepIntoHandler() {
 
     override fun createMethodFilter(target: SmartStepTarget): MethodFilter? =
         (target as? FlixSmartStepTarget)?.let(::FlixSmartMethodFilter)
-
-    private fun callsAt(position: SourcePosition): List<FlixDebugCalls.Call> {
-        val root = position.file.project.basePath?.let(Path::of) ?: return emptyList()
-        val source = position.file.virtualFile?.path ?: position.file.name
-        return FlixDebugCalls.read(root).callsOn(source, position.line + 1)
-    }
 
     private fun highlight(position: SourcePosition, call: FlixDebugCalls.Call): PsiElement? {
         val file = position.file
@@ -75,6 +82,8 @@ class FlixSmartStepIntoHandler : JvmSmartStepIntoHandler() {
             ?: leaf
     }
 }
+
+private data class CallQuery(val root: Path, val source: String, val line: Int)
 
 internal class FlixSmartStepTarget(
     val call: FlixDebugCalls.Call,

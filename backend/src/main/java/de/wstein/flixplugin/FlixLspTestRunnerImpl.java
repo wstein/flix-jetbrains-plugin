@@ -84,19 +84,20 @@ public final class FlixLspTestRunnerImpl implements FlixLspTestRunner {
                 .getLanguageServer(FlixLanguageServer.SERVER_ID)
                 .orTimeout(SERVER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .whenComplete((item, failure) -> {
-                    if (failure != null || item == null || !(item.getServer() instanceof FlixLanguageServerApi api)) {
+                    boolean itemPresent = item != null;
+                    boolean supportsTestApi = itemPresent && item.getServer() instanceof FlixLanguageServerApi;
+                    if (serverRequiresFallback(failure, itemPresent, supportsTestApi)) {
                         fallback(handler);
                         return;
                     }
+                    FlixLanguageServerApi api = (FlixLanguageServerApi) item.getServer();
                     // Stop may have removed the run while the server was still starting.
                     if (runs.get(handler.runId) != handler) return;
                     FlixTestRunRequest request = new FlixTestRunRequest();
                     request.setRunId(handler.runId);
                     request.setFilters(handler.filters);
                     api.testRun(request).whenComplete((response, requestFailure) -> {
-                        if (requestFailure != null || response == null ||
-                                response.getProtocolVersion() != FlixTestRunRequest.PROTOCOL_VERSION ||
-                                !"accepted".equals(response.getStatus())) {
+                        if (requestRequiresFallback(requestFailure, response)) {
                             // A lost response can still follow an accepted request. Cancellation is
                             // idempotent and prevents a hidden LSP run from overlapping the CLI fallback.
                             FlixTestCancelRequest cancel = new FlixTestCancelRequest();
@@ -108,8 +109,33 @@ public final class FlixLspTestRunnerImpl implements FlixLspTestRunner {
                 });
     }
 
+    /** Pure startup decisions, kept separate so unavailable and older servers are deterministic tests. */
+    static boolean serverRequiresFallback(
+            @Nullable Throwable failure,
+            boolean itemPresent,
+            boolean supportsTestApi) {
+        return failure != null || !itemPresent || !supportsTestApi;
+    }
+
+    /** An accepted response is the sole point after which CLI fallback would duplicate a test run. */
+    static boolean requestRequiresFallback(
+            @Nullable Throwable failure,
+            @Nullable FlixTestRunResponse response) {
+        return failure != null || response == null ||
+                response.getProtocolVersion() != FlixTestRunRequest.PROTOCOL_VERSION ||
+                !"accepted".equals(response.getStatus());
+    }
+
+    /** Claims a fallback once; competing timeout/response completions cannot launch two CLIs. */
+    static <T> boolean claimFallback(
+            @NotNull ConcurrentHashMap<String, T> active,
+            @NotNull String runId,
+            @NotNull T run) {
+        return active.remove(runId, run);
+    }
+
     private void fallback(LspTestProcessHandler handler) {
-        if (!runs.remove(handler.runId, handler)) return;
+        if (!claimFallback(runs, handler.runId, handler)) return;
         handler.startFallback();
     }
 

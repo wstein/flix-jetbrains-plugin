@@ -89,7 +89,7 @@ internal object FlixSourceFiles {
     }
 
     /** Looks up one exact entry in a jar-compatible archive. */
-    private fun inArchive(archive: Path, entry: String): VirtualFile? {
+    internal fun inArchive(archive: Path, entry: String): VirtualFile? {
         val archivePath = FileUtil.toSystemIndependentName(archive.toAbsolutePath().normalize().toString())
         val localArchive = LocalFileSystem.getInstance().findFileByPath(archivePath) ?: return null
         val root = JarFileSystem.getInstance().getJarRootForLocalFile(localArchive) ?: return null

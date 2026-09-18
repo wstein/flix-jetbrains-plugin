@@ -31,6 +31,13 @@ class FlixRunLineMarkerContributorTest : ParsingTestCase("", "flix", FlixParserD
             .filter { FlixRunLineMarkerContributor.isRunnableEntryPointAnchor(it) }
     }
 
+    private fun markedTestLeaves(code: String): List<PsiElement> {
+        val file = createPsiFile("Test", code)
+        ensureParsed(file)
+        return PsiTreeUtil.collectElements(file) { it.firstChild == null }
+            .filter { FlixRunLineMarkerContributor.isRunnableTestAnchor(it) }
+    }
+
     fun testExactlyOneLeafIsMarkedForMain() {
         val marked = markedLeaves(
             """
@@ -71,5 +78,31 @@ class FlixRunLineMarkerContributorTest : ParsingTestCase("", "flix", FlixParserD
             """.trimIndent(),
         )
         assertTrue("No declaration is named `main`, got $marked", marked.isEmpty())
+    }
+
+    fun testExactlyOneLeafIsMarkedForEachTestDefinition() {
+        val marked = markedTestLeaves(
+            """
+            @Test
+            def selected(): Unit = ()
+
+            @Skip @Test
+            def skipped(): Unit = ()
+
+            def helper(): Unit = ()
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("selected", "skipped"), marked.map { it.text })
+    }
+
+    fun testAnnotationTextOutsideADeclarationDoesNotCreateATestMarker() {
+        val marked = markedTestLeaves(
+            """
+            def helper(s: String): String = s
+            def mention(): String = helper("@Test")
+            """.trimIndent(),
+        )
+        assertTrue("ordinary definitions were marked as tests: $marked", marked.isEmpty())
     }
 }

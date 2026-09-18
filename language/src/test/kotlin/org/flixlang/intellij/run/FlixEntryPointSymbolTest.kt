@@ -61,4 +61,26 @@ class FlixEntryPointSymbolTest : ParsingTestCase("", "flix", FlixParserDefinitio
         """.trimIndent()
         assertEquals(listOf("helper", "A.compute", "main"), symbols(code))
     }
+
+    fun testOnlyTestAnnotatedDefsHaveTestSymbols() {
+        val file = createPsiFile(
+            "Tests",
+            """
+            mod Suite.Inner {
+                @Test
+                def selected(): Unit = ()
+
+                @Skip @Test
+                def skipped(): Unit = ()
+
+                def helper(): Unit = ()
+            }
+            """.trimIndent(),
+        )
+        ensureParsed(file)
+        val testSymbols = PsiTreeUtil.findChildrenOfType(file, FlixDefDecl::class.java)
+            .mapNotNull { it.testSymbolOrNull() }
+
+        assertEquals(listOf("Suite.Inner.selected", "Suite.Inner.skipped"), testSymbols)
+    }
 }

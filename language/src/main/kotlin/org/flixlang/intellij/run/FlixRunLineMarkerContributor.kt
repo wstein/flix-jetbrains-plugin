@@ -18,7 +18,10 @@ import org.flixlang.intellij.lang.psi.FlixIdent
  */
 class FlixRunLineMarkerContributor : RunLineMarkerContributor() {
     override fun getInfo(element: PsiElement): Info? {
-        if (!isRunnableEntryPointAnchor(element)) return null
+        if (
+            !isRunnableEntryPointAnchor(element) &&
+            !isRunnableTestAnchor(element)
+        ) return null
         return withExecutorActions(AllIcons.RunConfigurations.TestState.Run)
     }
 
@@ -36,6 +39,13 @@ class FlixRunLineMarkerContributor : RunLineMarkerContributor() {
             val ident = element.parent as? FlixIdent ?: return false
             val defDecl = ident.parent as? FlixDefDecl ?: return false
             return defDecl.nameOrNull() == "main" && ident === defDecl.namePsiOrNull()
+        }
+
+        /** Whether [element] is the single name leaf of an `@Test` definition. */
+        fun isRunnableTestAnchor(element: PsiElement): Boolean {
+            val ident = element.parent as? FlixIdent ?: return false
+            val defDecl = ident.parent as? FlixDefDecl ?: return false
+            return defDecl.testSymbolOrNull() != null && ident === defDecl.namePsiOrNull()
         }
     }
 }

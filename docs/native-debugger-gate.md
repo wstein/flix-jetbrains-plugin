@@ -455,8 +455,11 @@ ran and passed in the same session.
 The plugin now has a dedicated `Flix Test` configuration for the source gutter action. Run keeps the
 JSONL test tree; Debug adds the JDWP agent and `--Xdebug` to the same non-forking `flix test` command.
 `FlixTestDebuggerGatesTest` and `FlixTestLaunchTest` pin the platform gates and process identity. This
-closes the former implementation gap, but it does not turn the terminal measurement above into an
-IDE gesture measurement; that click-through remains listed in `docs/phase-8-verification.md`.
+is also live-qualified in `FlixDebugSessionTest`: the current compiler launches with the exact
+filtered-test command, JDI hits the selected test with its source local visible, and after resume the
+JSON stream reports that test and not its excluded sibling. This closes the former implementation
+gap, but it does not turn the process measurement into an IDE gesture measurement; that
+click-through remains listed in `docs/phase-8-verification.md`.
 
 ### Row 17 — a breakpoint on one line must stop once, not once per handled effect
 

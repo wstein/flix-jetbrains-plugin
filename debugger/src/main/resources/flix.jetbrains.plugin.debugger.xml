@@ -59,6 +59,12 @@
         <debugger.jvmSteppingCommandProvider
                 implementation="de.wstein.flixplugin.debugger.FlixSteppingCommands"/>
 
+        <!-- The popup is syntactic, but every destination is compiler-authored. Flix lowering
+             rewrites trait calls, specializes definitions and lifts lambdas, so a source spelling
+             is not a JVM method name and must never be used as one. -->
+        <debugger.jvmSmartStepIntoHandler
+                implementation="de.wstein.flixplugin.debugger.FlixSmartStepIntoHandler"/>
+
         <!-- The canonical Flix run/debug configuration (ADR 0002, plan Phase 4). Registered here
              rather than in the backend module because Debug attaches IntelliJ's own Java debugger,
              which lives in the Java plugin. One type covers Run and Debug: they differ only in the

@@ -186,7 +186,9 @@ sessions in this plugin.
    A file-type factory associates `.fpkg` with the platform's existing archive singleton
    during file-type setup, so `JarFileSystem` exposes its entries as stable `VirtualFile`s.
    A custom archive subtype does not work because `ArchiveFileSystem` checks singleton
-   identity. Neither archive path falls back to an ambiguous basename.
+   identity. External package archives are discovered directly by path and do not require a
+   prior project-index or VFS refresh. A canonical archive identity that no longer resolves
+   fails closed rather than falling through to a same-named project file.
 7. The native Java debugger and the DAP/JDI adapter are **never** attached to the same
    debuggee. Exactly one debugger owns the connection, suspension state, breakpoints,
    stepping requests and lifecycle.

@@ -72,6 +72,9 @@
                 serviceInterface="org.flixlang.intellij.run.FlixLspTestRunner"
                 serviceImplementation="de.wstein.flixplugin.FlixLspTestRunnerImpl"/>
         <projectService serviceImplementation="de.wstein.flixplugin.FlixCoverageService"/>
+        <codeInsight.lineMarkerProvider
+                language="Flix"
+                implementationClass="de.wstein.flixplugin.FlixCoverageLineMarkerProvider"/>
 
         <!-- The gutter run arrow beside `def main`.
              Registered here, not in the always-loaded language module, because line markers are

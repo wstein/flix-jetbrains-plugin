@@ -42,3 +42,34 @@ interface XDebugSessionRef {
 
     fun isStopped(): Boolean
 }
+
+/** Project execution state used to exercise the Run toolwindow's real Stop path. */
+@Remote("com.intellij.execution.ExecutionManager")
+interface ExecutionManagerRef {
+    fun getRunningProcesses(): Array<ProcessHandlerRef>
+}
+
+/** Static accessor: ExecutionManager is registered under its abstract API, not its implementation. */
+@Remote("com.intellij.execution.impl.ExecutionManagerImpl")
+interface ExecutionManagerUtilRef {
+    fun getInstance(project: com.intellij.driver.sdk.Project): ExecutionManagerRef
+}
+
+@Remote("com.intellij.execution.process.ProcessHandler")
+interface ProcessHandlerRef {
+    fun destroyProcess()
+
+    fun isProcessTerminated(): Boolean
+
+    fun getExitCode(): Int?
+}
+
+@Remote("com.intellij.execution.TestStateStorage")
+interface TestStateStorageRef {
+    fun getKeys(): Collection<String>
+}
+
+@Remote("com.intellij.execution.TestStateStorage")
+interface TestStateStorageUtilRef {
+    fun getInstance(project: com.intellij.driver.sdk.Project): TestStateStorageRef
+}

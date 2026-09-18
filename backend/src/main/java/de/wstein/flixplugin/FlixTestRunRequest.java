@@ -9,6 +9,7 @@ public final class FlixTestRunRequest {
     private int protocolVersion = PROTOCOL_VERSION;
     private String runId;
     private List<String> filters = new ArrayList<>();
+    private boolean coverage;
 
     public int getProtocolVersion() { return protocolVersion; }
     public void setProtocolVersion(int value) { protocolVersion = value; }
@@ -16,4 +17,6 @@ public final class FlixTestRunRequest {
     public void setRunId(String value) { runId = value; }
     public List<String> getFilters() { return filters; }
     public void setFilters(List<String> value) { filters = value; }
+    public boolean isCoverage() { return coverage; }
+    public void setCoverage(boolean value) { coverage = value; }
 }

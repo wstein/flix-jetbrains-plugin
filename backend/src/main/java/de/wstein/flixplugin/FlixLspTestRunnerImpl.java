@@ -2,6 +2,7 @@ package de.wstein.flixplugin;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.process.KillableColoredProcessHandler;
@@ -63,7 +64,19 @@ public final class FlixLspTestRunnerImpl implements FlixLspTestRunner {
         if (event.getOutput() != null && !event.getOutput().isEmpty()) {
             result.add("output", GSON.toJsonTree(event.getOutput()));
         }
+        if (event.getCoverageJson() != null && !event.getCoverageJson().isBlank()) {
+            result.add("coverage", JsonParser.parseString(event.getCoverageJson()));
+            result.addProperty("partial", event.isPartial());
+        }
         return result;
+    }
+
+    static FlixTestRunRequest testRunRequest(String runId, List<String> filters) {
+        FlixTestRunRequest request = new FlixTestRunRequest();
+        request.setRunId(runId);
+        request.setFilters(filters);
+        request.setCoverage(true);
+        return request;
     }
 
     private static void copyTest(FlixTestRunEvent.TestRef test, JsonObject result) {
@@ -93,9 +106,7 @@ public final class FlixLspTestRunnerImpl implements FlixLspTestRunner {
                     FlixLanguageServerApi api = (FlixLanguageServerApi) item.getServer();
                     // Stop may have removed the run while the server was still starting.
                     if (runs.get(handler.runId) != handler) return;
-                    FlixTestRunRequest request = new FlixTestRunRequest();
-                    request.setRunId(handler.runId);
-                    request.setFilters(handler.filters);
+                    FlixTestRunRequest request = testRunRequest(handler.runId, handler.filters);
                     api.testRun(request).whenComplete((response, requestFailure) -> {
                         if (requestRequiresFallback(requestFailure, response)) {
                             // A lost response can still follow an accepted request. Cancellation is

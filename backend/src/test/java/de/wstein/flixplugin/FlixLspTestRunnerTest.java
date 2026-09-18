@@ -51,6 +51,29 @@ public class FlixLspTestRunnerTest {
     }
 
     @Test
+    public void everyLspTestRunRequestsCoverage() {
+        FlixTestRunRequest request = FlixLspTestRunnerImpl.testRunRequest("run-1", List.of("Suite.one"));
+
+        assertEquals("run-1", request.getRunId());
+        assertEquals(List.of("Suite.one"), request.getFilters());
+        assertTrue(request.isCoverage());
+    }
+
+    @Test
+    public void coverageEventsPreserveTheStructuredReportAndPartialFlag() {
+        FlixTestRunEvent event = new FlixTestRunEvent();
+        event.setProtocolVersion(FlixTestRunRequest.PROTOCOL_VERSION);
+        event.setEvent("coverage");
+        event.setCoverageJson("{\"formatVersion\":1,\"partial\":true,\"files\":[]}");
+        event.setPartial(true);
+
+        JsonObject json = FlixLspTestRunnerImpl.jsonLine(event);
+
+        assertEquals(1, json.getAsJsonObject("coverage").get("formatVersion").getAsInt());
+        assertTrue(json.get("partial").getAsBoolean());
+    }
+
+    @Test
     public void unavailableTimedOutAndOlderServersRequireCliFallback() {
         assertTrue(FlixLspTestRunnerImpl.serverRequiresFallback(null, false, false));
         assertTrue(FlixLspTestRunnerImpl.serverRequiresFallback(new TimeoutException(), false, false));

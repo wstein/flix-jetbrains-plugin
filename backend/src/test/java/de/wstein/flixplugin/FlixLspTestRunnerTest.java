@@ -5,7 +5,10 @@ import org.eclipse.lsp4j.jsonrpc.services.ServiceEndpoints;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -45,5 +48,43 @@ public class FlixLspTestRunnerTest {
         assertEquals(7, json.get("startLine").getAsInt());
         assertEquals(42, json.get("nanos").getAsLong());
         assertEquals("Assertion Error", json.getAsJsonArray("output").get(0).getAsString());
+    }
+
+    @Test
+    public void unavailableTimedOutAndOlderServersRequireCliFallback() {
+        assertTrue(FlixLspTestRunnerImpl.serverRequiresFallback(null, false, false));
+        assertTrue(FlixLspTestRunnerImpl.serverRequiresFallback(new TimeoutException(), false, false));
+        assertTrue(FlixLspTestRunnerImpl.serverRequiresFallback(null, true, false));
+        assertFalse(FlixLspTestRunnerImpl.serverRequiresFallback(null, true, true));
+    }
+
+    @Test
+    public void onlyAnAcceptedCurrentProtocolResponseKeepsTheLspRun() {
+        FlixTestRunResponse accepted = response(FlixTestRunRequest.PROTOCOL_VERSION, "accepted");
+        assertFalse(FlixLspTestRunnerImpl.requestRequiresFallback(null, accepted));
+
+        assertTrue(FlixLspTestRunnerImpl.requestRequiresFallback(new IllegalStateException("method not found"), null));
+        assertTrue(FlixLspTestRunnerImpl.requestRequiresFallback(null, null));
+        assertTrue(FlixLspTestRunnerImpl.requestRequiresFallback(
+                null, response(FlixTestRunRequest.PROTOCOL_VERSION + 1, "accepted")));
+        assertTrue(FlixLspTestRunnerImpl.requestRequiresFallback(
+                null, response(FlixTestRunRequest.PROTOCOL_VERSION, "rejected")));
+    }
+
+    @Test
+    public void concurrentFallbackCausesCanClaimTheCliOnlyOnce() {
+        ConcurrentHashMap<String, Object> active = new ConcurrentHashMap<>();
+        Object run = new Object();
+        active.put("run-1", run);
+
+        assertTrue(FlixLspTestRunnerImpl.claimFallback(active, "run-1", run));
+        assertFalse(FlixLspTestRunnerImpl.claimFallback(active, "run-1", run));
+    }
+
+    private static FlixTestRunResponse response(int protocolVersion, String status) {
+        FlixTestRunResponse response = new FlixTestRunResponse();
+        response.setProtocolVersion(protocolVersion);
+        response.setStatus(status);
+        return response;
     }
 }

@@ -89,6 +89,6 @@ class FlixCompilerTestProtocolIntegrationTest {
         is Passed -> listOf(event.test.name)
         is FlixTestEvent.Failed -> listOf(event.test.name)
         is FlixTestEvent.Skipped -> listOf(event.test.name)
-        is FlixTestEvent.Finished, is Output -> emptyList()
+        is FlixTestEvent.Finished, is FlixTestEvent.ProtocolMismatch, is Output -> emptyList()
     }
 }

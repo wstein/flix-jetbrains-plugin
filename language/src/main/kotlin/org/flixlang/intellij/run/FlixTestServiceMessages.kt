@@ -43,6 +43,17 @@ object FlixTestServiceMessages {
         is FlixTestEvent.Started ->
             listOf(ServiceMessageBuilder("testCount").addAttribute("count", event.tests.size.toString()).line())
 
+        is FlixTestEvent.ProtocolMismatch -> listOf(
+            ServiceMessageBuilder("message")
+                .addAttribute("status", "ERROR")
+                .addAttribute(
+                    "text",
+                    "Unsupported Flix test event protocol ${event.actualVersion ?: "<missing>"}; " +
+                        "this plugin requires ${FlixTestEventParser.PROTOCOL_VERSION}.",
+                )
+                .line(),
+        )
+
         is FlixTestEvent.Before ->
             listOf(started(event.test, workingDirectory))
 

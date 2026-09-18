@@ -37,6 +37,18 @@ class FlixTestEventParserTest {
     }
 
     @Test
+    fun `an unsupported or absent protocol version is an explicit mismatch`() {
+        assertEquals(
+            FlixTestEvent.ProtocolMismatch(2),
+            FlixTestEventParser.parse("""{"event":"start","protocolVersion":2,"tests":[]}"""),
+        )
+        assertEquals(
+            FlixTestEvent.ProtocolMismatch(null),
+            FlixTestEventParser.parse("""{"event":"start","tests":[]}"""),
+        )
+    }
+
+    @Test
     fun `a test event carries its own location, so no state is needed to place it`() {
         val before = fixture().firstNotNullOf { FlixTestEventParser.parse(it) as? FlixTestEvent.Before }
 

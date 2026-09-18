@@ -26,4 +26,10 @@ public interface FlixLanguageServerApi extends LanguageServer {
      */
     @JsonRequest("flix/debugEval/compile")
     CompletableFuture<FlixDebugEvalResponse> debugEvalCompile(FlixDebugEvalRequest params);
+
+    @JsonRequest("flix/test/run")
+    CompletableFuture<FlixTestRunResponse> testRun(FlixTestRunRequest params);
+
+    @JsonRequest("flix/test/cancel")
+    CompletableFuture<FlixTestRunResponse> testCancel(FlixTestCancelRequest params);
 }

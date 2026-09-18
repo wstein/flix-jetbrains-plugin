@@ -68,6 +68,11 @@ registrations:
     # is here, because only this module may speak LSP4IJ.
     com.intellij.projectService.debugEvalInterface: org.flixlang.intellij.eval.FlixDebugEval
     com.intellij.projectService.debugEvalImplementation: de.wstein.flixplugin.FlixDebugEvalClient
+    # Streams compiler-owned test events into the same native test tree as the CLI fallback. The
+    # interface stays in language so task configurations remain usable without LSP4IJ; only this
+    # optional backend implementation knows about the custom JSON-RPC methods.
+    com.intellij.projectService.testRunInterface: org.flixlang.intellij.run.FlixLspTestRunner
+    com.intellij.projectService.testRunImplementation: de.wstein.flixplugin.FlixLspTestRunnerImpl
     # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor

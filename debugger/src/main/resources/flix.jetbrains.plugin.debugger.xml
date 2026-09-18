@@ -78,6 +78,16 @@
         <runConfigurationProducer
                 implementation="de.wstein.flixplugin.run.FlixRunConfigurationProducer"/>
 
+        <!-- `flix test` executes tests in the compiler JVM itself, so one configuration can run
+             normally or put JDWP on that same process for Debug. Kept here because satisfying the
+             stock Java debugger's ModuleRunProfile and RemoteConnectionCreator gates requires the
+             Java plugin; the project-wide Flix Task configuration remains Java-independent. -->
+        <configurationType
+                implementation="de.wstein.flixplugin.run.FlixTestRunConfigurationType"/>
+
+        <runConfigurationProducer
+                implementation="de.wstein.flixplugin.run.FlixTestRunConfigurationProducer"/>
+
         <!-- Debug, sequenced. A debug launch is two phases – a debug build, then the program JVM
              the agent is on – and everything that reaches startProcess is on the EDT, where a build
              that takes minutes is a freeze and a logged error. This runner does phase one on a

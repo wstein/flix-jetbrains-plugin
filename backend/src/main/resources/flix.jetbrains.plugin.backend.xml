@@ -82,13 +82,6 @@
         <runLineMarkerContributor
                 language="Flix"
                 implementationClass="org.flixlang.intellij.run.FlixRunLineMarkerContributor"/>
-        <!-- Turns the gutter action on an @Test definition into a test-task configuration with
-             that definition's exact fully-qualified symbol as the compiler filter. Backend-owned
-             for the same split-mode reason as the marker above: this is where ExecutorAction
-             discovers producers. The implementation remains in language beside the PSI and task
-             configuration it consumes. -->
-        <runConfigurationProducer
-                implementation="org.flixlang.intellij.run.FlixTestRunConfigurationProducer"/>
 
         <lang.psiStructureViewFactory
                 language="Flix"

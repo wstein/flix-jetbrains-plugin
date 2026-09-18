@@ -45,7 +45,7 @@ import java.nio.file.Path
  * plugin resolves `flix.jar` from the project root or `$FLIX_JAR`. [checkConfiguration] refuses in
  * the dialog instead, where the message can say what to do.
  */
-class FlixTaskRunConfiguration(
+open class FlixTaskRunConfiguration(
     project: Project,
     factory: ConfigurationFactory,
     name: String,
@@ -74,7 +74,7 @@ class FlixTaskRunConfiguration(
             options.arguments = value
         }
 
-    internal var testFilter: String?
+    var testFilter: String?
         get() = options.testFilter
         set(value) {
             options.testFilter = value
@@ -113,7 +113,7 @@ class FlixTaskRunConfiguration(
      * Project-wide arguments come first and the configuration's own after them, so a flag set on
      * one task overrides the same flag set for every task rather than the other way round.
      */
-    internal fun commandFor(jar: Path): List<String> {
+    fun commandFor(jar: Path): List<String> {
         val settings = FlixSettings.getInstance(project)
         val configuredArguments = settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty())
         val taskArguments = if (task == FlixTask.TEST && testFilter != null) {
@@ -188,13 +188,13 @@ class FlixTaskRunConfiguration(
     private fun eventsFlag(): List<String> =
         if (task == FlixTask.TEST) listOf(EVENTS_JSON) else emptyList()
 
-    private fun resolveJar(): Path = FlixJar.resolve(project.basePath, System.getenv(FlixJar.JAR_ENV))
+    protected fun resolveJar(): Path = FlixJar.resolve(project.basePath, System.getenv(FlixJar.JAR_ENV))
 
     /** The project directory: a Flix subcommand acts on the project it is run in. */
-    private fun workingDirectory(): Path = Path.of(project.basePath ?: ".")
+    protected fun workingDirectory(): Path = Path.of(project.basePath ?: ".")
 
     /** One task execution: the command line, the process, and the console attached to it. */
-    private class FlixTaskState(
+    open class FlixTaskState(
         environment: ExecutionEnvironment,
         private val command: List<String>,
         private val workingDirectory: Path,

@@ -50,9 +50,10 @@ and every other JVM language in the same process.
   rejected by the compiler, it is demoted to a file argument and reported as
   `Unrecognized file extension`.
   Test tasks use the compiler's JSONL event stream to populate IntelliJ's native test tree. An
-  `@Test` definition has its own gutter action: running it creates a temporary *Flix Task*
-  configuration with an exact, escaped `--filter` for that fully-qualified test symbol, while the
-  project-wide *Run Tests* lens retains the run-all behavior.
+  `@Test` definition has its own gutter action: Run or Debug creates an exact, escaped `--filter`
+  for that fully-qualified symbol, while the project-wide *Run Tests* lens retains the run-all
+  behavior. Debug attaches JDWP to the `flix test` compiler JVM itself—the process in which Flix
+  executes tests—and adds `--Xdebug` for source locations and locals.
 - **Show AST**: *Tools > Flix > Show AST*. `ShowAstProvider` has been in the compiler all along,
   reachable only through `lsp/showAst` on Flix's VS Code protocol, which negotiates no capabilities
   and which no other client speaks — the same shape the diagram was in. The server now serves it as

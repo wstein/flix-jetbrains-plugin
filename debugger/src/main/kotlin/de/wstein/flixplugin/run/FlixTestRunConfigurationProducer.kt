@@ -1,4 +1,4 @@
-package org.flixlang.intellij.run
+package de.wstein.flixplugin.run
 
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.execution.actions.LazyRunConfigurationProducer
@@ -7,27 +7,26 @@ import com.intellij.execution.configurations.ConfigurationTypeUtil
 import com.intellij.openapi.util.Ref
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
-import de.wstein.flixplugin.FlixTask
 import org.flixlang.intellij.lang.FlixFileType
 import org.flixlang.intellij.lang.psi.FlixDefDecl
+import org.flixlang.intellij.run.testSymbolOrNull
 
-/** Creates an exact `flix test --filter` configuration from an `@Test` definition. */
-class FlixTestRunConfigurationProducer : LazyRunConfigurationProducer<FlixTaskRunConfiguration>() {
+/** Creates the same exact-test configuration for both the Run and Debug executors. */
+class FlixTestRunConfigurationProducer : LazyRunConfigurationProducer<FlixTestRunConfiguration>() {
 
     override fun getConfigurationFactory(): ConfigurationFactory =
-        ConfigurationTypeUtil.findConfigurationType(FlixTaskRunConfigurationType::class.java)
+        ConfigurationTypeUtil.findConfigurationType(FlixTestRunConfigurationType::class.java)
             .configurationFactories
             .single()
 
     override fun setupConfigurationFromContext(
-        configuration: FlixTaskRunConfiguration,
+        configuration: FlixTestRunConfiguration,
         context: ConfigurationContext,
         sourceElement: Ref<PsiElement>,
     ): Boolean {
         val declaration = testDeclarationAt(context) ?: return false
         val symbol = declaration.testSymbolOrNull() ?: return false
 
-        configuration.task = FlixTask.TEST
         configuration.testFilter = symbol
         configuration.name = "test $symbol"
         sourceElement.set(declaration)
@@ -35,11 +34,11 @@ class FlixTestRunConfigurationProducer : LazyRunConfigurationProducer<FlixTaskRu
     }
 
     override fun isConfigurationFromContext(
-        configuration: FlixTaskRunConfiguration,
+        configuration: FlixTestRunConfiguration,
         context: ConfigurationContext,
     ): Boolean {
         val symbol = testDeclarationAt(context)?.testSymbolOrNull() ?: return false
-        return configuration.task == FlixTask.TEST && configuration.testFilter == symbol
+        return configuration.testFilter == symbol
     }
 
     private fun testDeclarationAt(context: ConfigurationContext): FlixDefDecl? {

@@ -57,13 +57,15 @@ fun FlixDefDecl.testSymbolOrNull(): String? {
 
 /** Every test declared in this file, encoded as one whole-name compiler regex. */
 fun FlixFile.testPatternOrNull(): String? {
-    val symbols = PsiTreeUtil.findChildrenOfType(this, FlixDefDecl::class.java)
-        .mapNotNull(FlixDefDecl::testSymbolOrNull)
-        .distinct()
-        .sorted()
-    if (symbols.isEmpty()) return null
-    return exactTestPattern(symbols)
+    return exactTestPattern(testSymbolsUnder(this))
 }
+
+/** Every test nested under this module, including tests in nested modules. */
+fun FlixModuleDecl.testPatternOrNull(): String? = exactTestPattern(testSymbolsUnder(this))
+
+private fun testSymbolsUnder(element: PsiElement): List<String> =
+    PsiTreeUtil.findChildrenOfType(element, FlixDefDecl::class.java)
+        .mapNotNull(FlixDefDecl::testSymbolOrNull)
 
 /** One compiler regex whose alternatives each match one complete test symbol. */
 fun exactTestPattern(symbols: Collection<String>): String? = symbols

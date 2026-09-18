@@ -3,6 +3,7 @@ package org.flixlang.intellij.run
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.ParsingTestCase
 import org.flixlang.intellij.lang.FlixParserDefinition
+import org.flixlang.intellij.lang.FlixFile
 import org.flixlang.intellij.lang.psi.FlixDefDecl
 
 /**
@@ -82,5 +83,18 @@ class FlixEntryPointSymbolTest : ParsingTestCase("", "flix", FlixParserDefinitio
             .mapNotNull { it.testSymbolOrNull() }
 
         assertEquals(listOf("Suite.Inner.selected", "Suite.Inner.skipped"), testSymbols)
+    }
+
+    fun testAFilePatternSelectsEveryTestAndNoHelper() {
+        val file = createPsiFile(
+            "Tests",
+            """
+            @Test def top(): Unit = ()
+            mod Suite { @Test def nested(): Unit = (); def helper(): Unit = () }
+            """.trimIndent(),
+        ) as FlixFile
+        ensureParsed(file)
+
+        assertEquals("(?:\\QSuite.nested\\E|\\Qtop\\E)", file.testPatternOrNull())
     }
 }

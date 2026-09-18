@@ -65,7 +65,10 @@ open class FlixTaskRunConfiguration(
         get() = FlixTask.byCommand(options.task).orElse(FlixTask.BUILD)
         set(value) {
             options.task = value.command()
-            if (value != FlixTask.TEST) options.testFilter = null
+            if (value != FlixTask.TEST) {
+                options.testFilter = null
+                options.testPattern = null
+            }
         }
 
     var arguments: String?
@@ -78,6 +81,14 @@ open class FlixTaskRunConfiguration(
         get() = options.testFilter
         set(value) {
             options.testFilter = value
+            if (value != null) options.testPattern = null
+        }
+
+    var testPattern: String?
+        get() = options.testPattern
+        set(value) {
+            options.testPattern = value
+            if (value != null) options.testFilter = null
         }
 
     override fun getConfigurationEditor(): SettingsEditor<out LocatableConfigurationBase<FlixTaskRunConfigurationOptions>> =
@@ -116,7 +127,7 @@ open class FlixTaskRunConfiguration(
     fun commandFor(jar: Path): List<String> {
         val settings = FlixSettings.getInstance(project)
         val configuredArguments = settings.flixArguments + ParametersListUtil.parse(arguments.orEmpty())
-        val taskArguments = if (task == FlixTask.TEST && testFilter != null) {
+        val taskArguments = if (task == FlixTask.TEST && (testFilter != null || testPattern != null)) {
             withoutTestFilters(configuredArguments)
         } else {
             configuredArguments
@@ -172,7 +183,12 @@ open class FlixTaskRunConfiguration(
     }
     /** A whole-name regular expression for the test selected from source. */
     private fun testFilterArguments(): List<String> =
-        testFilter?.takeIf { task == FlixTask.TEST }?.let { listOf(TEST_FILTER, Regex.escape(it)) }.orEmpty()
+        if (task != FlixTask.TEST) emptyList()
+        else when {
+            testFilter != null -> listOf(TEST_FILTER, Regex.escape(requireNotNull(testFilter)))
+            testPattern != null -> listOf(TEST_FILTER, requireNotNull(testPattern))
+            else -> emptyList()
+        }
 
     /**
      * `--events-json` for the test task, nothing for any other.

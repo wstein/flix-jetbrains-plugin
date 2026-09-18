@@ -132,6 +132,18 @@ class FlixTaskRunConfigurationTest : BasePlatformTestCase() {
         assertNull(configuration.testFilter)
     }
 
+    fun testAFileTestPatternIsPassedToTheCompilerWithoutEscaping() {
+        val configuration = configuration()
+        configuration.task = FlixTask.TEST
+        configuration.testPattern = "(?:\\QSuite.first\\E|\\QOther.second\\E)"
+
+        val command = configuration.commandFor(java.nio.file.Path.of("/tmp/flix.jar"))
+        val filter = command.indexOf(FlixTaskRunConfiguration.TEST_FILTER)
+
+        assertEquals("(?:\\QSuite.first\\E|\\QOther.second\\E)", command[filter + 1])
+        assertNull(configuration.testFilter)
+    }
+
     fun testTheRunTestsLensHandlerRunsTheTestTask() {
         // The lens says "Run Tests"; the action behind it has to be the test task and not, say, the
         // one that happens to be first in the enum.

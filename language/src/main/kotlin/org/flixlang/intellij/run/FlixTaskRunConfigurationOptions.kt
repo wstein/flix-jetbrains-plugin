@@ -16,6 +16,7 @@ class FlixTaskRunConfigurationOptions : LocatableRunConfigurationOptions() {
     private val taskProperty = string(FlixTask.BUILD.command()).provideDelegate(this, "task")
     private val argumentsProperty = string("").provideDelegate(this, "arguments")
     private val testFilterProperty = string().provideDelegate(this, "testFilter")
+    private val testPatternProperty = string().provideDelegate(this, "testPattern")
 
     /** The subcommand, as [FlixTask.command] spells it. */
     var task: String?
@@ -31,4 +32,9 @@ class FlixTaskRunConfigurationOptions : LocatableRunConfigurationOptions() {
     var testFilter: String?
         get() = testFilterProperty.getValue(this)
         set(value) = testFilterProperty.setValue(this, value)
+
+    /** A compiler regex selecting a source scope such as all tests in one file. */
+    var testPattern: String?
+        get() = testPatternProperty.getValue(this)
+        set(value) = testPatternProperty.setValue(this, value)
 }

@@ -6,6 +6,7 @@ import org.flixlang.intellij.lang.psi.FlixDeclaration
 import org.flixlang.intellij.lang.psi.FlixDefDecl
 import org.flixlang.intellij.lang.psi.FlixIdent
 import org.flixlang.intellij.lang.psi.FlixModuleDecl
+import org.flixlang.intellij.lang.FlixFile
 
 /**
  * `ident` is a real (non-`private`) rule in Flix.bnf, so Grammar-Kit generates a `getIdent()`
@@ -51,4 +52,14 @@ fun FlixDefDecl.testSymbolOrNull(): String? {
         it.firstChild == null && it.text == "@Test"
     }.isNotEmpty()
     return if (isTest) entryPointSymbolOrNull() else null
+}
+
+/** Every test declared in this file, encoded as one whole-name compiler regex. */
+fun FlixFile.testPatternOrNull(): String? {
+    val symbols = PsiTreeUtil.findChildrenOfType(this, FlixDefDecl::class.java)
+        .mapNotNull(FlixDefDecl::testSymbolOrNull)
+        .distinct()
+        .sorted()
+    if (symbols.isEmpty()) return null
+    return symbols.joinToString(separator = "|", prefix = "(?:", postfix = ")") { Regex.escape(it) }
 }

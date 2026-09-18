@@ -452,9 +452,11 @@ Measured 2026-08-20 on the same fixture: `java -agentlib:jdwp … -jar flix.jar 
 prepared **2** classes from `TestMain.flix`, and lines 6, 7 and 8 report `can bind`; the test itself
 ran and passed in the same session.
 
-What that establishes is the *binding*, from a terminal launch. It is not evidence that pressing
-Debug on a test in the IDE works, because the plugin has no test debug configuration — the test task
-is a plain `flix test --events-json` run. See `docs/phase-8-verification.md`.
+The plugin now has a dedicated `Flix Test` configuration for the source gutter action. Run keeps the
+JSONL test tree; Debug adds the JDWP agent and `--Xdebug` to the same non-forking `flix test` command.
+`FlixTestDebuggerGatesTest` and `FlixTestLaunchTest` pin the platform gates and process identity. This
+closes the former implementation gap, but it does not turn the terminal measurement above into an
+IDE gesture measurement; that click-through remains listed in `docs/phase-8-verification.md`.
 
 ### Row 17 — a breakpoint on one line must stop once, not once per handled effect
 

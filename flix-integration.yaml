@@ -71,10 +71,6 @@ registrations:
     # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor
-    # The @Test gutter action becomes an exact `flix test --filter` task. Kept in the same
-    # split-mode owner as the marker so ExecutorAction can discover it.
-    com.intellij.runConfigurationProducer: org.flixlang.intellij.run.FlixTestRunConfigurationProducer
-
     # Backend, not frontend: the diagram is fetched through LSP4IJ, which declares no content
     # modules and therefore runs host-side under split mode -- as must anything calling it.
     com.intellij.toolWindow: de.wstein.flixplugin.ui.FlixDiagramToolWindowFactory
@@ -90,6 +86,8 @@ registrations:
     com.intellij.debugger.jvmSmartStepIntoHandler: de.wstein.flixplugin.debugger.FlixSmartStepIntoHandler
     com.intellij.configurationType: de.wstein.flixplugin.run.FlixRunConfigurationType
     com.intellij.runConfigurationProducer: de.wstein.flixplugin.run.FlixRunConfigurationProducer
+    com.intellij.configurationType.test: de.wstein.flixplugin.run.FlixTestRunConfigurationType
+    com.intellij.runConfigurationProducer.test: de.wstein.flixplugin.run.FlixTestRunConfigurationProducer
     # Debug's first phase -- `flix build --Xdebug` -- on a background thread. Registered
     # order="first": GenericDebuggerRunner accepts this configuration as well, and the platform
     # takes the first runner that answers.

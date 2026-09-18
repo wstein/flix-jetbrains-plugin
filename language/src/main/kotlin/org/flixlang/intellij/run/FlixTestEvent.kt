@@ -28,6 +28,9 @@ sealed interface FlixTestEvent {
     /** The run is about to begin, and these are the tests it will cover. */
     data class Started(val tests: List<FlixTestRef>) : FlixTestEvent
 
+    /** A compiler answered with the test protocol, but not the version this plugin understands. */
+    data class ProtocolMismatch(val actualVersion: Int?) : FlixTestEvent
+
     /** A test is about to run. Not emitted for a skipped test -- see [Skipped]. */
     data class Before(val test: FlixTestRef) : FlixTestEvent
 

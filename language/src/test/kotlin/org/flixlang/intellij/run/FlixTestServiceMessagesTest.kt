@@ -30,6 +30,15 @@ class FlixTestServiceMessagesTest {
         assertTrue(messages.single(), messages.single().contains("count='2'"))
     }
 
+    @Test
+    fun `a protocol mismatch becomes a visible runner error`() {
+        val message = messagesFor(FlixTestEvent.ProtocolMismatch(2)).single()
+
+        assertTrue(message, message.startsWith("##teamcity[message "))
+        assertTrue(message, message.contains("status='ERROR'"))
+        assertTrue(message, message.contains("protocol 2"))
+    }
+
     /**
      * The line and column are passed through unchanged.
      *

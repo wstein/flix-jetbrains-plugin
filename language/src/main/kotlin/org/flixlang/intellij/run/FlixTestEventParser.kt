@@ -51,7 +51,11 @@ object FlixTestEventParser {
         }
 
         return when (root.string("event")) {
-            "start" -> FlixTestEvent.Started(testsIn(root["tests"]))
+            "start" -> {
+                val version = root.int("protocolVersion")
+                if (version == PROTOCOL_VERSION) FlixTestEvent.Started(testsIn(root["tests"]))
+                else FlixTestEvent.ProtocolMismatch(version)
+            }
             "before" -> root.testRef()?.let(FlixTestEvent::Before)
             "passed" -> root.testRef()?.let { FlixTestEvent.Passed(it, root.nanos()) }
             "failed" -> root.testRef()?.let { FlixTestEvent.Failed(it, root.nanos(), stringsIn(root["output"])) }
@@ -100,4 +104,6 @@ object FlixTestEventParser {
     private fun JsonObject.nanos(): Long = (this["nanos"] as? JsonPrimitive)?.longOrNull ?: 0L
 
     private fun JsonArray?.orEmpty(): List<JsonElement> = this ?: emptyList()
+
+    const val PROTOCOL_VERSION: Int = 1
 }

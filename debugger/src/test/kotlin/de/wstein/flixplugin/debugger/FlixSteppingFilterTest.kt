@@ -6,6 +6,7 @@ import com.intellij.debugger.engine.SuspendContext
 import com.intellij.openapi.util.Key
 import com.sun.jdi.AbsentInformationException
 import com.sun.jdi.Location
+import com.sun.jdi.Method
 import com.sun.jdi.ReferenceType
 import com.sun.jdi.request.StepRequest
 import org.junit.Assert.assertEquals
@@ -79,6 +80,38 @@ class FlixSteppingFilterTest {
         )
     }
 
+    // --- Step Out: confined to the immediate logical caller ---------------------------------
+
+    @Test
+    fun `step out stops at and clears the suspended caller target`() {
+        val scope = stepOutScope(line = 53)
+        val context = suspendContext(flixLocation(line = 53), scope = null, stepOutScope = scope)
+
+        assertFalse(filter.isApplicable(context))
+        assertNull(FlixSteppingCommands.stepOutScopeOf(context.debugProcess))
+    }
+
+    @Test
+    fun `step out passes through a different Flix source position`() {
+        val scope = stepOutScope(line = 54)
+        val context = suspendContext(flixLocation(line = 53), scope = null, stepOutScope = scope)
+
+        assertTrue(filter.isApplicable(context))
+        assertTrue(FlixSteppingCommands.stepOutScopeOf(context.debugProcess) === scope)
+    }
+
+    @Test
+    fun `step out gives up and clears its target when its budget is spent`() {
+        val scope = stepOutScope(line = 54)
+        while (scope.consume()) {
+            // Exhaust the bounded traversal.
+        }
+        val context = suspendContext(flixLocation(line = 53), scope = null, stepOutScope = scope)
+
+        assertFalse(filter.isApplicable(context))
+        assertNull(FlixSteppingCommands.stepOutScopeOf(context.debugProcess))
+    }
+
     // --- returning to the caller -----------------------------------------------------------------
     //
     // Stepping over the *last* line of a function has nowhere to go inside that function, so the
@@ -146,13 +179,18 @@ class FlixSteppingFilterTest {
 
     // --- stubs ---------------------------------------------------------------------------------
 
-    private fun suspendContext(location: Location?, scope: Any?): SuspendContext {
+    private fun suspendContext(
+        location: Location?,
+        scope: Any?,
+        stepOutScope: FlixSteppingCommands.StepOutScope? = null,
+    ): SuspendContext {
         val userData = mutableMapOf<Key<*>, Any?>()
         scope?.let {
             userData[FlixSteppingCommands.STEP_OVER_SCOPE] =
                 it as? FlixSteppingCommands.StepOverScope
                     ?: FlixSteppingCommands.StepOverScope(it as String)
         }
+        stepOutScope?.let { userData[FlixSteppingCommands.STEP_OUT_SCOPE] = it }
 
         // Returns null for every location, which is what a frame outside Flix produces. A position
         // that resolves to a real definition needs PSI, and is covered by FlixDefinitionScopeTest.
@@ -181,11 +219,21 @@ class FlixSteppingFilterTest {
 
     /** A class compiled from a `.flix` file, with a real line. */
     private fun flixLocation(line: Int): Location =
-        location(referenceType("Clo\$main\$400067", listOf("Main.flix")), "Main.flix", line)
+        location(referenceType("Clo\$main\$400067", listOf("Main.flix")), "Main.flix", line, "applyFrame")
 
     /** Flix's runtime trampoline: no `.flix` source, no line information. */
     private fun runtimeLocation(): Location =
-        location(referenceType("dev.flix.runtime.Frame\$", null), null, -1)
+        location(referenceType("dev.flix.runtime.Frame\$", null), null, -1, "applyFrameStatic")
+
+    private fun stepOutScope(line: Int): FlixSteppingCommands.StepOutScope =
+        FlixSteppingCommands.StepOutScope(
+            FlixSteppingCommands.StepOutTarget(
+                className = "Clo\$main\$400067",
+                methodName = "applyFrame",
+                sourceName = "Main.flix",
+                line = line,
+            ),
+        )
 
     private fun referenceType(className: String, sourceNames: List<String>?): ReferenceType =
         proxy(ReferenceType::class.java) { method, _ ->
@@ -198,16 +246,20 @@ class FlixSteppingFilterTest {
             }
         }
 
-    private fun location(type: ReferenceType, sourceName: String?, line: Int): Location =
-        proxy(Location::class.java) { method, _ ->
+    private fun location(type: ReferenceType, sourceName: String?, line: Int, methodName: String): Location {
+        val jdiMethod = proxy(Method::class.java) { method, _ ->
+            if (method.name == "name") methodName else null
+        }
+        return proxy(Location::class.java) { method, _ ->
             when (method.name) {
                 "declaringType" -> type
                 "sourceName", "sourcePath" -> sourceName ?: throw AbsentInformationException()
                 "lineNumber" -> line
-                "method" -> null
+                "method" -> jdiMethod
                 else -> null
             }
         }
+    }
 
     @Suppress("UNCHECKED_CAST")
     private fun <T> proxy(type: Class<T>, handler: (java.lang.reflect.Method, Array<Any?>?) -> Any?): T =
@@ -219,4 +271,3 @@ class FlixSteppingFilterTest {
 /** Convenience for the assertion above; `SuspendContext.getDebugProcess` is nullable in Java. */
 private val SuspendContext.debugProcess: DebugProcess?
     get() = (this as com.intellij.debugger.engine.StackFrameContext).debugProcess
-

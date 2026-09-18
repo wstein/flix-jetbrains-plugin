@@ -284,6 +284,11 @@ class FlixDebugSessionTest {
                 .map { FlixFrames.labelOf(it).toString() }
 
             assertEquals(listOf("main(), Main.flix:16"), entries)
+            val stepOut = FlixSteppingCommands.stepOutTargetOf(stop.thread(), stop.location().declaringType())
+            assertTrue(stepOut?.className?.startsWith("Clo\$main\$") == true)
+            assertEquals("applyFrame", stepOut?.methodName)
+            assertTrue(stepOut?.sourceName?.endsWith("Main.flix") == true)
+            assertEquals(16, stepOut?.line)
         }
     }
 

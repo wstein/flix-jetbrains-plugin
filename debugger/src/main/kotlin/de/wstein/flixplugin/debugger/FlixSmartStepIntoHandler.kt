@@ -20,7 +20,13 @@ class FlixSmartStepIntoHandler : JvmSmartStepIntoHandler() {
         position.file.virtualFile?.extension == "flix"
 
     override fun findSmartStepTargets(position: SourcePosition): List<SmartStepTarget> =
-        callsAt(position).mapNotNull { call ->
+        targetsAt(position, callsAt(position))
+
+    internal fun targetsAt(
+        position: SourcePosition,
+        calls: List<FlixDebugCalls.Call>,
+    ): List<SmartStepTarget> =
+        calls.mapNotNull { call ->
             highlight(position, call)?.let { element -> FlixSmartStepTarget(call, element) }
         }
 

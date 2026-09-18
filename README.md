@@ -49,7 +49,11 @@ and every other JVM language in the same process.
   checked against `flix --help` by `FlixTaskTest` rather than reviewed — an unknown one is not
   rejected by the compiler, it is demoted to a file argument and reported as
   `Unrecognized file extension`.
-  Test tasks use the compiler's JSONL event stream to populate IntelliJ's native test tree. An
+  Test tasks use the compiler's structured event stream to populate IntelliJ's native test tree.
+  Run first asks the language server for a versioned streaming test run, so saved and unsaved editor
+  buffers are the tested snapshot; an older, unavailable, or rejecting server falls back to the
+  existing `flix test --events-json` process before it starts any second run. Stop sends the LSP
+  cancellation request, which takes effect at the next safe boundary between tests. An
   `@Test` definition has its own gutter action: Run or Debug creates an exact, escaped `--filter`
   for that fully-qualified symbol, while the project-wide *Run Tests* lens retains the run-all
   behavior. Debug attaches JDWP to the `flix test` compiler JVM itself—the process in which Flix

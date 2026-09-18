@@ -70,9 +70,18 @@ public final class FlixDebugCalls {
 
     /** Calls whose source span intersects the one-based source line. */
     public @NotNull List<Call> callsOn(@NotNull String sourceName, int line) {
+        List<Call> exact = calls.stream().filter(call -> call.source().equals(sourceName)).toList();
+        List<Call> candidates = exact;
+        if (candidates.isEmpty()) {
+            String base = baseNameOf(sourceName);
+            List<String> recorded = calls.stream().map(Call::source)
+                    .filter(source -> baseNameOf(source).equals(base)).distinct().toList();
+            if (recorded.size() != 1) return List.of();
+            candidates = calls.stream().filter(call -> call.source().equals(recorded.getFirst())).toList();
+        }
         List<Call> matches = new ArrayList<>();
-        for (Call call : calls) {
-            if (sameSource(call.source(), sourceName) && call.startLine() <= line && line <= call.endLine()) {
+        for (Call call : candidates) {
+            if (call.startLine() <= line && line <= call.endLine()) {
                 matches.add(call);
             }
         }
@@ -81,11 +90,6 @@ public final class FlixDebugCalls {
 
     public boolean isEmpty() {
         return calls.isEmpty();
-    }
-
-    private static boolean sameSource(String recorded, String requested) {
-        if (recorded.equals(requested)) return true;
-        return baseNameOf(recorded).equals(baseNameOf(requested));
     }
 
     private static String baseNameOf(String path) {

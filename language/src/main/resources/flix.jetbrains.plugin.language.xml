@@ -33,6 +33,11 @@
                 language="Flix"
                 extensions="flix"/>
 
+        <!-- ArchiveFileSystem accepts only the platform ArchiveFileType singleton, not a subtype.
+             A factory can add the fpkg association to that existing type during file-type setup. -->
+        <fileTypeFactory
+                implementation="org.flixlang.intellij.lang.FlixPackageFileTypeFactory"/>
+
         <lang.parserDefinition
                 language="Flix"
                 implementationClass="org.flixlang.intellij.lang.FlixParserDefinition"/>

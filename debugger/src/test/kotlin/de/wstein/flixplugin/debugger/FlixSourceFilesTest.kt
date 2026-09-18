@@ -3,6 +3,7 @@ package de.wstein.flixplugin.debugger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.nio.file.Path
 
 /**
  * How a JDI source attribute is turned into one project file.
@@ -12,6 +13,51 @@ import org.junit.Test
  * base-name match alone binds to whichever module the index happened to return first.
  */
 class FlixSourceFilesTest {
+
+    // --- package archive identities ----------------------------------------------------------
+
+    @Test
+    fun `decodes a canonical package archive identity`() {
+        val expectedArchive = Path.of("/tmp/flix packages/example package.fpkg")
+        val identity = "jar:${expectedArchive.toUri()}!/src/example/Main.flix"
+
+        assertEquals(
+            FlixSourceFiles.ArchiveEntry(expectedArchive, "src/example/Main.flix"),
+            FlixSourceFiles.archiveEntryOf(identity),
+        )
+    }
+
+    @Test
+    fun `rejects malformed and non-file archive identities`() {
+        assertNull(FlixSourceFiles.archiveEntryOf("Main.flix"))
+        assertNull(FlixSourceFiles.archiveEntryOf("jar:file:///tmp/example.fpkg"))
+        assertNull(FlixSourceFiles.archiveEntryOf("jar:https://example.com/example.fpkg!/Main.flix"))
+        assertNull(FlixSourceFiles.archiveEntryOf("jar:file:///tmp/example.fpkg!/"))
+        assertNull(FlixSourceFiles.archiveEntryOf("jar:file:///tmp/example.fpkg!/../Main.flix"))
+    }
+
+    // --- bundled standard-library entries ----------------------------------------------------
+
+    @Test
+    fun `maps bare and nested library names to compiler jar entries`() {
+        assertEquals("src/library/List.flix", FlixSourceFiles.libraryEntryOf("List.flix", null))
+        assertEquals(
+            "src/library/BPlusTree/Lock.flix",
+            FlixSourceFiles.libraryEntryOf("Lock.flix", "BPlusTree/Lock.flix"),
+        )
+        assertEquals(
+            "src/library/Prelude.flix",
+            FlixSourceFiles.libraryEntryOf("src/library/Prelude.flix", null),
+        )
+    }
+
+    @Test
+    fun `does not reinterpret archive disk or escaping paths as library entries`() {
+        assertNull(FlixSourceFiles.libraryEntryOf("jar:file:///tmp/example.fpkg!/Main.flix", null))
+        assertNull(FlixSourceFiles.libraryEntryOf("/project/src/Main.flix", null))
+        assertNull(FlixSourceFiles.libraryEntryOf("../Main.flix", null))
+        assertNull(FlixSourceFiles.libraryEntryOf("untitled:Scratch.flix", null))
+    }
 
     // --- base names ------------------------------------------------------------------------
 

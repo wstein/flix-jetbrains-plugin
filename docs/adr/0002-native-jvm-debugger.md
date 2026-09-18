@@ -179,10 +179,18 @@ sessions in this plugin.
    `FlixDebugAdapter.java`'s broad `com.*`/`org.*`/`net.*` exclusions are **not** carried
    over — they were sized for a Flix-only session and would exclude most user Java, Kotlin
    and Scala code from stepping.
-6. The native Java debugger and the DAP/JDI adapter are **never** attached to the same
+6. Source resolution is identity-first: an absolute project path is opened directly; a
+   canonical `jar:file:///…package.fpkg!/entry.flix` identity is URI-decoded and opened
+   from that exact archive; a bundled-library name is opened under `src/library/` in the
+   compiler jar selected by `FlixJar`; only then is the project filename index consulted.
+   A file-type factory associates `.fpkg` with the platform's existing archive singleton
+   during file-type setup, so `JarFileSystem` exposes its entries as stable `VirtualFile`s.
+   A custom archive subtype does not work because `ArchiveFileSystem` checks singleton
+   identity. Neither archive path falls back to an ambiguous basename.
+7. The native Java debugger and the DAP/JDI adapter are **never** attached to the same
    debuggee. Exactly one debugger owns the connection, suspension state, breakpoints,
    stepping requests and lifecycle.
-7. The DAP path stays registered and functional until the native path passes its gate,
+8. The DAP path stays registered and functional until the native path passes its gate,
    then its IntelliJ-side registration, descriptor, factory and vendored adapter copy are
    removed. The canonical adapter continues to serve VS Code from `flix-lab`.
 
@@ -217,6 +225,10 @@ LSP4IJ remains the LSP client. Only its DAP client is no longer used.
   Flix frame. Smart Step Into target selection remains a follow-up feature.
 - Flix HotSwap is not claimed until recompilation and SMAP class-redefinition behavior are
   separately proven.
+- Published packages and the bundled standard library remain source archives, not separately
+  compiled debug artifacts. Whole-program specialization records their reachable classes in the
+  consuming build's `debug-index.json`, `debug-scopes.json`, and `debug-calls.json`; the resolver
+  opens the source archive named by those class attributes.
 - Datalog rule-level debugging is explicitly **not** solved by this decision. The solver is
   Flix library code (`Fixpoint3`), so JVM stepping lands inside fixpoint internals.
   Relational debugging is a separate cooperative protocol; see the implementation plan.

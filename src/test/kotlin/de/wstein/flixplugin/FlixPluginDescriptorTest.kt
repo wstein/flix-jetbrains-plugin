@@ -114,6 +114,7 @@ class FlixPluginDescriptorTest {
                 "adding or losing one silently changes what the IDE does with a .flix file",
             listOf(
                 "fileType",
+                "fileTypeFactory",
                 "lang.parserDefinition",
                 "lang.syntaxHighlighterFactory",
                 // Settings > Editor > Color Scheme > Flix. Every colour key falls back to a
@@ -155,6 +156,7 @@ class FlixPluginDescriptorTest {
     fun `every registered implementation class exists and fits its extension point`() {
         val expectedSupertype = mapOf(
             "fileType" to "com.intellij.openapi.fileTypes.LanguageFileType",
+            "fileTypeFactory" to "com.intellij.openapi.fileTypes.FileTypeFactory",
             "lang.parserDefinition" to "com.intellij.lang.ParserDefinition",
             "lang.syntaxHighlighterFactory" to "com.intellij.openapi.fileTypes.SyntaxHighlighterFactory",
             "colorSettingsPage" to "com.intellij.openapi.options.colors.ColorSettingsPage",

@@ -350,10 +350,11 @@ and a re-index. A debug session that raced it lost its breakpoints permanently �
 "breakpoints work on the first run and on none after it", and cleared only by restarting the IDE.
 
 `FlixSourceFiles` now resolves an absolute source attribute straight from the VFS and consults the
-index only for bare names. An absolute path needs no index and admits no ambiguity, so the race is
-removed rather than narrowed. Flix records exactly that for project sources
-(`SourceFile: "/Users/…/Hello.flix"`); bare names are library sources, which resolve to nothing
-whatever the index says.
+index only after deterministic archive lookups. An absolute path needs no index and admits no
+ambiguity, so the race is removed rather than narrowed. Flix records exactly that for project
+sources (`SourceFile: "/Users/…/Hello.flix"`). Canonical `jar:file:` identities resolve exact
+entries in `.fpkg` archives, while bare bundled-library paths resolve under `src/library/` in the
+same compiler jar the project launches. Ambiguous project-index matches are still refused.
 
 ### If it binds *too much* — stopping in unrelated Java
 

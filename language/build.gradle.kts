@@ -150,4 +150,17 @@ tasks.test {
     providers.gradleProperty("flixSpec.allowPinMismatch").orNull
         ?.takeIf { it.isNotBlank() }
         ?.let { systemProperty("flixSpec.allowPinMismatch", it) }
+    // Opt-in cross-repository gate: run the selected compiler and feed its real JSONL test stream
+    // through this plugin's parser. Forward explicitly because a long-lived Gradle daemon keeps the
+    // environment it started with; setting FLIX_JAR on a later invocation would otherwise leave the
+    // forked test JVM without it and silently skip the gate.
+    providers.environmentVariable("FLIX_JAR").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { environment("FLIX_JAR", it) }
+
+    // A system-property form is useful for runners that cannot set an environment variable.
+    providers.systemProperty("flixJar").orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { systemProperty("flixJar", it) }
+
 }

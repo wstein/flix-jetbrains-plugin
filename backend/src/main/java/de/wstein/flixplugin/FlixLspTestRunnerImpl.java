@@ -48,7 +48,13 @@ public final class FlixLspTestRunnerImpl implements FlixLspTestRunner {
     void accept(@Nullable FlixTestRunEvent event) {
         if (event == null || event.getRunId() == null) return;
         LspTestProcessHandler handler = runs.get(event.getRunId());
-        if (handler != null) handler.accept(event);
+        if (handler != null) {
+            if (event.getCoverageJson() != null && !event.getCoverageJson().isBlank()) {
+                project.getService(FlixCoverageService.class)
+                        .accept(event.getCoverageJson(), event.isPartial());
+            }
+            handler.accept(event);
+        }
     }
 
     /** Converts an LSP event to the compiler JSONL shape consumed by the existing SM converter. */

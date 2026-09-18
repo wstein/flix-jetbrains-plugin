@@ -73,6 +73,8 @@ registrations:
     # optional backend implementation knows about the custom JSON-RPC methods.
     com.intellij.projectService.testRunInterface: org.flixlang.intellij.run.FlixLspTestRunner
     com.intellij.projectService.testRunImplementation: de.wstein.flixplugin.FlixLspTestRunnerImpl
+    # The latest compiler-owned coverage report, indexed once and shared by all editor gutters.
+    com.intellij.projectService.coverage: de.wstein.flixplugin.FlixCoverageService
     # Backend-only on purpose: the gutter marker is contributed once, from the process that owns
     # run configurations. Registering it in the language module too produced two arrows.
     com.intellij.runLineMarkerContributor: org.flixlang.intellij.run.FlixRunLineMarkerContributor

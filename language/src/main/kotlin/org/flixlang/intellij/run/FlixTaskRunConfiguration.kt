@@ -113,7 +113,13 @@ open class FlixTaskRunConfiguration(
         } catch (e: IllegalStateException) {
             throw ExecutionException(e.message, e)
         }
-        return FlixTaskState(environment, commandFor(jar), workingDirectory(), this)
+        return FlixTaskState(
+            environment,
+            commandFor(jar),
+            workingDirectory(),
+            this,
+            lspFilters = lspFilters(),
+        )
     }
 
     /**
@@ -190,6 +196,16 @@ open class FlixTaskRunConfiguration(
             else -> emptyList()
         }
 
+    /** Filters sent without the CLI's `--filter` spelling by the LSP test transport. */
+    private fun lspFilters(): List<String>? {
+        if (task != FlixTask.TEST || !arguments.isNullOrBlank()) return null
+        return when {
+            testFilter != null -> listOf(Regex.escape(requireNotNull(testFilter)))
+            testPattern != null -> listOf(requireNotNull(testPattern))
+            else -> emptyList()
+        }
+    }
+
     /**
      * `--events-json` for the test task, nothing for any other.
      *
@@ -215,6 +231,7 @@ open class FlixTaskRunConfiguration(
         private val command: List<String>,
         private val workingDirectory: Path,
         private val configuration: FlixTaskRunConfiguration,
+        private val lspFilters: List<String>? = null,
     ) : CommandLineState(environment) {
 
         init {
@@ -245,6 +262,11 @@ open class FlixTaskRunConfiguration(
         }
 
         override fun startProcess(): ProcessHandler {
+            if (lspFilters != null) {
+                FlixLspTestRunner.getInstance(environment.project)?.let { runner ->
+                    return runner.createProcess(lspFilters, command, workingDirectory)
+                }
+            }
             val commandLine = GeneralCommandLine(command).withWorkingDirectory(workingDirectory)
 
             // Killable so Stop terminates the compiler rather than detaching from it; coloured so

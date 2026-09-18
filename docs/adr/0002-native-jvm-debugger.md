@@ -106,6 +106,13 @@ it reaches the trampoline, `FlixSteppingFilter` advances with `STEP_INTO` until 
 caller arrives. The traversal is bounded and falls back to the platform when the chain or metadata
 is unavailable. Synchronous and non-Flix Step Out therefore remain native debugger operations.
 
+Suspended continuation state is likewise compiler-owned. A debug continuation class may carry a
+static `frameSlots` format-1 document keyed by its current `pc`; each entry maps an exact generated
+field (`cloN`, `argN`, or `lN`) to a source name, pre-erasure Flix type, and binding kind. The plugin
+accepts only that version and those field shapes, and fails closed for malformed metadata, missing
+fields, unknown PCs, release builds, and older compiler artifacts. It never guesses a source name
+from a positional field.
+
 The correction not to make: the DAP adapter's broad `com.*`/`org.*`/`net.*` step exclusions. They
 would remove user Java, Kotlin and Scala from stepping — the frames this architecture exists to
 reach — to fix a problem confined to Flix's own generated bridges.

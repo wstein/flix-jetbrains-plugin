@@ -9,6 +9,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import org.flixlang.intellij.lang.FlixFileType
 import org.flixlang.intellij.lang.psi.FlixDefDecl
+import org.flixlang.intellij.lang.psi.FlixModuleDecl
 import org.flixlang.intellij.lang.FlixFile
 import org.flixlang.intellij.run.testSymbolOrNull
 import org.flixlang.intellij.run.testPatternOrNull
@@ -35,6 +36,15 @@ class FlixTestRunConfigurationProducer : LazyRunConfigurationProducer<FlixTestRu
             return true
         }
 
+        val module = moduleAt(context)
+        val modulePattern = module?.testPatternOrNull()
+        if (modulePattern != null) {
+            configuration.testPattern = modulePattern
+            configuration.name = "test ${module.qualifiedName.text}"
+            sourceElement.set(module)
+            return true
+        }
+
         val file = flixFileAt(context) ?: return false
         val pattern = file.testPatternOrNull() ?: return false
         configuration.testPattern = pattern
@@ -49,6 +59,8 @@ class FlixTestRunConfigurationProducer : LazyRunConfigurationProducer<FlixTestRu
     ): Boolean {
         val symbol = testDeclarationAt(context)?.testSymbolOrNull()
         if (symbol != null) return configuration.testFilter == symbol
+        val modulePattern = moduleAt(context)?.testPatternOrNull()
+        if (modulePattern != null) return configuration.testPattern == modulePattern
         val pattern = flixFileAt(context)?.testPatternOrNull() ?: return false
         return configuration.testPattern == pattern
     }
@@ -64,4 +76,7 @@ class FlixTestRunConfigurationProducer : LazyRunConfigurationProducer<FlixTestRu
         val file = context.psiLocation?.containingFile as? FlixFile ?: return null
         return file.takeIf { it.fileType == FlixFileType.INSTANCE }
     }
+
+    private fun moduleAt(context: ConfigurationContext): FlixModuleDecl? =
+        context.psiLocation?.let { PsiTreeUtil.getParentOfType(it, FlixModuleDecl::class.java, false) }
 }

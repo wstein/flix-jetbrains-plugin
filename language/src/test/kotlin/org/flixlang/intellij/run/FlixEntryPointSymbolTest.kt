@@ -5,6 +5,7 @@ import com.intellij.testFramework.ParsingTestCase
 import org.flixlang.intellij.lang.FlixParserDefinition
 import org.flixlang.intellij.lang.FlixFile
 import org.flixlang.intellij.lang.psi.FlixDefDecl
+import org.flixlang.intellij.lang.psi.FlixModuleDecl
 
 /**
  * The symbol handed to the compiler's `--entrypoint`.
@@ -105,4 +106,23 @@ class FlixEntryPointSymbolTest : ParsingTestCase("", "flix", FlixParserDefinitio
         )
         assertNull(exactTestPattern(emptyList()))
     }
+
+    fun testAModulePatternIncludesNestedTestsButNotSiblingTests() {
+        val file = createPsiFile(
+            "Tests",
+            """
+            mod A {
+                @Test def direct(): Unit = ()
+                mod B { @Test def nested(): Unit = () }
+            }
+            mod C { @Test def sibling(): Unit = () }
+            """.trimIndent(),
+        )
+        ensureParsed(file)
+        val moduleA = PsiTreeUtil.findChildrenOfType(file, FlixModuleDecl::class.java)
+            .first { it.qualifiedName.text == "A" }
+
+        assertEquals("(?:\\QA.B.nested\\E|\\QA.direct\\E)", moduleA.testPatternOrNull())
+    }
+
 }

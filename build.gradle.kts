@@ -104,7 +104,7 @@ dependencies {
 
     // Reads .github/workflows/release.yml, so that the two release channels cannot quietly merge.
     // Test-scoped: nothing that ships parses YAML.
-    testImplementation("org.yaml:snakeyaml:2.6")
+    testImplementation("org.yaml:snakeyaml:2.7")
 
     // The UI smoke test drives a real IDE, so it needs JUnit 5 and Starter's own transitive
     // surface: the API returns Kodein `DI` and coroutine `Deferred` in public signatures.

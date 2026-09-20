@@ -14,7 +14,7 @@ repositories {
 
 dependencies {
     // Parses flix-integration.yaml. Build tooling only -- nothing that ships in the plugin needs it.
-    implementation("org.yaml:snakeyaml:2.6")
+    implementation("org.yaml:snakeyaml:2.7")
 
     testImplementation("junit:junit:4.13.2")
 }

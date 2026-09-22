@@ -5,6 +5,12 @@ version: "1.0"
 
 linter: jetbrains/qodana-jvm-community:2026.1
 
+# Qodana's own IDE process runs on its bundled JBR, separate from the JDK it needs to import and
+# compile the project with. Without this, its Gradle sync asks for a languageVersion=21 toolchain
+# that nothing on the runner is registered to provide, even with actions/setup-java having
+# installed one and the Foojay resolver plugin declared to download one.
+projectJDK: "21"
+
 profile:
   path: .qodana/profiles/plugin.yaml
 

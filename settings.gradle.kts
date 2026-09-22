@@ -13,14 +13,14 @@ pluginManagement {
         // reach until they catch up.
         id("rpc") version "2.4.0-RC-0.1"
         id("org.jetbrains.kotlin.jvm") version "2.4.20"
-        id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20"
         id("org.jetbrains.qodana") version "2026.2.0"
-        id("org.jetbrains.grammarkit") version "2023.3.0.3"
+        id("org.jetbrains.grammarkit") version "2023.3.0.4"
     }
 }
 
 plugins {
-    id("org.jetbrains.intellij.platform.settings") version "2.18.1"
+    id("org.jetbrains.intellij.platform.settings") version "2.19.0"
 }
 
 rootProject.name = "flix.jetbrains.plugin"

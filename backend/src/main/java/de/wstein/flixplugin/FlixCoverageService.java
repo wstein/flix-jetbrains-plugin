@@ -42,7 +42,7 @@ public final class FlixCoverageService {
             this.files = files;
         }
 
-        static Snapshot parse(@NotNull String json, boolean eventPartial) {
+        static Snapshot parse(@NotNull String json, boolean eventPartial, @Nullable Path projectRoot) {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
             boolean partial = eventPartial || booleanValue(root, "partial");
             Map<String, Map<Integer, Line>> files = new HashMap<>();
@@ -59,13 +59,14 @@ public final class FlixCoverageService {
                     State state = partial ? State.PARTIAL : covered ? State.COVERED : State.UNCOVERED;
                     lines.put(number, new Line(state, hits));
                 }
-                files.put(normalize(path), Collections.unmodifiableMap(lines));
+                files.put(normalize(path, projectRoot), Collections.unmodifiableMap(lines));
             }
             return new Snapshot(Collections.unmodifiableMap(files));
         }
 
         @Nullable Line line(@NotNull String path, int oneBasedLine) {
-            Map<Integer, Line> lines = files.get(normalize(path));
+            // A VirtualFile's path is always absolute, so it needs no project root to resolve against.
+            Map<Integer, Line> lines = files.get(normalize(path, null));
             return lines == null ? null : lines.get(oneBasedLine);
         }
 
@@ -79,9 +80,19 @@ public final class FlixCoverageService {
             return value != null && value.isJsonPrimitive() && value.getAsBoolean();
         }
 
-        private static String normalize(String path) {
+        /**
+         * A relative compiler-reported path is resolved against the project root, not the JVM's
+         * working directory -- in Split Mode {@code backend} runs host-side, where that directory
+         * is not the project's, so resolving against it would silently make every relative path
+         * fail to match its {@code VirtualFile} and leave the gutter unmarked.
+         */
+        private static String normalize(String path, @Nullable Path projectRoot) {
             try {
-                return Path.of(path).toAbsolutePath().normalize().toString();
+                Path candidate = Path.of(path);
+                Path resolved = candidate.isAbsolute() || projectRoot == null
+                        ? candidate
+                        : projectRoot.resolve(candidate);
+                return resolved.normalize().toString();
             } catch (InvalidPathException ignored) {
                 return path;
             }
@@ -96,7 +107,8 @@ public final class FlixCoverageService {
     }
 
     public void accept(@NotNull String coverageJson, boolean partial) {
-        snapshot = Snapshot.parse(coverageJson, partial);
+        String basePath = project.getBasePath();
+        snapshot = Snapshot.parse(coverageJson, partial, basePath == null ? null : Path.of(basePath));
         ApplicationManager.getApplication().invokeLater(() -> {
             if (!project.isDisposed()) DaemonCodeAnalyzer.getInstance(project).restart();
         });

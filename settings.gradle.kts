@@ -21,6 +21,10 @@ pluginManagement {
 
 plugins {
     id("org.jetbrains.intellij.platform.settings") version "2.19.0"
+    // Qodana's own embedded Gradle sync does not see the JDK actions/setup-java installs for the
+    // job -- without this it fails the toolchain requirement the IntelliJ Platform plugin sets,
+    // unable to find or fetch one: "Toolchain download repositories have not been configured."
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
 rootProject.name = "flix.jetbrains.plugin"

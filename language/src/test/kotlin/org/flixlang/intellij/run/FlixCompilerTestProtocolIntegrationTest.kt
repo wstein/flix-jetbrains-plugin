@@ -26,10 +26,29 @@ class FlixCompilerTestProtocolIntegrationTest {
     @Test
     fun compilerAndPluginAgreeOnFilteredTestEvents() {
         val jar = compilerJarOrSkip()
-        val source = Files.createTempFile("flix-test-events-", ".flix")
+        // `FlixTaskRunConfiguration.commandFor` never puts a source file on the command line --
+        // it always runs the project the working directory names. A file argument takes the
+        // compiler down `Main.scala`'s other `test` path, which does not apply `--filter` at all
+        // (`Tester.run(Nil, ...)`), so a positional file here would pass while proving nothing
+        // about the invocation the plugin actually makes.
+        val projectDir = Files.createTempDirectory("flix-test-events-")
         try {
             Files.writeString(
-                source,
+                projectDir.resolve("flix.toml"),
+                """
+                [package]
+                name        = "flix-test-events"
+                description = "scratch fixture for the protocol compatibility gate"
+                version     = "0.1.0"
+                flix        = "0.75.1"
+                license     = "BSD-3-Clause"
+                authors     = ["scratch"]
+                """.trimIndent(),
+                StandardCharsets.UTF_8,
+            )
+            Files.createDirectory(projectDir.resolve("src"))
+            Files.writeString(
+                projectDir.resolve("src/Protocol.flix"),
                 """
                 mod Protocol {
                     @Test
@@ -50,11 +69,10 @@ class FlixCompilerTestProtocolIntegrationTest {
                 "--events-json",
                 "--filter",
                 "Protocol\\.selected",
-                source.toString(),
-            ).redirectErrorStream(true).start()
+            ).directory(projectDir.toFile()).redirectErrorStream(true).start()
             val lines = process.inputStream.bufferedReader(StandardCharsets.UTF_8).readLines()
 
-            assertTrue("compiler test process timed out", process.waitFor(30, TimeUnit.SECONDS))
+            assertTrue("compiler test process timed out", process.waitFor(60, TimeUnit.SECONDS))
             assertEquals("compiler output:\n${lines.joinToString("\n")}", 0, process.exitValue())
 
             val events = lines.mapNotNull(FlixTestEventParser::parse)
@@ -64,7 +82,7 @@ class FlixCompilerTestProtocolIntegrationTest {
             assertEquals(listOf("héllo from compiler"), events.filterIsInstance<Output>().map { it.line })
             assertFalse("the excluded test ran: $events", events.any { eventNames(it).contains("Protocol.excluded") })
         } finally {
-            Files.deleteIfExists(source)
+            projectDir.toFile().deleteRecursively()
         }
     }
 

@@ -148,7 +148,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: wstein/flix-fork
-          ref: feat/test-filter
+          # feat/test-filter was deleted upstream after merging into develop; pinned to an
+          # immutable commit rather than a floating branch name, which is exactly what went stale.
+          ref: 3ede09e402aedc95c373c511728afbc34feed406
           path: flix-fork
 
       - name: Setup Java

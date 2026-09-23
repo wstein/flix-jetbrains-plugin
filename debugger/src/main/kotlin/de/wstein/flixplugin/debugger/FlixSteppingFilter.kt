@@ -79,6 +79,18 @@ import com.sun.jdi.request.StepRequest
  * A recursive call re-enters the same definition and so is stepped *into*; separating those needs a
  * per-activation identity, which the source cannot supply.
  *
+ * ## Why the machinery must not be synthetic
+ *
+ * Marking the trampoline `ACC_SYNTHETIC` -- in the compiler, or through a
+ * `SyntheticTypeComponentProvider` here -- looks like the conventional way to fold it out of the
+ * frames view, and it would switch this filter off. `RequestHint.processSteppingFilters` checks
+ * `DebuggerUtils.isSynthetic` *before* it reaches any `ExtraSteppingFilter`, and with
+ * `SKIP_SYNTHETIC_METHODS` (on by default) a synthetic location answers the step's original depth.
+ * A Step Over landing in `Thunk$.run` would then be re-issued as a Step Over there, leaving the
+ * trampoline loop and every continuation still to run -- the failure the policy above exists to
+ * prevent. `DefaultSyntheticProvider` reads the class-file flag, so a compiler change is not a way
+ * around it. The chain is presented by [FlixAsyncStackTraceProvider] instead.
+ *
  * ## Known cost
  *
  * A stretch of Flix runtime work with no intervening Flix line is single-stepped rather than run.

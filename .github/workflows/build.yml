@@ -148,9 +148,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: wstein/flix-fork
-          # feat/test-filter was deleted upstream after merging into develop; pinned to an
-          # immutable commit rather than a floating branch name, which is exactly what went stale.
-          ref: 3ede09e402aedc95c373c511728afbc34feed406
+          # Pinned to an immutable commit rather than a branch name, which is what went stale when
+          # feat/test-filter was deleted. This one is wstein/flix-fork#3 on top of #2: the first
+          # compiler that stamps `protocolVersion` on `start` and reports each output line once.
+          # Neither is on develop yet -- move this to develop once they land.
+          ref: 494e63251202c8d8999459132d17e9183d4a67a2
           path: flix-fork
 
       - name: Setup Java

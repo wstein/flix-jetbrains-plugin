@@ -32,7 +32,8 @@ plugins {
 // encoded in the coordinate (a version can advertise a pin but never enforce one), and is
 // instead asserted directly in testPinMatchesLocalFlixCheckout via pin.json inside the artifact.
 // Bumping this version is a reviewed change: a newer flix-spec release can carry a different Flix
-// pin and therefore different expected trees.
+// pin and therefore different expected trees -- and when it does, `flixCorpusCommit` in
+// gradle.properties has to move to that pin in the same change, or CI's corpus checkout fails it.
 val flixSpecVersion = "0.75.8"
 
 repositories {

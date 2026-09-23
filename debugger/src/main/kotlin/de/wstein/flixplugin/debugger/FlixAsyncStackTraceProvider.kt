@@ -21,9 +21,11 @@ import com.sun.jdi.ThreadReference
  * [FlixContinuations] is where they are read from.
  *
  * This is the same mechanism Kotlin uses to show a coroutine's logical stack instead of its
- * dispatcher: the platform appends whatever is returned under an *Async stack trace* separator, so
- * the reconstruction is presented as what it is -- a second, derived view -- rather than being mixed
- * into the real frames.
+ * dispatcher: the platform appends whatever is returned under a separator, so the reconstruction is
+ * presented as what it is -- a second, derived view -- rather than being mixed into the real frames.
+ * The separator's caption is [FlixCapturedFrame]'s to set, and it does not reuse the platform's own
+ * *Async stack trace* wording -- that names Kotlin's reconstruction, and nothing here is asynchronous;
+ * the trampoline runs one Flix frame at a time.
  *
  * ## What each entry points at
  *

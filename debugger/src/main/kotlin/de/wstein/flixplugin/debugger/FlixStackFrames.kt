@@ -90,8 +90,14 @@ internal class FlixStackFrame(
  *
  * `createFrame` is the hook. What it returns still has to be a `CapturedStackFrame`: the separator
  * above the chain is drawn by `StackFrameItem.setWithSeparator`, which asks the frame for
- * `XStackFrameWithSeparatorAbove`, and a plain `XStackFrame` would silently lose the *Async stack
- * trace* line that says what the entries below it are.
+ * `XStackFrameWithSeparatorAbove`, and a plain `XStackFrame` would silently lose the separator line
+ * that says what the entries below it are. `getCaptionAboveOf` is that line's text, and
+ * `CapturedStackFrame`'s own answer -- `StackFrameItem.getAsyncStacktraceMessage()`, "Async stack
+ * trace" -- is the Kotlin coroutine debugger's wording for a different reconstruction. There is
+ * nothing asynchronous here: the trampoline runs one Flix frame at a time, synchronously, and the
+ * chain is reconstructed because CPS keeps it off the JVM stack, not because anything is concurrent.
+ * `getCaptionAboveOf` is `open`, so [FlixCapturedFrame] overrides it rather than inheriting a label
+ * that answers a question this reconstruction was never asking.
  */
 internal class FlixStackFrameItem(
     location: Location,
@@ -129,6 +135,11 @@ private class FlixCapturedFrame(
         component.append(label.call, SimpleTextAttributes.REGULAR_ATTRIBUTES)
         component.append(label.position, SimpleTextAttributes.GRAY_ITALIC_ATTRIBUTES)
     }
+
+    // "Async stack trace" is the platform default and is Kotlin's word for its own reconstruction,
+    // not this one: the trampoline is synchronous, one Flix frame at a time, and this chain exists
+    // because CPS keeps the rest off the JVM stack -- not because anything ran concurrently with it.
+    override fun getCaptionAboveOf(): String = "Flix call chain (not on the JVM stack)"
 
     override fun customizeTextPresentation(component: ColoredTextContainer) {
         component.append(label.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)

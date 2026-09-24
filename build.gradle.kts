@@ -8,6 +8,11 @@ plugins {
     id("rpc") apply false
     id("org.jetbrains.kotlin.plugin.serialization") apply false
     id("org.jetbrains.qodana")
+    // CI reads CHANGELOG.md through it: the release draft takes its notes from `getChangelog`, and
+    // publishing a stable release moves them under a version with `patchChangelog`. It was left out
+    // when this build replaced the template's, and nothing noticed while the release draft was
+    // skipped behind failing tests.
+    id("org.jetbrains.changelog")
 }
 
 subprojects {

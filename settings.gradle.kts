@@ -16,6 +16,7 @@ pluginManagement {
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.20"
         id("org.jetbrains.qodana") version "2026.2.0"
         id("org.jetbrains.grammarkit") version "2023.3.0.4"
+        id("org.jetbrains.changelog") version "2.5.0"
     }
 }
 

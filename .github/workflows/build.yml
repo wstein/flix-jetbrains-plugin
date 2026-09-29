@@ -177,6 +177,44 @@ jobs:
           ./gradlew :language:test
           --tests org.flixlang.intellij.run.FlixCompilerTestProtocolIntegrationTest
 
+  conformance:
+    name: Published runner conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: zulu
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6.3.0
+      # Pre-release qualification: exact source revision, published locally, no oracle dependency.
+      # Push this flix-spec commit before enabling the workflow remotely. After release the
+      # staging steps can be removed and conformance resolves immutable Maven coordinates.
+      - uses: actions/checkout@v7
+        with:
+          repository: wstein/flix-spec
+          ref: 411bd327e7d34143a0ccdcac158e8c72543404a2
+          path: .flix-spec-build
+      - name: Stage runner and Gradle plugin
+        working-directory: .flix-spec-build
+        run: >-
+          ./gradlew :tools:conformance:publish :tools:gradle-plugin:publish
+          -PflixSpec.publishRepo=file://${{ github.workspace }}/.flix-spec-build/build/staged-maven
+      - name: Check real PSI conformance
+        run: >-
+          ./gradlew -p conformance --configuration-cache check
+          -PflixSpecRepository=file://${{ github.workspace }}/.flix-spec-build/build/staged-maven
+      - name: Fault-inject the consumer gate
+        run: >-
+          bash scripts/verify-conformance-gate.sh
+          "$PWD/.flix-spec-build/build/staged-maven/io/github/wstein/flix-spec-runner/0.77.4/flix-spec-runner-0.77.4.jar"
+          "$PWD/conformance/build/flix-spec/spec" "$PWD/language/build/flix-spec-projection"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: conformance-reports
+          path: conformance/build/reports/flix-spec/
+
   # Run plugin structure verification along with IntelliJ Plugin Verifier
   verify:
     name: Verify plugin
@@ -225,7 +263,7 @@ jobs:
   releaseDraft:
     name: Release draft
     if: github.event_name != 'pull_request'
-    needs: [ build, test, verify ]
+    needs: [ build, test, verify, conformance ]
     runs-on: ubuntu-latest
     permissions:
       contents: write

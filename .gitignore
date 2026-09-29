@@ -1,4 +1,5 @@
 .gradle
+.flix-spec-build/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !backend/sources/main/**/build/

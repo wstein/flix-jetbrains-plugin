@@ -20,6 +20,7 @@ everything and are recorded as ADRs in `docs/adr/`:
 ```console
 ./gradlew build                     # compile, test, and run checkIntegrationGlue
 ./gradlew check                     # tests + the glue contract check
+./gradlew -p conformance check      # published runner gate (also required by CI)
 ./gradlew :debugger:test            # one module
 ./gradlew :language:test --tests '*FlixCorpusTest*'   # one test class
 ./gradlew runIdeSplitMode           # sandbox IDE as a frontend+backend pair (the realistic mode)

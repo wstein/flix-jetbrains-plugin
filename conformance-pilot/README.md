@@ -1,5 +1,9 @@
 # Pre-release Gradle plugin pilot
 
+Historical results below. The executable build has moved to `conformance/`, is
+required by CI, and now passes after the reviewed adapter fixes and identity gates.
+Use `conformance/README.md` for current commands; the Kotlin comparator was removed.
+
 This is an opt-in, separate build using the real IntelliJ PSI parser. Normal
 plugin builds retain their current dependencies and local comparator. No grammar,
 compiler pin, or count baseline is changed by this pilot.

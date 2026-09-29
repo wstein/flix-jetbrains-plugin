@@ -2,7 +2,9 @@ package org.flixlang.intellij.lang
 
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiErrorElement
-import com.intellij.psi.PsiWhiteSpace
+import com.intellij.lang.ASTNode
+import com.intellij.psi.TokenType
+import org.flixlang.intellij.lang.psi.FlixTokenType
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.ParsingTestCase
 import java.io.File
@@ -470,19 +472,67 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
 
     override fun skipSpaces(): Boolean = true
 
-    private fun esc(s: String): String =
-        s.replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-
-    /** Emits a projected node: kind plus ordered children, whitespace dropped. */
-    private fun project(element: PsiElement, sb: StringBuilder) {
-        val kind = if (element is PsiErrorElement) "PsiErrorElement" else element.node.elementType.toString()
-        sb.append("{\"kind\":\"").append(esc(kind)).append("\",\"children\":[")
-        element.children.filterNot { it is PsiWhiteSpace }.forEachIndexed { i, child ->
-            if (i > 0) sb.append(",")
-            project(child, sb)
+    private fun esc(s: String): String = buildString {
+        s.forEach { c ->
+            when (c) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                else -> if (c < ' ') append("\\u%04x".format(c.code)) else append(c)
+            }
         }
-        sb.append("]}")
+    }
+
+    fun testProjectionRetainsRealLexerLeavesAndEmptyNodes() {
+        val source = "/// doc\n/// more\ndef f(): Int32 = Foo.\n"
+        val psi = createPsiFile("tokens", source)
+        ensureParsed(psi)
+        val tree = Json.parse(buildString { project(psi, this) })
+        fun nodes(node: Json): List<Json> = listOf(node) +
+            (node.get("children")?.asArray() ?: emptyList()).flatMap(::nodes)
+        val all = nodes(tree)
+        val leaves = all.filter { it.get("token") != null }
+        assertTrue("PSI children alone lose lexer leaves", leaves.size > 5)
+        assertEquals(source.filterNot(Char::isWhitespace),
+            leaves.joinToString("") { it.get("text")!!.asString() }.filterNot(Char::isWhitespace))
+        val dot = all.single { it.get("kind")?.asString() == "TRAILING_DOT" }
+        assertEquals(".", dot.get("children")!!.asArray().single().get("text")!!.asString())
+        assertTrue("Empty grammar nodes must not become tokens", all.any {
+            it.get("kind")?.asString() == "ANNOTATION_LIST" && it.get("children")!!.asArray().isEmpty()
+        })
+        assertEquals("\\u0000\\u000c", esc("\u0000\u000c"))
+    }
+
+    /** Walk the AST, not PsiElement.children (which silently drops lexer leaves). */
+    private fun project(element: PsiElement, sb: StringBuilder) {
+        val source = element.containingFile.text
+        fun position(offset: Int): String {
+            val prefix = source.substring(0, offset)
+            return "{\"line\":${prefix.count { it == '\n' } + 1},\"col\":${offset - prefix.lastIndexOf('\n')}}"
+        }
+        fun emit(node: ASTNode) {
+            val type = node.elementType
+            if (type is FlixTokenType || type == TokenType.BAD_CHARACTER) {
+                sb.append("{\"token\":\"").append(esc(type.toString()))
+                    .append("\",\"text\":\"").append(esc(node.text))
+                    .append("\",\"start\":").append(position(node.startOffset))
+                    .append(",\"end\":").append(position(node.startOffset + node.textLength)).append("}")
+                return
+            }
+            val kind = if (node.psi is PsiErrorElement) "PsiErrorElement" else type.toString()
+            sb.append("{\"kind\":\"").append(esc(kind)).append("\",\"children\":[")
+            var child = node.firstChildNode
+            var comma = false
+            while (child != null) {
+                if (child.elementType != TokenType.WHITE_SPACE) {
+                    if (comma) sb.append(",")
+                    emit(child)
+                    comma = true
+                }
+                child = child.treeNext
+            }
+            sb.append("]}")
+        }
+        emit(element.node)
     }
 
     /** `upstream.commit` recorded in the artifact's pin.json, read without a JSON dependency. */

@@ -20,8 +20,11 @@ This repository is pinned to Flix **v0.75.2** (`40949531`). The reference has mo
 - **`+UsesOrImports.Package`** (TreeKind 191 → 192). `use` now recognises a package path:
   `use flixball::Game.Board` and `use flixball::{Game, Board}`.
 - **`+ColonColonTight`** (TokenKind 158 → 159). `::` written **without surrounding whitespace** lexes
-  as a distinct token. Tight `::` is the package-path separator; spaced `::` remains list cons.
-  Writing the separator with whitespace is now a `Malformed` error.
+  as a distinct token. What it means depends on where it stands, not on how it is spelled:
+  - in expressions and patterns **both** spellings are cons — `Parser2` maps `ColonColon` and
+    `ColonColonTight` alike to `BinaryOp.ColonColon`, and `FCons` eats either;
+  - in a `use`, `::` after a package name is the package-path separator and must be tight. A spaced
+    one followed by a path is still parsed as a package but reported `Malformed`.
 - Nothing was removed or re-parented. Both releases are additive at the vocabulary level.
 - Internally, Flix deleted its `Reader` phase and `shared.Input`. That broke `flix-spec`'s own
   adapter and is fixed there; it does not reach consumers.
@@ -209,9 +212,19 @@ valid — each survives in the canonical tree at some arity.
 
 ### 6. `::` and the package path
 
-Grammar-Kit must distinguish tight `::` (package-path separator) from spaced `::` (cons), and
-produce a node mapping to `UsesOrImports.Package` for `use flixball::Game.Board` and
-`use flixball::{Game, Board}`.
+The lexer must produce the new tight token, but the grammar decides by **context**: cons must keep
+accepting `::` in both spellings in expressions and patterns, and a `use` must produce a node
+mapping to `UsesOrImports.Package` for `use flixball::Game.Board` and `use flixball::{Game, Board}`.
+A rule that reads "tight means package" breaks `x::xs`, which is ordinary Flix.
+
+Add paired fixtures so neither use can regress while the other is fixed:
+
+- cons, tight and spaced, as an expression and as a pattern: `1::2::Nil`, `1 :: Nil`,
+  `case x::xs =>`, `case x :: xs =>` — all clean, all `FCons`/binary cons;
+- package paths: `use flixball::Game.Board` and `use flixball::{Game, Board}` — clean,
+  `UsesOrImports.Package`;
+- the spaced separator, `use flixball :: Game.Board` — a package *and* one `Malformed` diagnostic,
+  which is also the first real input for the diagnostic lane (step 8).
 
 ### 7. Two lanes you are still not running
 

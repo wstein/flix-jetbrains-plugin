@@ -71,11 +71,40 @@ between them is only whitespace or the `$` escape. It stands down for consumers 
 New projection-map keys, both optional: `dropWhenEmpty` (the consumer-side counterpart of
 `elide-empty`) and `diagnosticMappings`.
 
+## Adopt 0.77.1, not 0.77.0
+
+`0.77.1` carries the **same upstream pin** as `0.77.0` and is additive for consumers: the three
+vocabularies are unchanged, the report `schemaVersion` stays 7, and both fixture forms keep their
+shape. Pin to it directly.
+
+What it adds:
+
+- **`ast/annotation.json`** — the 16 annotations the reference defines, digest-pinned in `pin.json`.
+  A third vocabulary, because the lexer emits a single `TokenKind.Annotation` for every one of them
+  and the name survives only in the token's `text`, where no `TokenKind` digest can see it change.
+  It is a **coverage** vocabulary and never a validity check: the token is genuinely open, because
+  Java interop annotations lex identically and upstream models exactly that with
+  `Annotation.Error`. 13 of the 16 occur in Flix's own 893-file corpus.
+- **`ast/retired.json`** — vocabulary the reference once defined and has removed, with the tag each
+  went at: `Decl.Law`, `KeywordLaw` and `KeywordLawful`, all gone at v0.75.2. An added kind appears
+  in the inventory under a name you can look up; a removed one leaves only a digest that stopped
+  matching, and this is what survives it.
+- **The fixture suite is 147**, not 146 — one fixture covers the three annotations Flix's own
+  corpus never exercises (`@Deprecated`, `@DontInline`, `@Skip`).
+- **FLIX-0002 in the defect ledger.** flix-spec now runs `Weeder2` over its positive fixtures,
+  advisory only, and the first run found a reference defect: `Parser2` has a dedicated
+  `BinaryOp.NameMath` and lists `NameMath` in `FIRST_BINARY_OP`, so `a ⊆ b` parses cleanly into
+  `Expr.Binary`, while `Weeder2`'s operator match omits `NameMath` and throws
+  `InternalCompilerException`. Confirmed against the released jar, which prints the compiler's own
+  bug-report banner. Nothing is required of a parser — the reference's own parser accepts the input
+  and produces the tree flix-spec publishes — but it bounds what a *positive* fixture means here:
+  it parses, and that is all it promises.
+
 ## What this repository must do
 
 ### 1. Move the pin
 
-`language/build.gradle.kts` — `flixSpecVersion` to the new release.
+`language/build.gradle.kts` — `flixSpecVersion` to `0.77.1`.
 `gradle.properties` — `flixCorpusCommit` to `4a5b60a31ac03bb762f68b554a0fc2b6f4d982b9`.
 `FlixSpecConformanceTest.testPinMatchesLocalFlixCheckout` holds this from the plugin side and has
 caught real mismatches twice, so it will stop you first.
@@ -125,6 +154,9 @@ instead:** the comparison closure is oracle-free (6 files, ~1530 lines, no `ca.u
 and this is its third drift.
 
 ### 5. Delete six now-redundant `elide` entries
+Expect a `NOTE:` from `validateProjectionMap` naming `elide` (and, for tree-sitter,
+`flattenCanonical`) as deprecated. They still work; the reduction below is what clears it.
+
 
 In `language/src/test/resources/conformance/projection-map.json`:
 

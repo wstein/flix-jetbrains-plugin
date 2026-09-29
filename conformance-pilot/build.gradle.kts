@@ -12,6 +12,10 @@ flixSpec {
     actualDirectory.set(layout.projectDirectory.dir("../language/build/flix-spec-projection"))
     projectionMap.set(layout.projectDirectory.file("../language/src/test/resources/conformance/projection-map.json"))
     baseline.set(4) // The existing Kotlin comparator's DIVERGENCE_BASELINE, not a new allowance.
+    recoveryBaseline.set(6) // Reviewed identities, not a free allowance; see the accepted file.
+    depthFloor.set(36)
+    recoveryDepthFloor.set(40)
+    accepted.set(layout.projectDirectory.file("../language/src/test/resources/conformance/accepted.json"))
 }
 
 // Regenerate using the actual IntelliJ parser, even if the previous test run was up-to-date.

@@ -1,0 +1,22 @@
+{
+  "consumer": "flix-jetbrains-plugin",
+  "fixtureRevision": "21d3006f7299c0fe2cd97a4dd48f8d231299b662ca977e9414f1157ffa4ca49d",
+  "review": "See docs/conformance-migration.md for per-fixture decisions; never auto-remove resolved entries.",
+  "lanes": {
+    "oracle_conformance": [
+      "declarations__doc-comment-misplaced-before-paren.json|fixtures/negative/declarations__doc-comment-misplaced-before-paren.flix.Root[0].Decl.Def[3].Expr.IfThenElse[0]|kind",
+      "declarations__law-declarations-and-lawful-modifier-are-rejected.json|fixtures/negative/declarations__law-declarations-and-lawful-modifier-are-rejected.flix|arity",
+      "declarations__trait-and-instance-with-an-operator-signature.json|fixtures/negative/declarations__trait-and-instance-with-an-operator-signature.flix.Root[0]|arity",
+      "declarations__uses-and-imports.json|fixtures/positive/declarations__uses-and-imports.flix.Root[0]|arity"
+    ],
+    "recovery_conformance": [
+      "declarations__doc-comment-misplaced-before-paren.json|fixtures/negative/declarations__doc-comment-misplaced-before-paren.flix.Root[0].Decl.Def[3].Expr.IfThenElse[0]|kind",
+      "declarations__doc-comment-misplaced-before-paren.json|fixtures/negative/declarations__doc-comment-misplaced-before-paren.flix.Root[0].Decl.Def[3].Expr.IfThenElse[1]|kind",
+      "declarations__doc-comment-misplaced-before-paren.json|fixtures/negative/declarations__doc-comment-misplaced-before-paren.flix.Root[0].Decl.Def[3].Expr.IfThenElse[2]|kind",
+      "declarations__doc-comment-misplaced-before-paren.json|fixtures/negative/declarations__doc-comment-misplaced-before-paren.flix.Root[0].Decl.Def[3]|arity",
+      "declarations__law-declarations-and-lawful-modifier-are-rejected.json|fixtures/negative/declarations__law-declarations-and-lawful-modifier-are-rejected.flix|arity",
+      "lexical__unterminated-string-interpolation.json|fixtures/negative/lexical__unterminated-string-interpolation.flix|arity"
+    ],
+    "diagnostic_conformance": []
+  }
+}

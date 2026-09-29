@@ -157,12 +157,16 @@ return nodesCompared.toDouble() / encountered
 That is the metric flix-spec retired, for the reason its own scaladoc gives: *the metric read
 highest for the maps that skipped most*. The port has no `sizeOf` and no `expected` counter at all.
 
-`1269 / (1269 + 89) = 93.4%` reproduces the 93% in the `FlixSpecConformanceTest` changelog.
-`1269 / 2034 = 62%` is the same measurement against the expectation. The plugin is not at 93% depth;
-it is at **62%**, behind tree-sitter's 95%.
+`1269 / (1269 + 89) = 93.4%` reproduces the 93% in the `FlixSpecConformanceTest` changelog, so that
+figure overstates depth by construction. Dividing the same 1269 by an expected-node count of 2034
+gives **about 62%**, which puts the plugin behind tree-sitter's 95%. Treat that as an **estimate**, not
+the plugin's result: it takes the compared-node count measured on the old 138 fixtures under the old
+transparency rules and sets it against an expectation from the new ones. Neither the 9 new fixtures
+nor the per-occurrence rules have run against this parser yet, and both move the numerator.
 
 Fix: accumulate `sizeOf(expT)` after transparency into a `nodesExpected` field and divide by it.
-Then correct the two changelog entries that claim 93%.
+**Measure** the depth that produces on 0.77.2, record it in the changelog, and correct the two
+entries that claim 93% to that measured figure, not to 62%.
 
 ### 3. Fix the divergence cap, which corrupts the node count too
 

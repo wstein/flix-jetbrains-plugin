@@ -289,7 +289,10 @@ ESCAPE = "\\" [^]
     "+"   { return PLUS; }
     "-"   { return MINUS; }
     ":::" { return COLON_COLON_COLON; }
-    "::"  { return COLON_COLON; }
+    /* Lexer.scala classifies `::` as tight only when neither neighbor is whitespace. Both kinds
+     * remain cons in expressions and patterns; `use` requires the tight package separator. */
+    "::" / {WHITE_SPACE_CHAR} { return COLON_COLON; }
+    "::"  { return (zzStartRead == lastWhitespaceEnd) ? COLON_COLON : COLON_COLON_TIGHT; }
     ":-"  { return COLON_MINUS; }
     ":"   { return COLON; }
     "<+>" { return ANGLED_PLUS; }

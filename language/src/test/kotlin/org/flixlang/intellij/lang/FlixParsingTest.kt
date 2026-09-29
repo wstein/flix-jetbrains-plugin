@@ -3,6 +3,7 @@ package org.flixlang.intellij.lang
 import com.intellij.psi.PsiErrorElement
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.ParsingTestCase
+import org.flixlang.intellij.lang.psi.FlixUsePackage
 
 class FlixParsingTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
     override fun getTestDataPath(): String = ""
@@ -110,5 +111,28 @@ class FlixParsingTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
             }
             """.trimIndent()
         )
+    }
+
+    fun testPackageUsesKeepTheirPackageNode() {
+        for (source in listOf("use flixball::Game.Board", "use flixball::{Game, Board}")) {
+            val file = createPsiFile("test", source)
+            ensureParsed(file)
+            assertNull(PsiTreeUtil.findChildOfType(file, PsiErrorElement::class.java))
+            assertNotNull(PsiTreeUtil.findChildOfType(file, FlixUsePackage::class.java))
+        }
+    }
+
+    fun testBothConsSpellingsRemainValid() {
+        parseAndCheck("def tight(): List[Int32] = 1::Nil")
+        parseAndCheck("def spaced(): List[Int32] = 1 :: Nil")
+        parseAndCheck("def tight(xs: List[Int32]): Int32 = match xs { case x::rest => x }")
+        parseAndCheck("def spaced(xs: List[Int32]): Int32 = match xs { case x :: rest => x }")
+    }
+
+    fun testSpacedPackageSeparatorIsReportedWithoutLosingThePackage() {
+        val file = createPsiFile("test", "use flixball :: Game.Board")
+        ensureParsed(file)
+        assertNotNull(PsiTreeUtil.findChildOfType(file, FlixUsePackage::class.java))
+        assertNotNull(PsiTreeUtil.findChildOfType(file, PsiErrorElement::class.java))
     }
 }

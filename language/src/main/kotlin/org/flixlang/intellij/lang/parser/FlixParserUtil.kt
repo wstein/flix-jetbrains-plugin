@@ -37,6 +37,27 @@ import org.flixlang.intellij.lang.psi.FlixTypes
  */
 object FlixParserUtil : GeneratedParserUtilBase() {
 
+    private val PACKAGE_TARGET_START: Set<IElementType> = setOf(
+        FlixTypes.NAME_LOWERCASE, FlixTypes.NAME_UPPERCASE, FlixTypes.NAME_MATH,
+        FlixTypes.UNDERSCORE, FlixTypes.GENERIC_OPERATOR, FlixTypes.STATIC_UPPER_KW,
+        FlixTypes.CURLY_L,
+    )
+
+    /**
+     * Parser2 accepts a spaced package separator so the `use` tree survives, but reports it as
+     * malformed when a package path follows. A dangling separator at the end of a line is left
+     * to ordinary recovery, matching the reference's lookahead distinction.
+     */
+    @JvmStatic
+    fun consumePackageColonColon(builder: PsiBuilder, level: Int): Boolean {
+        if (builder.tokenType != FlixTypes.COLON_COLON) return false
+        if (builder.lookAhead(1) in PACKAGE_TARGET_START) {
+            builder.error("Write package separator :: without whitespace on either side")
+        }
+        builder.advanceLexer()
+        return true
+    }
+
     private val TRAIT_MEMBER_START: Set<IElementType> = setOf(
         FlixTypes.DEF_KW, FlixTypes.TYPE_KW,
         FlixTypes.PUB_KW, FlixTypes.SEALED_KW, FlixTypes.MUT_KW,

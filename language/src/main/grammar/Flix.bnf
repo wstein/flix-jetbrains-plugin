@@ -189,6 +189,7 @@
       COLON=':'
       COLON_MINUS=':-'
       COLON_COLON='::'
+      COLON_COLON_TIGHT='tight ::'
       COLON_COLON_COLON=':::'
       ANGLE_L='<'
       ANGLED_PLUS='<+>'
@@ -264,7 +265,8 @@ root ::= usesOrImports declaration*
 
 usesOrImports ::= (useDecl | importDecl)*
 
-useDecl ::= USE_KW qualifiedName (DOT (useMany | ident))?
+useDecl ::= USE_KW (usePackage (useMany | qualifiedName (DOT (useMany | ident))?) | qualifiedName (DOT (useMany | ident))?)
+usePackage ::= ident (COLON_COLON_TIGHT | <<consumePackageColonColon>>)
 useMany ::= CURLY_L (aliasedName (COMMA aliasedName)* COMMA?)? CURLY_R
 
 importDecl ::= IMPORT_KW qualifiedName (DOT (importMany | ident))?
@@ -576,7 +578,7 @@ relationalOperator ::= ANGLE_L | ANGLE_R | ANGLE_L_EQUAL | ANGLE_R_EQUAL
 // Right recursion is ordinary recursive descent (no backtracking, no `left` needed): each level
 // is only ever entered once per position, unlike the naive *left*-recursive shape that hung.
 consExpr ::= additiveExpr (consOperator consExpr)?
-consOperator ::= COLON_COLON | COLON_COLON_COLON
+consOperator ::= COLON_COLON | COLON_COLON_TIGHT | COLON_COLON_COLON
 additiveExpr ::= multiplicativeExpr additiveExprTail*
 left additiveExprTail ::= additiveOperator multiplicativeExpr
 additiveOperator ::= PLUS | MINUS
@@ -967,7 +969,7 @@ intrinsicExpr ::= BUILT_IN
 // PATTERNS
 // =================================================================================================
 
-pattern ::= patternPrimary (COLON_COLON pattern)?   // FCons, right-associative like `::` in expr
+pattern ::= patternPrimary ((COLON_COLON | COLON_COLON_TIGHT) pattern)?   // FCons, right-associative like `::` in expr
 
 private patternPrimary ::=
     variablePattern

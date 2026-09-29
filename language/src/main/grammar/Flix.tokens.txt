@@ -176,6 +176,7 @@ MINUS|"-" (not followed by '>'; see ARROW_THIN_R/ARROW_THIN_R_TIGHT below for "-
 COLON|":"|Colon
 COLON_MINUS|":-"|ColonMinus
 COLON_COLON|"::"|ColonColon
+COLON_COLON_TIGHT|"::"|ColonColonTight
 COLON_COLON_COLON|":::"|ColonColonColon
 ANGLE_L|"<"|AngleL
 ANGLED_PLUS|"<+>"|AngledPlus

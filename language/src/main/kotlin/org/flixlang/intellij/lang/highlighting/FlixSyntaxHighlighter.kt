@@ -126,7 +126,7 @@ class FlixSyntaxHighlighter : SyntaxHighlighterBase() {
          */
         private val OPERATORS = setOf(
             "BANG", "BANG_EQUAL", "AMPERSAND", "STAR", "PLUS", "MINUS",
-            "COLON", "COLON_MINUS", "COLON_COLON", "COLON_COLON_COLON",
+            "COLON", "COLON_MINUS", "COLON_COLON", "COLON_COLON_TIGHT", "COLON_COLON_COLON",
             "ANGLE_L", "ANGLE_R", "ANGLE_L_EQUAL", "ANGLE_R_EQUAL",
             "ANGLED_PLUS", "ANGLED_EQUAL", "EQUAL", "EQUAL_EQUAL",
             "ARROW_THIN_L", "ARROW_THIN_R", "ARROW_THIN_R_TIGHT", "ARROW_THICK_R",

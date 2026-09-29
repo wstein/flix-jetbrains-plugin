@@ -221,6 +221,33 @@ map declaring 13 `recoveryMarkers`. The new `diagnostic_conformance` lane is lik
 in the port. Both are port work in this migration, since nothing published can run them for you
 (step 4), and step 8 lists what each needs from the projection before it can mean anything.
 
+### 8. Acceptance criteria: the projection has to be able to carry the new lanes
+
+Implementing a lane in the port is not enough. A lane decides for itself whether it applies, and on
+what the projection gives it, so it measures nothing until the projection carries its input.
+
+**Projection format.** `FlixSpecConformanceTest.projectAllFixtures` writes `"schemaVersion":1` with
+`generatedBy` and `units` only. 0.77.2's `schemas/projection.schema.json` requires
+`schemaVersion` ≥ 2 plus `form`, `toolVersion`, `upstreamCommit` and `oracleSha256`:
+
+- `form` is `raw`: the schema's own description says a consumer's tree is the raw case, since the
+  comparison applies the consumer's declared transparency rules itself;
+- `upstreamCommit` and `oracleSha256` come from the artifact's `pin.json`, as `upstream.commit` and
+  `oracleArtifact.sha256` — the oracle the fixtures were derived from;
+- **gate:** validate every written projection against the artifact's own
+  `schemas/projection.schema.json` in the test, so the format cannot drift again unnoticed.
+
+**`diagnostic_conformance`.** Every unit is written with `"diagnostics":[]`, and a consumer that emits
+no diagnostics is `not-applicable` — which is a pass that measured nothing. Emit the lexer and
+parser diagnostics as `{kind, line, col, message}`, sorted by `(line, col, kind)`, and only those the
+guard below allows. **Gate:** the lane reports applicable, and its disagreements are ratcheted like
+`DIVERGENCE_BASELINE`, not thresholded.
+
+**`source_invariants` / `token-positions`.** The projection writes nodes (`kind`, `children`) and no
+tokens, so this check stands down for the same reason. Either emit `TokenNode`s
+(`token`, `text`, `start`, `end`) and **gate** the check as applicable, or record here that the plugin
+deliberately does not take part in it. Leaving it silent reads as a pass.
+
 ## Two guards worth adding while you are here
 
 Neither is required by the release. Both close gaps this migration exposed.

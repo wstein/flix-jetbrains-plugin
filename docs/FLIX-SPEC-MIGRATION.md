@@ -182,9 +182,12 @@ subtleties follow that a naive port gets wrong:
 - **`elide-empty`** drops a node only when it has no children at all — an empty `ModifierList` goes,
   a `ModifierList` over `pub` stays.
 
-flix-spec's `Conformance.scala` is the reference for all three. **Consider deleting the port
-instead:** the comparison closure is oracle-free (6 files, ~1530 lines, no `ca.uwaterloo` imports)
-and this is its third drift.
+flix-spec's `Conformance.scala` is the reference for all three. **For this migration, extending the
+Kotlin port is the only route.** The published flix-spec artifact carries data (`pin.json`, `ast/`,
+`schemas/`, `fixtures/`, `corpus/`, `defects/`) and no comparator code, so there is nothing to call
+instead. Retiring the port is still worth wanting: the comparison closure is oracle-free (6 files,
+~1530 lines, no `ca.uwaterloo` imports) and this is its third drift. That needs a comparator
+flix-spec publishes as a CLI or library, which is a delivery of its own and outside this migration.
 
 ### 5. Delete six now-redundant `elide` entries
 Expect a `NOTE:` from `validateProjectionMap` naming `elide` as deprecated. The reduction below
@@ -215,7 +218,8 @@ produce a node mapping to `UsesOrImports.Package` for `use flixball::Game.Board`
 `docs/CONFORMANCE.md` in flix-spec records `recovery_conformance | fail (measured here; its own port
 has no recovery lane)` — flix-spec measures that lane on this plugin's behalf, by hand, despite the
 map declaring 13 `recoveryMarkers`. The new `diagnostic_conformance` lane is likewise unimplemented
-in the port. Both come free if you call the published comparison instead of re-implementing it.
+in the port. Both are port work in this migration, since nothing published can run them for you
+(step 4), and step 8 lists what each needs from the projection before it can mean anything.
 
 ## Two guards worth adding while you are here
 

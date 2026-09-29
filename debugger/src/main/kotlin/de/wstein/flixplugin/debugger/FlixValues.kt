@@ -213,7 +213,8 @@ internal object FlixValues {
      * The class a lifted lambda is compiled to, before the definition it came out of.
      *
      * `y -> x * y` inside `curriedMultiply` becomes `dev.flix.gen.Clo$curriedMultiply$Xb8Kaq73gD3`,
-     * holding what it captured in `clo0`, `clo1`, … (`JvmOps.getClosureClassName`).
+     * holding what it captured in `clo0`, `clo1`, … (`JvmOps.getClosureClassName`). That is the
+     * root-namespace form; inside a module the namespace precedes it -- see [isClosure].
      */
     const val CLOSURE_PREFIX: String = "Clo\$"
 
@@ -246,8 +247,18 @@ internal object FlixValues {
     /** The class a `lazy` expression is compiled to, before its type: `Lazy$Int32`. */
     const val LAZY_PREFIX: String = "Lazy\$"
 
-    /** Whether `className` is a lifted lambda. */
-    fun isClosure(className: String): Boolean = simpleNameOf(className).startsWith(CLOSURE_PREFIX)
+    /**
+     * Whether `className` is a lifted lambda.
+     *
+     * Not a prefix test: a closure class carries its namespace first (`JvmOps.getClosureClassName`
+     * goes through `mkNamespacedClassName`), so only a lambda written in the root namespace starts
+     * with `Clo$`. One in `mod Tuning` is `Tuning$Clo$adder$…`, and every lambda in the standard
+     * library is namespaced the same way.
+     */
+    fun isClosure(className: String): Boolean = FlixFrames.kindOf(className) == CLOSURE_KIND
+
+    /** [CLOSURE_PREFIX] as the marker segment [FlixFrames.kindOf] reports. */
+    private const val CLOSURE_KIND: String = "Clo"
 
     /** Whether `className` is a lazy value. */
     fun isLazy(className: String): Boolean = simpleNameOf(className).startsWith(LAZY_PREFIX)

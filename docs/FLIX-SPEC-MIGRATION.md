@@ -248,6 +248,13 @@ tokens, so this check stands down for the same reason. Either emit `TokenNode`s
 (`token`, `text`, `start`, `end`) and **gate** the check as applicable, or record here that the plugin
 deliberately does not take part in it. Leaving it silent reads as a pass.
 
+**Fixture completeness.** `Conformance.run` already records `fixturesMissing` — expected trees with
+no projection — and reports `fixturesCompared` as the rest, but `testConformanceAgainstReference`
+gates only `divergences.size`. A fixture the plugin failed to project is therefore a comparison that
+silently did not happen, and moving from 138 to 147 fixtures is exactly when that goes unseen.
+**Gate:** assert `fixturesMissing` is empty and `fixturesCompared` equals the number of expected
+trees in the artifact, before the divergence check.
+
 ## Two guards worth adding while you are here
 
 Neither is required by the release. Both close gaps this migration exposed.

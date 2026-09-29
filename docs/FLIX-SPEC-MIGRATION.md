@@ -42,7 +42,7 @@ kinds every structural consumer was already eliding for itself: `Expr.Expr`, `Pa
 `QName`, `UsesOrImports.UseOrImportList`. A third rule, `elide-empty`, drops empty `AnnotationList`
 and `ModifierList` without splicing their tokens.
 
-Normalisation now removes **2285 of 4449 nodes (51.4%)**, up from 753 of 4398 (17.1%). Canonical
+Normalisation now removes **2301 of 4484 nodes (51.3%)**, up from 753 of 4398 (17.1%). Canonical
 trees are substantially smaller and every baseline is stale.
 
 Because the rules fire per occurrence, an elided kind is **not always absent**: `QName` survives
@@ -154,8 +154,11 @@ instead:** the comparison closure is oracle-free (6 files, ~1530 lines, no `ca.u
 and this is its third drift.
 
 ### 5. Delete six now-redundant `elide` entries
-Expect a `NOTE:` from `validateProjectionMap` naming `elide` (and, for tree-sitter,
-`flattenCanonical`) as deprecated. They still work; the reduction below is what clears it.
+Expect a `NOTE:` from `validateProjectionMap` naming `elide` as deprecated. The reduction below
+does **not** clear it: the note fires for as long as the key is present at all, and three of these
+nine entries (`CommentList`, `Expr.Statement`, `Type.Apply`) are genuinely yours, so the key stays.
+What the reduction does is shrink it to entries the contract does not cover. The note lists those
+separately, as candidates to argue into `ast/transparency.json` rather than as things to delete.
 
 
 In `language/src/test/resources/conformance/projection-map.json`:

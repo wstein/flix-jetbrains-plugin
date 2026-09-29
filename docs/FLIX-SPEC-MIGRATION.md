@@ -71,13 +71,22 @@ between them is only whitespace or the `$` escape. It stands down for consumers 
 New projection-map keys, both optional: `dropWhenEmpty` (the consumer-side counterpart of
 `elide-empty`) and `diagnosticMappings`.
 
-## Adopt 0.77.1, not 0.77.0
+## Target: 0.77.2
 
-`0.77.1` carries the **same upstream pin** as `0.77.0` and is additive for consumers: the three
-vocabularies are unchanged, the report `schemaVersion` stays 7, and both fixture forms keep their
-shape. Pin to it directly.
+The one version to move to is **`0.77.2`**, the newest release on the flix-spec Maven repository.
+`0.77.0`, `0.77.1` and `0.77.2` share one upstream pin (`4a5b60a31ac03bb762f68b554a0fc2b6f4d982b9`),
+and each later release is additive for consumers, so there is no reason to stop at an earlier one.
+The two sections below record what each release added, as history; neither is a separate step.
 
-What it adds:
+`v0.77.3` is tagged but not published (only its `-SNAPSHOT` is in the repository). Its data differs
+from `0.77.2` only in the defect ledger's `schemaVersion` (1 → 2) and in `pin.json`'s description of
+the reference entry point, so moving to it later is a coordinate bump for a consumer that reads
+neither.
+
+### What 0.77.1 added
+
+It left the three vocabularies, the report `schemaVersion` 7 and both fixture forms unchanged, and
+added:
 
 - **`ast/annotation.json`** — the 16 annotations the reference defines, digest-pinned in `pin.json`.
   A third vocabulary, because the lexer emits a single `TokenKind.Annotation` for every one of them
@@ -100,11 +109,35 @@ What it adds:
   and produces the tree flix-spec publishes — but it bounds what a *positive* fixture means here:
   it parses, and that is all it promises.
 
+### What 0.77.2 added
+
+Same upstream pin as 0.77.0 and 0.77.1. The three vocabularies, both fixture forms, all 147 fixtures
+and the report `schemaVersion` 7 are unchanged, so a result *already measured* against 0.77.1 stays
+valid on 0.77.2. That is a statement about consumers who measured 0.77.1, and this plugin has not:
+it is still on 0.75.8, so the whole 0.75.8 → 0.77.2 step below has to be qualified here.
+
+The one published change is `defects/ledger.json`, and one schema field moved with it:
+
+- `defect-ledger.schema.json` replaces the required `review` (a date) with **`reviewedAtPin`** (the
+  upstream commit an entry was last triaged against). Only relevant if you read that file; none of
+  the consumers do today.
+- Both entries now record their upstream search result, a review-ready draft, and a standalone
+  reproduction you can run with only a JDK:
+  [FLIX-0001](https://github.com/wstein/flix-repro-predicate-paramuntyped) ·
+  [FLIX-0002](https://github.com/wstein/flix-repro-namemath-infix-crash).
+
+**Why the field changed, since the reasoning may be worth borrowing.** The date gate failed the
+build once it passed, which put a fuse in every tag: rebuilding `v0.77.0` or `v0.77.1` after
+2026-11-01 would have failed, although nothing about those commits had changed and the artifacts
+they published were still exactly what they published. Time passing is not evidence about a defect.
+The oracle changing is — and it is the only thing that can make one of these entries stop being
+true. Any ratchet you keep against a pinned input is better tied to that input than to a clock.
+
 ## What this repository must do
 
 ### 1. Move the pin
 
-`language/build.gradle.kts` — `flixSpecVersion` to `0.77.1`.
+`language/build.gradle.kts` — `flixSpecVersion` to `0.77.2`.
 `gradle.properties` — `flixCorpusCommit` to `4a5b60a31ac03bb762f68b554a0fc2b6f4d982b9`.
 `FlixSpecConformanceTest.testPinMatchesLocalFlixCheckout` holds this from the plugin side and has
 caught real mismatches twice, so it will stop you first.
@@ -220,26 +253,3 @@ Two cheap follow-ons, now that `ast/retired.json` exists:
 - remember the digest cannot see an existing kind's *extension* being re-partitioned. It caught
   `ColonColonTight` only because a **new name** appeared. When a name is added, ask what it took
   from; the answer belongs in a fixture.
-
-## flix-spec 0.77.2 — bump the coordinate, re-measure nothing
-
-Same upstream pin as 0.77.0 and 0.77.1 (`4a5b60a31ac03bb762f68b554a0fc2b6f4d982b9`). The three
-vocabularies, both fixture forms, all 147 fixtures and the report `schemaVersion` 7 are unchanged,
-so **every lane number you have measured against 0.77.1 stays valid**. Move the coordinate and stop.
-
-The one published change is `defects/ledger.json`, and one schema field moved with it:
-
-- `defect-ledger.schema.json` replaces the required `review` (a date) with **`reviewedAtPin`** (the
-  upstream commit an entry was last triaged against). Only relevant if you read that file; none of
-  the consumers do today.
-- Both entries now record their upstream search result, a review-ready draft, and a standalone
-  reproduction you can run with only a JDK:
-  [FLIX-0001](https://github.com/wstein/flix-repro-predicate-paramuntyped) ·
-  [FLIX-0002](https://github.com/wstein/flix-repro-namemath-infix-crash).
-
-**Why the field changed, since the reasoning may be worth borrowing.** The date gate failed the
-build once it passed, which put a fuse in every tag: rebuilding `v0.77.0` or `v0.77.1` after
-2026-11-01 would have failed, although nothing about those commits had changed and the artifacts
-they published were still exactly what they published. Time passing is not evidence about a defect.
-The oracle changing is — and it is the only thing that can make one of these entries stop being
-true. Any ratchet you keep against a pinned input is better tied to that input than to a clock.

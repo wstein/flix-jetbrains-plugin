@@ -386,7 +386,7 @@ class FlixDebugSessionTest {
             val callerLine = effectfulFixture.lines().indexOfFirst { it.contains("println(label + both())") } + 1
             assertEquals(listOf("main(), Main.flix:$callerLine"), entries)
             val stepOut = FlixSteppingCommands.stepOutTargetOf(stop.thread(), stop.location().declaringType())
-            assertTrue(stepOut?.className?.startsWith("Clo\$main\$") == true)
+            assertEquals("Clo", FlixFrames.kindOf(stepOut?.className.orEmpty()))
             assertEquals("applyFrame", stepOut?.methodName)
             assertTrue(stepOut?.sourceName?.endsWith("Main.flix") == true)
             assertEquals(callerLine, stepOut?.line)

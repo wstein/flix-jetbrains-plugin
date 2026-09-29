@@ -80,10 +80,7 @@ internal object FlixFrames {
     fun definitionOf(className: String): String? {
         val packageName = className.substringBeforeLast('.', missingDelimiterValue = "")
         val segments = className.substringAfterLast('.').split('$')
-        // The *last* marker that still leaves a name after it. A namespace may itself be called
-        // `Def` -- `mod Def` compiles `x` to `Def$Def$x` -- and taking the first marker would read
-        // the namespace as the marker and lose it.
-        val kind = segments.dropLast(1).indexOfLast { it in KINDS }
+        val kind = kindIndexOf(segments)
         if (kind < 0) return null
 
         val namespace = namespaceOf(packageName) + segments.take(kind).map(::unmangle)
@@ -91,6 +88,27 @@ internal object FlixFrames {
         if (name.isEmpty()) return null
         return (namespace + name).joinToString(".")
     }
+
+    /**
+     * Which kind of symbol a generated class stands for -- `Def`, `Clo` or `Eff` -- or `null`.
+     *
+     * Read from the marker segment rather than from how the name begins, because the namespace
+     * comes first: a lambda in `mod Tuning` is `dev.flix.gen.Tuning$Clo$adder$…`, and one in the
+     * standard library `List$Clo$…`. Only a root-namespace class starts with its marker.
+     */
+    fun kindOf(className: String): String? {
+        val segments = className.substringAfterLast('.').split('$')
+        return kindIndexOf(segments).takeIf { it >= 0 }?.let(segments::get)
+    }
+
+    /**
+     * Where the kind marker is among a class name's `$` segments, or -1.
+     *
+     * The *last* marker that still leaves a name after it. A namespace may itself be called `Def`
+     * -- `mod Def` compiles `x` to `Def$Def$x` -- and taking the first marker would read the
+     * namespace as the marker and lose it.
+     */
+    private fun kindIndexOf(segments: List<String>): Int = segments.dropLast(1).indexOfLast { it in KINDS }
 
     /**
      * How a Flix frame at [location] reads: the definition, and the source position under it.

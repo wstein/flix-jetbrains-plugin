@@ -272,4 +272,22 @@ class FlixValuesTest {
         assertFalse(FlixValues.isA(other, FlixValues.RECORD_TYPE))
         assertFalse(FlixValues.isA(other, FlixValues.TAGGED_TYPE))
     }
+
+    @Test
+    fun `a lambda written inside a module is a closure`() {
+        // Names from a real --Xdebug build: the namespace comes before the `Clo` marker, so a prefix
+        // test recognised only lambdas in the root namespace -- and none from the standard library.
+        assertTrue(FlixValues.isClosure("dev.flix.gen.Tuning\$Clo\$adder\$5gBvTT5FzRE"))
+        assertTrue(FlixValues.isClosure("Acme.Api\$Clo\$scaler\$M5wF2Bg7amN"))
+        assertTrue(FlixValues.isClosure("dev.flix.gen.Clo\$top\$M5wF2Bg7amN"))
+    }
+
+    @Test
+    fun `a definition is not a closure, even in a module called Clo`() {
+        assertFalse(FlixValues.isClosure("dev.flix.gen.Tuning\$Def\$adder"))
+        // `mod Clo { def x }`: the namespace spells the marker, and only the last marker counts.
+        assertFalse(FlixValues.isClosure("dev.flix.gen.Clo\$Def\$x"))
+        assertFalse(FlixValues.isClosure("dev.flix.gen.Tuple\$Int32\$Obj"))
+        assertFalse(FlixValues.isClosure("dev.flix.runtime.Frame\$"))
+    }
 }

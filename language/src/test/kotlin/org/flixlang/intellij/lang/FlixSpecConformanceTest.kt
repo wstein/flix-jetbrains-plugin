@@ -555,7 +555,17 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
 
     fun testFixturesParseAndProject() {
         val jar = flixSpecJar()
-        val outDir = File(project.basePath ?: ".", "build/flix-spec-projection").also { it.mkdirs() }
+        // The pilot plugin and this test resolve independently. Compare bytes, not just compiler
+        // pins: two data releases can share a pin while changing fixtures or normalization.
+        System.getProperty("flixSpec.pilotBundle")?.let { expected ->
+            assertTrue("Pilot data bundle differs from the adapter's test-classpath artifact",
+                jar.readBytes().contentEquals(File(expected).readBytes()))
+        }
+        val outDir = File(requireNotNull(System.getProperty("flixSpec.projectionDir")) {
+            "Set flixSpec.projectionDir to the adapter output directory"
+        }).also { it.mkdirs() }
+        // This directory belongs to this producer. Never leave removed fixtures in the next run.
+        outDir.listFiles { file -> file.extension == "json" }?.forEach { check(it.delete()) }
 
         val failures = mutableListOf<String>()
         var projected = 0
@@ -584,7 +594,7 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
                 }
 
                 val sb = StringBuilder()
-                sb.append("{\"schemaVersion\":1,")
+                sb.append("{\"schemaVersion\":2,\"form\":\"raw\",")
                 sb.append("\"generatedBy\":\"org.flixlang.intellij.lang.FlixSpecConformanceTest\",")
                 sb.append("\"units\":[{\"source\":\"").append(esc(entry)).append("\",")
                 sb.append("\"diagnostics\":[],\"tree\":")

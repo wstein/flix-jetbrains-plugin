@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "consumer": "flix-jetbrains-plugin",
+  "capabilities": ["structure", "recovery"],
   "description": "Maps the Grammar-Kit PSI element types of wstein/flix-jetbrains-plugin onto canonical TreeKind names. Partial by design. The dominant structural difference is a precedence-chain grammar: every expression descends through roughly seventeen levels (LAZY_FORCE_EXPR, NOT_EXPR, SIGN_EXPR, ADDITIVE_EXPR, ...), each a pass-through when its operator is absent. 30% of PSI nodes are always single-child wrappers, against 11.4% on the canonical side, so most of this map is transparency rather than renaming. flix-spec 0.75.2 normalizes the canonical wrapper nodes and splices the error vocabulary out of fixtures/expected before any consumer sees it, so seven `elide` entries here became dead weight and seven `mappings` became unreachable. An unreachable mapping is not inert: our node keeps standing where the canonical tree has none, so it manufactures divergences. Those seven moved to `ignored`, which is what they always were. Our thirteen error elements are declared in `recoveryMarkers` rather than merely mapped, so the structural comparison splices them out of our side exactly as normalization splices ErrorTree out of the canonical side.",
   "mappings": {
     "FILE": "Root",

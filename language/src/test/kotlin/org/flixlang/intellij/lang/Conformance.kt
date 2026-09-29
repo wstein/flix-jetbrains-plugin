@@ -9,8 +9,9 @@ package org.flixlang.intellij.lang
  * to call. The comparison itself is pure data-in/data-out logic with no consumer-specific knowledge,
  * which is what makes porting it a smaller, more honest choice than adding a second published
  * artifact (and a Scala runtime dependency) just to make one utility callable cross-language. Keep
- * this in step with the Scala original by inspection when either changes; see
- * `docs/CONFORMANCE.md` in flix-spec for what the comparison covers and why.
+ * this historical comparator only for differential checks during migration: inspection did not
+ * keep it in step with the Scala original. The executable runner now exists and the opt-in
+ * `conformance-pilot/` build measures the real difference (notably token-aware elision).
  */
 object Conformance {
 

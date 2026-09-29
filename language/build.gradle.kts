@@ -145,6 +145,9 @@ tasks.test {
     // verifies the checkout actually sits on it, so a gate run against a drifted corpus reports
     // that rather than quietly measuring something else.
     systemProperty("flixCorpusCommit", providers.gradleProperty("flixCorpusCommit").getOrElse(""))
+    systemProperty("flixSpec.projectionDir", layout.buildDirectory.dir("flix-spec-projection").get().asFile.absolutePath)
+    providers.gradleProperty("flixSpec.pilotBundle").orNull
+        ?.let { systemProperty("flixSpec.pilotBundle", it) }
 
     // Deliberate cross-version work is legitimate; silently accepting a mismatch is not. Forwarded
     // so the override has to be typed on the command line rather than defaulted into existence.

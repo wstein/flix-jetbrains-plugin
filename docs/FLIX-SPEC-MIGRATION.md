@@ -220,3 +220,26 @@ Two cheap follow-ons, now that `ast/retired.json` exists:
 - remember the digest cannot see an existing kind's *extension* being re-partitioned. It caught
   `ColonColonTight` only because a **new name** appeared. When a name is added, ask what it took
   from; the answer belongs in a fixture.
+
+## flix-spec 0.77.2 — bump the coordinate, re-measure nothing
+
+Same upstream pin as 0.77.0 and 0.77.1 (`4a5b60a31ac03bb762f68b554a0fc2b6f4d982b9`). The three
+vocabularies, both fixture forms, all 147 fixtures and the report `schemaVersion` 7 are unchanged,
+so **every lane number you have measured against 0.77.1 stays valid**. Move the coordinate and stop.
+
+The one published change is `defects/ledger.json`, and one schema field moved with it:
+
+- `defect-ledger.schema.json` replaces the required `review` (a date) with **`reviewedAtPin`** (the
+  upstream commit an entry was last triaged against). Only relevant if you read that file; none of
+  the consumers do today.
+- Both entries now record their upstream search result, a review-ready draft, and a standalone
+  reproduction you can run with only a JDK:
+  [FLIX-0001](https://github.com/wstein/flix-repro-predicate-paramuntyped) ·
+  [FLIX-0002](https://github.com/wstein/flix-repro-namemath-infix-crash).
+
+**Why the field changed, since the reasoning may be worth borrowing.** The date gate failed the
+build once it passed, which put a fuse in every tag: rebuilding `v0.77.0` or `v0.77.1` after
+2026-11-01 would have failed, although nothing about those commits had changed and the artifacts
+they published were still exactly what they published. Time passing is not evidence about a defect.
+The oracle changing is — and it is the only thing that can make one of these entries stop being
+true. Any ratchet you keep against a pinned input is better tied to that input than to a clock.

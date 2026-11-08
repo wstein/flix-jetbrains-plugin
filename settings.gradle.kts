@@ -21,7 +21,7 @@ pluginManagement {
 }
 
 plugins {
-    id("org.jetbrains.intellij.platform.settings") version "2.19.0"
+    id("org.jetbrains.intellij.platform.settings") version "2.20.0"
     // Qodana's own embedded Gradle sync does not see the JDK actions/setup-java installs for the
     // job -- without this it fails the toolchain requirement the IntelliJ Platform plugin sets,
     // unable to find or fetch one: "Toolchain download repositories have not been configured."

@@ -12,16 +12,16 @@ pluginManagement {
         // build JetBrains has published; nothing exists yet for 2.4.10, so that stays out of
         // reach until they catch up.
         id("rpc") version "2.4.0-RC-0.1"
-        id("org.jetbrains.kotlin.jvm") version "2.4.20"
+        id("org.jetbrains.kotlin.jvm") version "2.4.21"
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.21"
-        id("org.jetbrains.qodana") version "2026.2.1"
+        id("org.jetbrains.qodana") version "2026.2.2"
         id("org.jetbrains.grammarkit") version "2023.3.0.4"
         id("org.jetbrains.changelog") version "2.5.0"
     }
 }
 
 plugins {
-    id("org.jetbrains.intellij.platform.settings") version "2.19.0"
+    id("org.jetbrains.intellij.platform.settings") version "2.20.0"
     // Qodana's own embedded Gradle sync does not see the JDK actions/setup-java installs for the
     // job -- without this it fails the toolchain requirement the IntelliJ Platform plugin sets,
     // unable to find or fetch one: "Toolchain download repositories have not been configured."

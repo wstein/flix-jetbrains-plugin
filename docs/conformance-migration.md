@@ -3,7 +3,7 @@
 ## Flix 0.79 migration — 2026-11-09
 
 The current data/runner/plugin pin is the exact, SHA-256-qualified published
-`0.79.0-20261108.013727-1` snapshot described in `conformance/README.md`.
+`0.79.0-20261109.125843-3` snapshot described in `conformance/README.md`.
 It is not a claim that stable 0.79 artifacts are available.
 
 The grammar accepts full type expressions in all three schema/extensible tails.
@@ -13,7 +13,7 @@ The producer reconstructs comment runs from real AST leaves and offsets, groups
 leading documentation into the next documentable declaration, and retains every
 real lexer leaf in source order. It never reads expected trees to produce output.
 
-The real 163-fixture pilot improves structure from the old allowance 4 to 3
+The real 166-fixture pilot improves structure from the old allowance 4 to 3
 remaining differences and recovery from 6 to 2. Depth floors tighten from 36%/40%
 to 63%/67%. Source token accounting and token positions pass. Exact remaining
 identities in `accepted.json` are bound to the new fixture revision:

@@ -1,4 +1,4 @@
-plugins { id("io.github.wstein.flix-spec") version "0.79.0-20261108.013727-1" }
+plugins { id("io.github.wstein.flix-spec") version "0.79.0-20261109.125843-3" }
 
 repositories {
     ivy {
@@ -11,9 +11,9 @@ repositories {
 }
 
 flixSpec {
-    runnerVersion.set("0.79.0-20261108.013727-1")
+    runnerVersion.set("0.79.0-20261109.125843-3")
     // Exact timestamped artifact bytes are independently SHA-256 verified.
-    specVersion.set("0.79.0-20261108.013727-1")
+    specVersion.set("0.79.0-20261109.125843-3")
     actualDirectory.set(layout.projectDirectory.dir("../language/build/flix-spec-projection"))
     projectionMap.set(layout.projectDirectory.file("../language/src/test/resources/conformance/projection-map.json"))
     baseline.set(3) // Reviewed pre-existing differences; docs/conformance-migration.md.

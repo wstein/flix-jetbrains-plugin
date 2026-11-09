@@ -15,26 +15,15 @@ plugins {
 // introduces project-level repositories, and Gradle then ignores the settings-level
 // dependencyResolutionManagement block for this project -- which is where localPlatformArtifacts()
 // lives, without which the local IDE artifact cannot be resolved.
-// Pinned to a tagged flix-spec release, not the floating snapshot alias.
+// A stable Flix 0.79 data release is not available for this migration. Resolve one exact
+// timestamped snapshot URL through the artifact-only Ivy repository below; never query the
+// moving SNAPSHOT alias. FlixSpecConformanceTest independently checks the entire data jar's
+// SHA-256 before using it. The conformance build also verifies data/runner/plugin digests.
+// A timestamp alone is not a content-integrity guarantee.
 //
-// A snapshot resolves to whatever was published most recently, so the fixture set can change
-// underneath this repository with no commit here -- it went from 113 fixtures to 136 in a single
-// afternoon while this was pinned to a timestamped snapshot build. Gradle also caches snapshots
-// for 24 hours by default, so the same commit could resolve differently depending on the day.
-// Either way a fixture-set change would surface as an apparent grammar regression.
-//
-// That is the same defect this test exists to retire -- FlixCorpusTest reads whichever Flix
-// checkout happens to sit beside the repository -- so it must not be reintroduced one layer up.
-// A release is immutable by flix-spec's own publish guard, which refuses to republish an existing
-// version, so pinning one is the actual fix rather than a narrower version of the same problem.
-//
-// flix-spec's version is plain semver as of its v0.75.1 release: the Flix pin is no longer
-// encoded in the coordinate (a version can advertise a pin but never enforce one), and is
-// instead asserted directly in testPinMatchesLocalFlixCheckout via pin.json inside the artifact.
-// Bumping this version is a reviewed change: a newer flix-spec release can carry a different Flix
-// pin and therefore different expected trees -- and when it does, `flixCorpusCommit` in
-// gradle.properties has to move to that pin in the same change, or CI's corpus checkout fails it.
-val flixSpecVersion = "0.75.8"
+// Keep this data pin and flixCorpusCommit in gradle.properties on the same compiler revision.
+// Fixtures and corpus are independent authorities and the pin test compares them directly.
+val flixSpecVersion = "0.79.0-20261108.013727-1"
 
 repositories {
     mavenCentral()
@@ -45,13 +34,13 @@ repositories {
     // vocabulary lives in this repository instead (conformance/projection-map.json): it is knowledge
     // about this grammar, not about the reference, so it belongs next to the grammar changes it
     // tracks rather than forcing a flix-spec release for a consumer-only change.
-    maven {
-        name = "flixSpec"
-        url = uri("https://wstein.github.io/flix-spec/maven/")
-        content { includeGroup("io.github.wstein") }
-        // Pinned to a release version (see flixSpecVersion below), so only release coordinates
-        // need to resolve here. snapshotsOnly() would refuse a release version outright.
-        mavenContent { releasesOnly() }
+    // Exact timestamp and artifact-only layout avoid resolution through moving snapshot metadata.
+    ivy {
+        name = "flixSpecQualified079"
+        url = uri("https://wstein.github.io/flix-spec/maven/io/github/wstein/flix-spec/0.79.0-SNAPSHOT/")
+        patternLayout { artifact("[artifact]-[revision].[ext]") }
+        metadataSources { artifact() }
+        content { includeModule("io.github.wstein", "flix-spec") }
     }
     intellijPlatform {
         defaultRepositories()
@@ -79,7 +68,7 @@ dependencies {
     // Fixtures and inventories are consumed from the published artifact, pinned by version, so the
     // grammar is checked against a known revision of the Flix reference compiler rather than
     // against whichever Flix checkout happens to sit beside this repository.
-    testImplementation("io.github.wstein:flix-spec:$flixSpecVersion")
+    testImplementation("io.github.wstein:flix-spec:$flixSpecVersion@jar")
 }
 
 // Grammar-Kit generates the lexer, parser and PSI from src/main/grammar into a build directory

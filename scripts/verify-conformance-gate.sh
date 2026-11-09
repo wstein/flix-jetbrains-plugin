@@ -12,8 +12,8 @@ cp "$ROOT/language/src/test/resources/conformance/accepted.json" "$WORK/accepted
 run() {
   java -jar "$RUNNER" --spec-root "$SPEC" --source-root "$SPEC" \
     --actual "$WORK/actual" --map "$ROOT/language/src/test/resources/conformance/projection-map.json" \
-    --accepted "$WORK/accepted.json" --baseline 4 --recovery-baseline 6 \
-    --depth-floor 36 --recovery-depth-floor 40 --report "$WORK/report.json"
+    --accepted "$WORK/accepted.json" --baseline 3 --recovery-baseline 2 \
+    --depth-floor 63 --recovery-depth-floor 67 --report "$WORK/report.json"
 }
 expect_exit() {
   local expected="$1" status=0

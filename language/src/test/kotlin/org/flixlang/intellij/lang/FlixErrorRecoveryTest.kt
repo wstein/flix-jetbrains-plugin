@@ -32,6 +32,35 @@ class FlixErrorRecoveryTest : ParsingTestCase("", "flix", FlixParserDefinition()
         return psiFile
     }
 
+    private fun assertRetainedRecovery(code: String, kind: String) {
+        val psi = parseWithoutCrashing(code)
+        val retained = PsiTreeUtil.collectElements(psi) { it.node?.elementType?.toString() == kind }
+        assertEquals("Recovery must retain $kind", 1, retained.size)
+        assertNotNull(PsiTreeUtil.findChildOfType(psi, PsiErrorElement::class.java))
+    }
+
+    fun testMissingSchemaTailRetainsAlias() {
+        assertRetainedRecovery("type alias T = #{ A(Int32) | }", "TYPE_ALIAS_DECL")
+    }
+
+    fun testMissingSchemaRowTailRetainsAlias() {
+        assertRetainedRecovery("type alias T = #( A(Int32) | )", "TYPE_ALIAS_DECL")
+    }
+
+    fun testMissingExtensibleTailRetainsAlias() {
+        assertRetainedRecovery("type alias T = #| A(Int32) | |#", "TYPE_ALIAS_DECL")
+    }
+
+    fun testMissingMatchBodyRetainsScrutinee() {
+        assertRetainedRecovery("def f(): Int32 = match x", "MATCH_OR_MATCH_LAMBDA_EXPR")
+        assertRecoversAndContinues("def f(): Int32 = match x", "afterMatch")
+    }
+
+    fun testMissingEmatchBodyRetainsScrutinee() {
+        assertRetainedRecovery("def f(): Int32 = ematch x", "EXT_MATCH_OR_LAMBDA_EXPR")
+        assertRecoversAndContinues("def f(): Int32 = ematch x", "afterEmatch")
+    }
+
     private fun assertHasParseError(code: String) {
         val psiFile = parseWithoutCrashing(code)
         val error = PsiTreeUtil.findChildOfType(psiFile, PsiErrorElement::class.java)

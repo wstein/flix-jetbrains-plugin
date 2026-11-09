@@ -58,6 +58,14 @@ object FlixParserUtil : GeneratedParserUtilBase() {
         return true
     }
 
+    /** Parser2 keeps a match scrutinee when no body follows; leave the next declaration intact. */
+    @JvmStatic
+    fun missingMatchBody(builder: PsiBuilder, level: Int): Boolean {
+        if (builder.tokenType == FlixTypes.CURLY_L) return false
+        builder.error("Expected match body")
+        return true
+    }
+
     private val TRAIT_MEMBER_START: Set<IElementType> = setOf(
         FlixTypes.DEF_KW, FlixTypes.TYPE_KW,
         FlixTypes.PUB_KW, FlixTypes.SEALED_KW, FlixTypes.MUT_KW,

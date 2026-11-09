@@ -1,5 +1,35 @@
 # Runner adoption review
 
+## Flix 0.79 migration — 2026-11-09
+
+The current data/runner/plugin pin is the exact, SHA-256-qualified published
+`0.79.0-20261108.013727-1` snapshot described in `conformance/README.md`.
+It is not a claim that stable 0.79 artifacts are available.
+
+The grammar accepts full type expressions in all three schema/extensible tails.
+Missing tails retain their type alias through recovery. Match/ematch without a
+body retain the match node and scrutinee, including before the next declaration.
+The producer reconstructs comment runs from real AST leaves and offsets, groups
+leading documentation into the next documentable declaration, and retains every
+real lexer leaf in source order. It never reads expected trees to produce output.
+
+The real 163-fixture pilot improves structure from the old allowance 4 to 3
+remaining differences and recovery from 6 to 2. Depth floors tighten from 36%/40%
+to 63%/67%. Source token accounting and token positions pass. Exact remaining
+identities in `accepted.json` are bound to the new fixture revision:
+
+- Structure: retired-law recovery, operator-named trait signature, trailing
+  semicolon after a use/import declaration (3).
+- Recovery: retired-law recovery and unterminated string interpolation (2).
+
+These are preserved known gaps, not new free allowances. Diagnostic conformance
+remains explicitly not applicable because this producer emits no parser/lexer
+diagnostics; neither diagnostic kind/line fidelity nor lexical equivalence is
+claimed. Tree structure and source-fidelity checks remain separate.
+
+The following 0.75/0.77 migration record is historical.
+
+
 Data stays at **0.75.8 / Flix v0.75.2**, runner/plugin **0.77.4**, report schema 9.
 The adapter emits real AST nodes and lexer leaves, not canonicalized/synthetic
 trees. Token accounting and token positions pass on all 138 fixtures. Native

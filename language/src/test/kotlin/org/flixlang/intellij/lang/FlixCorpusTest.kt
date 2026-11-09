@@ -330,13 +330,9 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
          * code the compiler rejects -- the opposite of what this gate is for. Every entry is
          * asserted to keep failing, so the list cannot rot.
          */
-        private val UNCOMPILABLE_UPSTREAM = mapOf(
-            "examples/apps/langcensus/src/Analyse.flix" to
-                "uses `foreach (...) yield e`, which Flix does not implement: Parser2.foreachExpr " +
-                "is `foreach forFragments expression` with no yield, and no ForEachYield node " +
-                "exists anywhere in the compiler (verified against origin/master). It is the only " +
-                "occurrence in all 898 tracked .flix files.",
-        )
+        // Flix 0.77 replaced langcensus's unsupported foreach/yield with forM. At the
+        // pinned 0.79 revision all 420 library/example files are valid; exclude none.
+        private val UNCOMPILABLE_UPSTREAM = emptyMap<String, String>()
 
         /**
          * Ratchet, not an aspiration: raise it as defects are fixed, never lower it to make a

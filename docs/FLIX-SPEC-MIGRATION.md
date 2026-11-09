@@ -1,7 +1,8 @@
 # Migrating to Flix v0.77.0 and the current flix-spec
 
-Status: **not started.** `language/build.gradle.kts` pins `flixSpecVersion = "0.75.8"` and
-`gradle.properties` pins `flixCorpusCommit = 40949531...` (Flix v0.75.2), two releases behind.
+Historical plan for the earlier 0.75 → 0.77 migration. The current 0.79 migration and
+qualified timestamped artifact pins are documented in [conformance-migration.md](conformance-migration.md)
+and [the conformance gate](../conformance/README.md). The statements below describe the earlier baseline.
 
 ## What changed in Flix
 

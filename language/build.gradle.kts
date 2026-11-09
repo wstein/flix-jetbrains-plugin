@@ -25,6 +25,15 @@ plugins {
 // Fixtures and corpus are independent authorities and the pin test compares them directly.
 val flixSpecVersion = "0.79.0-20261108.013727-1"
 
+// Opt-in qualification of a locally supplied candidate produced by required source checks.
+// A candidate never silently replaces the published pin: its exact SHA is mandatory.
+val candidateData = providers.gradleProperty("flixSpec.candidateData").orNull
+val qualifiedDataSha256 = if (candidateData != null) {
+    providers.gradleProperty("flixSpec.candidateSha256").orNull
+        ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+        ?: error("flixSpec.candidateData requires flixSpec.candidateSha256 (64 lowercase hex digits)")
+} else "6092ac9a0f09b801f6b02ab7304af46247c90c9ac33a7aebc2642209031242e0"
+
 repositories {
     mavenCentral()
     // flix-spec: the shared conformance fixtures and TreeKind/TokenKind inventories, published as a
@@ -68,7 +77,11 @@ dependencies {
     // Fixtures and inventories are consumed from the published artifact, pinned by version, so the
     // grammar is checked against a known revision of the Flix reference compiler rather than
     // against whichever Flix checkout happens to sit beside this repository.
-    testImplementation("io.github.wstein:flix-spec:$flixSpecVersion@jar")
+    if (candidateData == null) {
+        testImplementation("io.github.wstein:flix-spec:$flixSpecVersion@jar")
+    } else {
+        testImplementation(files(candidateData))
+    }
 }
 
 // Grammar-Kit generates the lexer, parser and PSI from src/main/grammar into a build directory
@@ -103,6 +116,7 @@ tasks.compileJava { dependsOn(generateFlixParser, generateFlixLexer) }
 
 tasks.test {
     useJUnit()
+    systemProperty("flixSpec.dataSha256", qualifiedDataSha256)
 
     // One JVM per test class, to isolate cross-class state leaking through the platform's test
     // fixtures.
@@ -134,7 +148,8 @@ tasks.test {
     // verifies the checkout actually sits on it, so a gate run against a drifted corpus reports
     // that rather than quietly measuring something else.
     systemProperty("flixCorpusCommit", providers.gradleProperty("flixCorpusCommit").getOrElse(""))
-    systemProperty("flixSpec.projectionDir", layout.buildDirectory.dir("flix-spec-projection").get().asFile.absolutePath)
+    systemProperty("flixSpec.projectionDir", providers.gradleProperty("flixSpec.projectionDir").getOrElse(
+        layout.buildDirectory.dir("flix-spec-projection").get().asFile.absolutePath))
     providers.gradleProperty("flixSpec.pilotBundle").orNull
         ?.let { systemProperty("flixSpec.pilotBundle", it) }
 

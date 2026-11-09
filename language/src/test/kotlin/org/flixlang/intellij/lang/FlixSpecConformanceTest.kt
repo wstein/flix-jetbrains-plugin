@@ -262,7 +262,7 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
             val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
                 .joinToString("") { "%02x".format(it) }
             assertEquals("Qualified Flix 0.79 data bytes changed",
-                "6092ac9a0f09b801f6b02ab7304af46247c90c9ac33a7aebc2642209031242e0", digest)
+                requireNotNull(System.getProperty("flixSpec.dataSha256")) { "Missing qualified data SHA-256" }, digest)
         }
     }
 

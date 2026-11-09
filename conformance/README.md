@@ -32,3 +32,32 @@ recovery identities, fixture binding, depth floors and explicit limitations.
 Run [fault injection](../scripts/verify-conformance-gate.sh) with the runner jar,
 extracted spec root and actual directory to test that the gate still fails safely.
 Historical pilot evidence is retained under `conformance-pilot/README.md`.
+
+## Opt-in local candidate qualification
+
+A candidate data jar from a required source check can be tested without changing
+the published pin. Both the file and its SHA-256 are explicit; a missing or wrong
+SHA fails rather than falling back to the published data. Use a dedicated output
+directory because the producer clears its previous JSON output.
+
+```sh
+./gradlew :language:test \
+  --tests '*FlixSpecConformanceTest.testFixturesParseAndProject' \
+  --tests '*FlixSpecConformanceTest.testProjection*' \
+  -PflixSpec.candidateData=/absolute/candidate-data.jar \
+  -PflixSpec.candidateSha256=EXACT_SHA256 \
+  -PflixSpec.projectionDir=/absolute/dedicated-candidate-output
+```
+
+The 166-fixture source-check candidate at flix-spec source revision
+`1463cdaafd8dd5b67c5cdd3b9948923c1e98b1b9` passes with data SHA-256
+`f58c987974501e22f6671511a4454458fb669511c140788d27a560ac09b03922` and
+runner SHA-256 `9e8c4388c3feed99d3918b58b9c1b5ecd6aff2f265662778573a57efb0ed0b2c`.
+Fixture revision: `7e017bc8d4850fd293c6c97ddb3e4e5c4cb8cee0ed691d2750d461eccc236dd2`.
+All 166 fixtures project; structure 3 differences, 163 agreeing, depth 64%;
+recovery 2 differences, 28/30 agreeing, depth 67%. Token accounting and token
+positions pass; diagnostics remain unmodeled. Every remaining fixture/path/reason
+identity is unchanged from the published 163-fixture pin. The comparison used a
+separate candidate accepted file with only the fixture revision updated after
+checking identity equality, preserving the 3/2 and 63%/67% gates.
+No standalone candidate build or publication was performed by this consumer.

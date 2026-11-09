@@ -187,27 +187,20 @@ jobs:
           distribution: zulu
           java-version: 21
       - uses: gradle/actions/setup-gradle@v6.4.1
-      # Pre-release qualification: exact source revision, published locally, no oracle dependency.
-      # Push this flix-spec commit before enabling the workflow remotely. After release the
-      # staging steps can be removed and conformance resolves immutable Maven coordinates.
-      - uses: actions/checkout@v7
-        with:
-          repository: wstein/flix-spec
-          ref: 411bd327e7d34143a0ccdcac158e8c72543404a2
-          path: .flix-spec-build
-      - name: Stage runner and Gradle plugin
-        working-directory: .flix-spec-build
-        run: >-
-          ./gradlew :tools:conformance:publish :tools:gradle-plugin:publish
-          -PflixSpec.publishRepo=file://${{ github.workspace }}/.flix-spec-build/build/staged-maven
       - name: Check real PSI conformance
-        run: >-
-          ./gradlew -p conformance --configuration-cache check
-          -PflixSpecRepository=file://${{ github.workspace }}/.flix-spec-build/build/staged-maven
+        run: ./gradlew -p conformance --configuration-cache check
+      - name: Download qualified runner for fault injection
+        shell: bash
+        run: |
+          RUNNER="$RUNNER_TEMP/flix-spec-runner-0.79.0-20261109.125843-3.jar"
+          curl --fail --location --retry 3 \
+            https://wstein.github.io/flix-spec/maven/io/github/wstein/flix-spec-runner/0.79.0-SNAPSHOT/flix-spec-runner-0.79.0-20261109.125843-3.jar \
+            --output "$RUNNER"
+          echo "989d4117462ddd7b3a5d8de57e21e0ca5c82f121e9e5d2fdc239c7ccbfa0f1ed  $RUNNER" | sha256sum --check
       - name: Fault-inject the consumer gate
         run: >-
           bash scripts/verify-conformance-gate.sh
-          "$PWD/.flix-spec-build/build/staged-maven/io/github/wstein/flix-spec-runner/0.77.4/flix-spec-runner-0.77.4.jar"
+          "$RUNNER_TEMP/flix-spec-runner-0.79.0-20261109.125843-3.jar"
           "$PWD/conformance/build/flix-spec/spec" "$PWD/language/build/flix-spec-projection"
       - uses: actions/upload-artifact@v7
         if: always()

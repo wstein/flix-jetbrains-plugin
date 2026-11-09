@@ -23,7 +23,7 @@ plugins {
 //
 // Keep this data pin and flixCorpusCommit in gradle.properties on the same compiler revision.
 // Fixtures and corpus are independent authorities and the pin test compares them directly.
-val flixSpecVersion = "0.79.0-20261108.013727-1"
+val flixSpecVersion = "0.79.0-20261109.125843-3"
 
 // Opt-in qualification of a locally supplied candidate produced by required source checks.
 // A candidate never silently replaces the published pin: its exact SHA is mandatory.
@@ -32,7 +32,7 @@ val qualifiedDataSha256 = if (candidateData != null) {
     providers.gradleProperty("flixSpec.candidateSha256").orNull
         ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
         ?: error("flixSpec.candidateData requires flixSpec.candidateSha256 (64 lowercase hex digits)")
-} else "6092ac9a0f09b801f6b02ab7304af46247c90c9ac33a7aebc2642209031242e0"
+} else "f58c987974501e22f6671511a4454458fb669511c140788d27a560ac09b03922"
 
 repositories {
     mavenCentral()

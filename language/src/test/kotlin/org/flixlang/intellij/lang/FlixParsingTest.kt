@@ -37,6 +37,18 @@ class FlixParsingTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
         parseAndCheck("pub def foo(): #| A(Int32) |# = ???")
     }
 
+    fun testSchemaTailAcceptsFullType() {
+        parseAndCheck("type alias T[r] = #{ A(Int32) | List[r] }")
+    }
+
+    fun testSchemaRowTailAcceptsFullType() {
+        parseAndCheck("type alias T[r] = #( A(Int32) | List[r] )")
+    }
+
+    fun testExtensibleTailAcceptsFullType() {
+        parseAndCheck("type alias T[r] = #| A(Int32) | List[r] |#")
+    }
+
     fun testEnumAndMatch() {
         parseAndCheck(
             """

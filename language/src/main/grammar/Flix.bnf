@@ -815,6 +815,7 @@ private blockWithStatement ::= CURLY_L statement CURLY_R {pin=1}
 matchOrMatchLambdaExpr ::=
     MATCH_KW expr CURLY_L (matchRule (COMMA? matchRule)*)? CURLY_R
   | MATCH_KW pattern arrow expr
+  | MATCH_KW expr <<missingMatchBody>>
 // `=` or `->`/tight-arrow typo'd for `=>` is another Parser2.scala-special-cased mistake, not
 // generic recovery (Parser2.Expr.matchRule): consume the wrong token, synthesize an empty
 // ErrorTree in place of the expected ARROW_THICK_R, and still parse the rule body normally.
@@ -825,6 +826,7 @@ matchRule ::= CASE_KW pattern (IF_KW expr)? (ARROW_THICK_R | matchRuleArrowError
 extMatchOrLambdaExpr ::=
     EMATCH_KW pattern arrow expr
   | EMATCH_KW expr CURLY_L (extMatchRule (COMMA? extMatchRule)*)? CURLY_R
+  | EMATCH_KW expr <<missingMatchBody>>
 extMatchRule ::= CASE_KW pattern ARROW_THICK_R statement
 
 extTagExpr ::= XVAR_KW ident argumentList?
@@ -1151,9 +1153,11 @@ recordType ::= (CURLY_L BAR CURLY_R)
              | (CURLY_L recordFieldType (COMMA recordFieldType)* COMMA? (BAR type)? CURLY_R)
 effectSetType ::= CURLY_L (type (COMMA type)* COMMA?)? CURLY_R
 
-extensibleType ::= HASH_BAR (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? BAR_HASH
-schemaType ::= HASH_CURLY_L (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? CURLY_R
-schemaRowType ::= HASH_PAREN_L (schemaTerm (COMMA schemaTerm)* COMMA?)? (BAR ident)? PAREN_R
+extensibleType ::= HASH_BAR (schemaTerm (COMMA schemaTerm)* COMMA?)? schemaTail? BAR_HASH
+schemaType ::= HASH_CURLY_L (schemaTerm (COMMA schemaTerm)* COMMA?)? schemaTail? CURLY_R
+schemaRowType ::= HASH_PAREN_L (schemaTerm (COMMA schemaTerm)* COMMA?)? schemaTail? PAREN_R
+// Commit after the tail separator so a missing type retains the enclosing alias.
+private schemaTail ::= BAR type {pin=1}
 // PredicateWithAlias (qname + type-argument-list) vs. PredicateWithTypes (qname + optional
 // parenthesized term-type-list with an optional trailing lattice type).
 schemaTerm ::= qualifiedName (typeArgumentList | schemaTermTypeList?)

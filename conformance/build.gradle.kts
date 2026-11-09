@@ -1,20 +1,25 @@
-plugins { id("io.github.wstein.flix-spec") version "0.77.4" }
+plugins { id("io.github.wstein.flix-spec") version "0.79.0-20261108.013727-1" }
 
 repositories {
-    providers.gradleProperty("flixSpecRepository").orNull?.let { maven(it) }
-    maven("https://wstein.github.io/flix-spec/maven")
+    ivy {
+        name = "qualifiedFlixSpec079"
+        url = uri("https://wstein.github.io/flix-spec/maven/io/github/wstein/")
+        patternLayout { artifact("[artifact]/0.79.0-SNAPSHOT/[artifact]-[revision].[ext]") }
+        metadataSources { artifact() }
+        content { includeGroup("io.github.wstein") }
+    }
 }
 
 flixSpec {
-    runnerVersion.set("0.77.4")
-    // Preserve the real consumer's existing pin; this pilot does not migrate its grammar.
-    specVersion.set("0.75.8")
+    runnerVersion.set("0.79.0-20261108.013727-1")
+    // Exact timestamped artifact bytes are independently SHA-256 verified.
+    specVersion.set("0.79.0-20261108.013727-1")
     actualDirectory.set(layout.projectDirectory.dir("../language/build/flix-spec-projection"))
     projectionMap.set(layout.projectDirectory.file("../language/src/test/resources/conformance/projection-map.json"))
-    baseline.set(4) // Reviewed pre-existing differences; docs/conformance-migration.md.
-    recoveryBaseline.set(6) // Reviewed identities, not a free allowance; see the accepted file.
-    depthFloor.set(36)
-    recoveryDepthFloor.set(40)
+    baseline.set(3) // Reviewed pre-existing differences; docs/conformance-migration.md.
+    recoveryBaseline.set(2) // Reviewed identities, not a free allowance; see the accepted file.
+    depthFloor.set(63)
+    recoveryDepthFloor.set(67)
     accepted.set(layout.projectDirectory.file("../language/src/test/resources/conformance/accepted.json"))
 }
 

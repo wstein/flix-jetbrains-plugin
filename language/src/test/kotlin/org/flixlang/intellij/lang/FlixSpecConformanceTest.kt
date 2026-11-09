@@ -9,6 +9,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.ParsingTestCase
 import java.io.File
 import java.util.jar.JarFile
+import java.security.MessageDigest
 
 /**
  * Parses the pinned data fixtures with real PSI and emits native raw projections.
@@ -68,37 +69,128 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         assertEquals("\\u0000\\u000c", esc("\u0000\u000c"))
     }
 
-    /** Walk the AST, not PsiElement.children (which silently drops lexer leaves). */
+    fun testProjectionGroupsAndAttachesNativeComments() {
+        val source = "// plain\n/// doc\n//// retained\ndef f(): Int32 = 1\n/// orphan\n"
+        val psi = createPsiFile("comments", source)
+        ensureParsed(psi)
+        val tree = Json.parse(buildString { project(psi, this) })
+        fun nodes(n: Json): List<Json> = listOf(n) +
+            (n.get("children")?.asArray() ?: emptyList()).flatMap(::nodes)
+        val all = nodes(tree)
+        val definition = all.single { it.get("kind")?.asString() == "DEF_DECL" }
+        assertEquals("DOC_COMMENT_GROUP", definition.get("children")!!.asArray()[0].get("kind")!!.asString())
+        assertEquals(2, all.count { it.get("kind")?.asString() == "PLAIN_COMMENT_GROUP" })
+        assertEquals(source.filterNot(Char::isWhitespace), all.filter { it.get("token") != null }
+            .joinToString("") { it.get("text")!!.asString() }.filterNot(Char::isWhitespace))
+    }
+
+    private fun assertDocumentationAttached(source: String, targetKind: String) {
+        val psi = createPsiFile("documentation", source)
+        ensureParsed(psi)
+        val tree = Json.parse(buildString { project(psi, this) })
+        fun nodes(n: Json): List<Json> = listOf(n) +
+            (n.get("children")?.asArray() ?: emptyList()).flatMap(::nodes)
+        val all = nodes(tree)
+        val target = all.single { it.get("kind")?.asString() == targetKind }
+        assertEquals("Documentation must attach to $targetKind", "DOC_COMMENT_GROUP",
+            target.get("children")!!.asArray()[0].get("kind")?.asString())
+        assertEquals(source.filterNot(Char::isWhitespace), all.filter { it.get("token") != null }
+            .joinToString("") { it.get("text")!!.asString() }.filterNot(Char::isWhitespace))
+    }
+
+    fun testProjectionModuleDocumentation() {
+        assertDocumentationAttached("/// module\nmod M { def f(): Int32 = 1 }", "MODULE_DECL")
+    }
+
+    fun testProjectionOperationDocumentation() {
+        assertDocumentationAttached("eff E {\n/// operation\ndef op(): Unit\n}", "EFFECT_OPERATION")
+    }
+
+    fun testProjectionSignatureDocumentation() {
+        assertDocumentationAttached("trait T[a] {\n/// signature\npub def f(x: a): a\n}", "SIGNATURE_DECL")
+    }
+
+    /** Walk real AST leaves; reconstruct comment runs from offsets, never expected fixtures. */
     private fun project(element: PsiElement, sb: StringBuilder) {
         val source = element.containingFile.text
+        data class Node(val kind: String, val ast: ASTNode?, val children: MutableList<Node>)
+        val commentKinds = setOf("FlixTokenType.line comment", "FlixTokenType.block comment", "FlixTokenType.doc comment")
+        val documentable = setOf("DEF_DECL", "EFFECT_DECL", "PLAIN_ENUM_DECL", "RESTRICTABLE_ENUM_DECL",
+            "STRUCT_DECL", "TRAIT_DECL", "INSTANCE_DECL", "TYPE_ALIAS_DECL", "MODULE_DECL",
+            "EFFECT_OPERATION", "SIGNATURE_DECL", "ASSOCIATED_TYPE_DEF_DECL", "ASSOCIATED_TYPE_SIG_DECL",
+            "REDEF_DECL", "ENUM_CASE", "STRUCT_FIELD", "LOCAL_DEF_EXPR")
+        fun convert(ast: ASTNode): Node {
+            val children = mutableListOf<Node>()
+            var child = ast.firstChildNode
+            while (child != null) {
+                if (child.elementType != TokenType.WHITE_SPACE) children.add(convert(child))
+                child = child.treeNext
+            }
+            return Node(if (ast.psi is PsiErrorElement) "PsiErrorElement" else ast.elementType.toString(), ast, children)
+        }
+        fun target(node: Node): Node? = when {
+            node.kind in documentable -> node
+            node.kind in setOf("DECLARATION", "TRAIT_MEMBER", "INSTANCE_MEMBER") ->
+                node.children.firstNotNullOfOrNull(::target)
+            else -> null
+        }
+        fun attach(node: Node) {
+            node.children.forEach(::attach)
+            // Grammar-Kit places a declaration's prologue beside its DEF_DECL. Preserve token
+            // order while making that real prologue belong to its declaration in the projection.
+            if (node.kind in setOf("DECLARATION", "TRAIT_MEMBER", "INSTANCE_MEMBER")) {
+                val index = node.children.indexOfFirst { it.kind in documentable }
+                if (index > 0) {
+                    val prologue = node.children.take(index)
+                    node.children[index].children.addAll(0, prologue)
+                    repeat(index) { node.children.removeAt(0) }
+                }
+            }
+            val input = node.children.toList()
+            val output = mutableListOf<Node>()
+            var i = 0
+            while (i < input.size) {
+                if (input[i].kind !in commentKinds) { output.add(input[i++]); continue }
+                val run = mutableListOf<Node>()
+                while (i < input.size && input[i].kind in commentKinds) run.add(input[i++])
+                val firstOffset = run.first().ast!!.startOffset
+                val previousNewline = source.lastIndexOf('\n', firstOffset - 1)
+                val trailing = source.substring(previousNewline + 1, firstOffset).isNotBlank()
+                val lineEnd = source.indexOf('\n', firstOffset).let { if (it < 0) source.length else it }
+                val count = if (trailing) run.takeWhile { it.ast!!.startOffset < lineEnd }.size else 0
+                val leading = run.drop(count)
+                val next = input.drop(i).firstOrNull { it.ast?.textLength != 0 }
+                val owner = next?.let(::target)
+                val firstDoc = if (owner == null) -1 else leading.indexOfFirst { it.kind == "FlixTokenType.doc comment" }
+                val plain = if (firstDoc < 0) leading else leading.take(firstDoc)
+                for (part in listOf(run.take(count), plain)) {
+                    if (part.isNotEmpty()) output.add(Node("PLAIN_COMMENT_GROUP", null, part.toMutableList()))
+                }
+                if (firstDoc >= 0) owner!!.children.add(0, Node("DOC_COMMENT_GROUP", null, leading.drop(firstDoc).toMutableList()))
+            }
+            node.children.clear()
+            node.children.addAll(output)
+        }
         fun position(offset: Int): String {
             val prefix = source.substring(0, offset)
             return "{\"line\":${prefix.count { it == '\n' } + 1},\"col\":${offset - prefix.lastIndexOf('\n')}}"
         }
-        fun emit(node: ASTNode) {
-            val type = node.elementType
-            if (type is FlixTokenType || type == TokenType.BAD_CHARACTER) {
-                sb.append("{\"token\":\"").append(esc(type.toString()))
-                    .append("\",\"text\":\"").append(esc(node.text))
-                    .append("\",\"start\":").append(position(node.startOffset))
-                    .append(",\"end\":").append(position(node.startOffset + node.textLength)).append("}")
+        fun emit(node: Node) {
+            val ast = node.ast
+            if (ast != null && (ast.elementType is FlixTokenType || ast.elementType == TokenType.BAD_CHARACTER)) {
+                sb.append("{\"token\":\"").append(esc(ast.elementType.toString()))
+                    .append("\",\"text\":\"").append(esc(ast.text))
+                    .append("\",\"start\":").append(position(ast.startOffset))
+                    .append(",\"end\":").append(position(ast.startOffset + ast.textLength)).append("}")
                 return
             }
-            val kind = if (node.psi is PsiErrorElement) "PsiErrorElement" else type.toString()
-            sb.append("{\"kind\":\"").append(esc(kind)).append("\",\"children\":[")
-            var child = node.firstChildNode
-            var comma = false
-            while (child != null) {
-                if (child.elementType != TokenType.WHITE_SPACE) {
-                    if (comma) sb.append(",")
-                    emit(child)
-                    comma = true
-                }
-                child = child.treeNext
-            }
+            sb.append("{\"kind\":\"").append(esc(node.kind)).append("\",\"children\":[")
+            node.children.forEachIndexed { index, child -> if (index > 0) sb.append(","); emit(child) }
             sb.append("]}")
         }
-        emit(element.node)
+        val tree = convert(element.node)
+        attach(tree)
+        emit(tree)
     }
 
     /** `upstream.commit` recorded in the artifact's pin.json, read without a JSON dependency. */
@@ -166,7 +258,12 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         val marker = javaClass.getResource("/ast/treekind.json")
             ?: error("flix-spec artifact is not on the test classpath")
         val path = marker.toString().substringAfter("file:").substringBefore("!")
-        return File(path)
+        return File(path).also { jar ->
+            val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            assertEquals("Qualified Flix 0.79 data bytes changed",
+                "6092ac9a0f09b801f6b02ab7304af46247c90c9ac33a7aebc2642209031242e0", digest)
+        }
     }
 
     fun testFixturesParseAndProject() {

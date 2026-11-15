@@ -227,6 +227,7 @@ ESCAPE = "\\" [^]
     "unchecked_cast"  { return UNCHECKED_CAST_KW; }
     "unsafe"          { return UNSAFE_KW; }
     "use"             { return USE_KW; }
+    "val"             { return VAL_KW; }
     "where"           { return WHERE_KW; }
     "with"            { return WITH_KW; }
     "xor"             { return XOR_KW; }

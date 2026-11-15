@@ -147,6 +147,7 @@
       UNIV_KW='Univ'
       UNSAFE_KW='unsafe'
       USE_KW='use'
+      VAL_KW='val'
       WHERE_KW='where'
       WITH_KW='with'
       XOR_KW='xor'
@@ -332,7 +333,7 @@ declaration ::= annotationList modifierList declarationBody {pin=3 recoverWhile=
 private declarationRecover ::= !declarationStart
 private declarationStart ::=
     MOD_KW | TRAIT_KW | INSTANCE_KW | DEF_KW | REDEF_KW | ENUM_KW | STRUCT_KW
-  | TYPE_KW | EFF_KW | RESTRICTABLE_KW
+  | TYPE_KW | EFF_KW | RESTRICTABLE_KW | VAL_KW
   | PUB_KW | SEALED_KW | MUT_KW
   | ANNOTATION | COMMENT_DOC
   | USE_KW | IMPORT_KW
@@ -343,6 +344,7 @@ private declarationBody ::=
   | traitDecl
   | instanceDecl
   | defDecl
+  | valDecl
   | enumDecl
   | structDecl
   | typeAliasDecl
@@ -421,6 +423,9 @@ signatureDecl ::=
 // flix-spec's own reference tree for e.g. lexical__unterminated-char.flix, which keeps every
 // other Decl.Def child intact and only wraps the body's ErrorTree).
 defDecl ::= DEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement {pin=9}
+
+// Parser2 accepts module values; the compiler may reject their use in later phases.
+valDecl ::= VAL_KW ident COLON typeAndEffect EQUAL statement
 
 redefDecl ::= REDEF_KW ident typeParameterList? parameterList COLON typeAndEffect typeConstraints? equalityConstraintList? EQUAL statement
 
@@ -922,7 +927,7 @@ jvmMethodNameError ::=
   | PAR_KW | PROJECT_KW | QUERY_KW | REGION_KW | RUN_KW | RVADD_KW
   | RVAND_KW | RVNOT_KW | RVSUB_KW | SELECT_KW | SOLVE_KW | SPAWN_KW
   | STATIC_KW | SUPER_KW | THROW_KW | TRUE_KW | TRY_KW | UNCHECKED_CAST_KW
-  | UNIV_KW | UNSAFE_KW | WHERE_KW | WITH_KW | XOR_KW | XVAR_KW
+  | UNIV_KW | UNSAFE_KW | VAL_KW | WHERE_KW | WITH_KW | XOR_KW | XVAR_KW
   | YIELD_KW
 jvmMethod ::= annotationList DEF_KW (ident | jvmMethodNameError) parameterList COLON typeAndEffect EQUAL statement
 jvmConstructor ::= DEF_KW NEW_KW PAREN_L PAREN_R COLON typeAndEffect EQUAL statement

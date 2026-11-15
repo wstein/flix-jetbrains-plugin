@@ -47,7 +47,7 @@
 #      here under Operators.
 #
 # ============================================================================
-# KEYWORDS (79 tokens) -- all consumed via the `Keywords` PrefixTree in Lexer.scala, longest
+# KEYWORDS (78 tokens) -- all consumed via the `Keywords` PrefixTree in Lexer.scala, longest
 # match, only accepted if NOT immediately followed by another name-char (isNameChar).
 # ============================================================================
 ALIAS_KW|"alias"|KeywordAlias
@@ -122,6 +122,7 @@ UNCHECKED_CAST_KW|"unchecked_cast"|KeywordUncheckedCast
 UNIV_KW|"Univ"|KeywordUniv
 UNSAFE_KW|"unsafe"|KeywordUnsafe
 USE_KW|"use"|KeywordUse
+VAL_KW|"val"|KeywordVal
 WHERE_KW|"where"|KeywordWhere
 WITH_KW|"with"|KeywordWith
 XOR_KW|"xor"|KeywordXor

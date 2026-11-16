@@ -103,7 +103,23 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
     }
 
     fun testProjectionValueDocumentation() {
-        assertDocumentationAttached("/// value\nval answer: Int32 = 42", "VAL_DECL")
+        listOf("/// value\nval answer: Int32 = 42", "/// value\n@Deprecated\npub val answer: Int32 = 42")
+            .forEach { source ->
+                val psi = createPsiFile("value-documentation", source)
+                ensureParsed(psi)
+                val tree = Json.parse(buildString { project(psi, this) })
+                fun nodes(n: Json): List<Json> = listOf(n) +
+                    (n.get("children")?.asArray() ?: emptyList()).flatMap(::nodes)
+                val all = nodes(tree)
+                val value = all.single { it.get("kind")?.asString() == "VAL_DECL" }
+                val valueNodes = nodes(value)
+                assertEquals(1, all.count { it.get("kind")?.asString() == "PLAIN_COMMENT_GROUP" })
+                assertFalse(valueNodes.any { it.get("kind")?.asString() == "DOC_COMMENT_GROUP" })
+                assertTrue(valueNodes.any { it.get("kind")?.asString() == "ANNOTATION_LIST" })
+                assertTrue(valueNodes.any { it.get("kind")?.asString() == "MODIFIER_LIST" })
+                assertEquals(source.filterNot(Char::isWhitespace), all.filter { it.get("token") != null }
+                    .joinToString("") { it.get("text")!!.asString() }.filterNot(Char::isWhitespace))
+            }
     }
 
     fun testProjectionOperationDocumentation() {
@@ -119,7 +135,7 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         val source = element.containingFile.text
         data class Node(val kind: String, val ast: ASTNode?, val children: MutableList<Node>)
         val commentKinds = setOf("FlixTokenType.line comment", "FlixTokenType.block comment", "FlixTokenType.doc comment")
-        val documentable = setOf("DEF_DECL", "VAL_DECL", "EFFECT_DECL", "PLAIN_ENUM_DECL", "RESTRICTABLE_ENUM_DECL",
+        val documentable = setOf("DEF_DECL", "EFFECT_DECL", "PLAIN_ENUM_DECL", "RESTRICTABLE_ENUM_DECL",
             "STRUCT_DECL", "TRAIT_DECL", "INSTANCE_DECL", "TYPE_ALIAS_DECL", "MODULE_DECL",
             "EFFECT_OPERATION", "SIGNATURE_DECL", "ASSOCIATED_TYPE_DEF_DECL", "ASSOCIATED_TYPE_SIG_DECL",
             "REDEF_DECL", "ENUM_CASE", "STRUCT_FIELD", "LOCAL_DEF_EXPR")
@@ -143,7 +159,7 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
             // Grammar-Kit places a declaration's prologue beside its DEF_DECL. Preserve token
             // order while making that real prologue belong to its declaration in the projection.
             if (node.kind in setOf("DECLARATION", "TRAIT_MEMBER", "INSTANCE_MEMBER")) {
-                val index = node.children.indexOfFirst { it.kind in documentable }
+                val index = node.children.indexOfFirst { it.kind in documentable || it.kind == "VAL_DECL" }
                 if (index > 0) {
                     val prologue = node.children.take(index)
                     node.children[index].children.addAll(0, prologue)

@@ -102,6 +102,10 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         assertDocumentationAttached("/// module\nmod M { def f(): Int32 = 1 }", "MODULE_DECL")
     }
 
+    fun testProjectionValueDocumentation() {
+        assertDocumentationAttached("/// value\nval answer: Int32 = 42", "VAL_DECL")
+    }
+
     fun testProjectionOperationDocumentation() {
         assertDocumentationAttached("eff E {\n/// operation\ndef op(): Unit\n}", "EFFECT_OPERATION")
     }
@@ -115,7 +119,7 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         val source = element.containingFile.text
         data class Node(val kind: String, val ast: ASTNode?, val children: MutableList<Node>)
         val commentKinds = setOf("FlixTokenType.line comment", "FlixTokenType.block comment", "FlixTokenType.doc comment")
-        val documentable = setOf("DEF_DECL", "EFFECT_DECL", "PLAIN_ENUM_DECL", "RESTRICTABLE_ENUM_DECL",
+        val documentable = setOf("DEF_DECL", "VAL_DECL", "EFFECT_DECL", "PLAIN_ENUM_DECL", "RESTRICTABLE_ENUM_DECL",
             "STRUCT_DECL", "TRAIT_DECL", "INSTANCE_DECL", "TYPE_ALIAS_DECL", "MODULE_DECL",
             "EFFECT_OPERATION", "SIGNATURE_DECL", "ASSOCIATED_TYPE_DEF_DECL", "ASSOCIATED_TYPE_SIG_DECL",
             "REDEF_DECL", "ENUM_CASE", "STRUCT_FIELD", "LOCAL_DEF_EXPR")
@@ -261,7 +265,7 @@ class FlixSpecConformanceTest : ParsingTestCase("", "flix", FlixParserDefinition
         return File(path).also { jar ->
             val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
                 .joinToString("") { "%02x".format(it) }
-            assertEquals("Qualified Flix 0.79 data bytes changed",
+            assertEquals("Qualified Flix 0.80 data bytes changed",
                 requireNotNull(System.getProperty("flixSpec.dataSha256")) { "Missing qualified data SHA-256" }, digest)
         }
     }

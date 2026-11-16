@@ -2,14 +2,14 @@
 <verification-metadata xmlns="https://schema.gradle.org/dependency-verification" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://schema.gradle.org/dependency-verification https://schema.gradle.org/dependency-verification/dependency-verification-1.3.xsd">
   <configuration><verify-metadata>true</verify-metadata><verify-signatures>false</verify-signatures></configuration>
   <components>
-    <component group="io.github.wstein" name="flix-spec" version="0.79.0-20261109.125843-3">
-      <artifact name="flix-spec-0.79.0-20261109.125843-3.jar"><sha256 value="f58c987974501e22f6671511a4454458fb669511c140788d27a560ac09b03922" origin="digest-qualified published timestamped snapshot"/></artifact>
+    <component group="io.github.wstein" name="flix-spec" version="0.80.0-20261115.222714-1">
+      <artifact name="flix-spec-0.80.0-20261115.222714-1.jar"><sha256 value="27419d170de4af8a4a817ad48a04aa214808e8933ea23f040635357103f7c2b3" origin="digest-qualified published timestamped snapshot"/></artifact>
     </component>
-    <component group="io.github.wstein" name="flix-spec-runner" version="0.79.0-20261109.125843-3">
-      <artifact name="flix-spec-runner-0.79.0-20261109.125843-3.jar"><sha256 value="989d4117462ddd7b3a5d8de57e21e0ca5c82f121e9e5d2fdc239c7ccbfa0f1ed" origin="digest-qualified published timestamped snapshot"/></artifact>
+    <component group="io.github.wstein" name="flix-spec-runner" version="0.80.0-20261115.222714-1">
+      <artifact name="flix-spec-runner-0.80.0-20261115.222714-1.jar"><sha256 value="467c7cf746799366dce795890b52dbb8f7423f98d800b1756fe8efcb3df4fa8a" origin="digest-qualified published timestamped snapshot"/></artifact>
     </component>
-    <component group="io.github.wstein" name="flix-spec-gradle-plugin" version="0.79.0-20261109.125843-3">
-      <artifact name="flix-spec-gradle-plugin-0.79.0-20261109.125843-3.jar"><sha256 value="0f28a0eff272e7d1b2d713f955e4a63c810ce5b852316eda3106d07c964e1615" origin="digest-qualified published timestamped snapshot"/></artifact>
+    <component group="io.github.wstein" name="flix-spec-gradle-plugin" version="0.80.0-20261115.222714-1">
+      <artifact name="flix-spec-gradle-plugin-0.80.0-20261115.222714-1.jar"><sha256 value="0f28a0eff272e7d1b2d713f955e4a63c810ce5b852316eda3106d07c964e1615" origin="digest-qualified published timestamped snapshot"/></artifact>
     </component>
   </components>
 </verification-metadata>

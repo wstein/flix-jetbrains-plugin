@@ -19,6 +19,10 @@ class Flix080ValTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
         assertNull(errorIn("def f(): Int32 = let value = 42; value"))
     }
 
+    fun testValCannotBeAnUnescapedDefinitionName() {
+        assertNotNull(errorIn("def val(): Int32 = 42"))
+    }
+
     fun testValCannotBeAnUnescapedParameter() {
         assertNotNull(errorIn("def f(val: Int32): Int32 = val"))
     }

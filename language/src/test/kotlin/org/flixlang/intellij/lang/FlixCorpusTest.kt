@@ -331,7 +331,7 @@ class FlixCorpusTest : ParsingTestCase("", "flix", FlixParserDefinition()) {
          * asserted to keep failing, so the list cannot rot.
          */
         // Flix 0.77 replaced langcensus's unsupported foreach/yield with forM. At the
-        // pinned 0.79 revision all 420 library/example files are valid; exclude none.
+        // 0.79 revision all 420 library/example files were valid; exclude none.
         private val UNCOMPILABLE_UPSTREAM = emptyMap<String, String>()
 
         /**

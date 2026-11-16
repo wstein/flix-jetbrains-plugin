@@ -23,7 +23,7 @@ plugins {
 //
 // Keep this data pin and flixCorpusCommit in gradle.properties on the same compiler revision.
 // Fixtures and corpus are independent authorities and the pin test compares them directly.
-val flixSpecVersion = "0.79.0-20261109.125843-3"
+val flixSpecVersion = "0.80.0-20261115.222714-1"
 
 // Opt-in qualification of a locally supplied candidate produced by required source checks.
 // A candidate never silently replaces the published pin: its exact SHA is mandatory.
@@ -32,7 +32,7 @@ val qualifiedDataSha256 = if (candidateData != null) {
     providers.gradleProperty("flixSpec.candidateSha256").orNull
         ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
         ?: error("flixSpec.candidateData requires flixSpec.candidateSha256 (64 lowercase hex digits)")
-} else "f58c987974501e22f6671511a4454458fb669511c140788d27a560ac09b03922"
+} else "27419d170de4af8a4a817ad48a04aa214808e8933ea23f040635357103f7c2b3"
 
 repositories {
     mavenCentral()
@@ -45,8 +45,8 @@ repositories {
     // tracks rather than forcing a flix-spec release for a consumer-only change.
     // Exact timestamp and artifact-only layout avoid resolution through moving snapshot metadata.
     ivy {
-        name = "flixSpecQualified079"
-        url = uri("https://wstein.github.io/flix-spec/maven/io/github/wstein/flix-spec/0.79.0-SNAPSHOT/")
+        name = "flixSpecQualified080"
+        url = uri("https://wstein.github.io/flix-spec/maven/io/github/wstein/flix-spec/0.80.0-SNAPSHOT/")
         patternLayout { artifact("[artifact]-[revision].[ext]") }
         metadataSources { artifact() }
         content { includeModule("io.github.wstein", "flix-spec") }

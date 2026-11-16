@@ -11,6 +11,7 @@
     "FILE": "Root",
     "DEBUG_INTERPOLATOR_EXPR": "Expr.Expr",
     "DEF_DECL": "Decl.Def",
+    "VAL_DECL": "Decl.Val",
     "PLAIN_ENUM_DECL": "Decl.Enum",
     "RESTRICTABLE_ENUM_DECL": "Decl.RestrictableEnum",
     "STRUCT_DECL": "Decl.Struct",

@@ -1,16 +1,19 @@
 {
   "consumer": "flix-jetbrains-plugin",
-  "fixtureRevision": "7e017bc8d4850fd293c6c97ddb3e4e5c4cb8cee0ed691d2750d461eccc236dd2",
-  "review": "Remaining pre-existing parser differences after the Flix 0.79 migration; see docs/conformance-migration.md. Exact identities remain binding; resolved entries must be removed after review.",
+  "fixtureRevision": "5d990939d513c1ef9add5285ec928ad8b222d42de6c198ec426a67992a237f51",
+  "review": "Flix 0.80 differences, including the reserved-val recovery difference; see docs/conformance-migration.md. Exact identities remain binding.",
   "lanes": {
     "oracle_conformance": [
       "declarations__law-declarations-and-lawful-modifier-are-rejected.json|fixtures/negative/declarations__law-declarations-and-lawful-modifier-are-rejected.flix|arity",
       "declarations__trait-and-instance-with-an-operator-signature.json|fixtures/negative/declarations__trait-and-instance-with-an-operator-signature.flix.Root[0]|arity",
-      "declarations__uses-and-imports.json|fixtures/positive/declarations__uses-and-imports.flix.Root[0]|arity"
+      "declarations__uses-and-imports.json|fixtures/positive/declarations__uses-and-imports.flix.Root[0]|arity",
+      "identifier__reserved-val.json|fixtures/negative/identifier__reserved-val.flix|arity"
     ],
     "recovery_conformance": [
       "declarations__law-declarations-and-lawful-modifier-are-rejected.json|fixtures/negative/declarations__law-declarations-and-lawful-modifier-are-rejected.flix|arity",
-      "lexical__unterminated-string-interpolation.json|fixtures/negative/lexical__unterminated-string-interpolation.flix|arity"
+      "lexical__unterminated-string-interpolation.json|fixtures/negative/lexical__unterminated-string-interpolation.flix|arity",
+      "identifier__reserved-val.json|fixtures/negative/identifier__reserved-val.flix|arity",
+      "identifier__reserved-val.json|fixtures/negative/identifier__reserved-val.flix.Root[0]|kind"
     ],
     "diagnostic_conformance": []
   }

@@ -1,9 +1,38 @@
 # Runner adoption review
 
+## Flix 0.80 migration
+
+The parser recognizes module `val` declarations and reserves `val` as a keyword;
+`valve` remains an identifier and local `let` remains unchanged. This is a parser
+claim: the Flix 0.80 compiler reports an internal error for a reference to a module
+value past kinding, so parsing the declaration does not establish end-to-end support.
+The 0.80 subeffecting default changes type checking and does not change this grammar.
+
+The optional test-event wire check targets the pinned `wstein/flix-fork` compiler,
+not the official release jar. The official 0.80 jar was tested and rejected
+`--events-json` and `--filter`; the official 0.79 jar rejects the same options.
+Both runs failed and do not qualify the fork protocol. CI builds fork commit `494e63251202c8d8999459132d17e9183d4a67a2`
+and runs the integration test against that assembly.
+
+The invalid `def val(): Int32 = 42` is rejected by both parsers. Their recovery
+trees differ: the reference retains incomplete definition and value declarations,
+while this parser rolls back the definition. This adds exactly one structural and
+two recovery identities in the full 168-fixture comparison. The full comparison
+measures 64%/65% structure/recovery depth and retains exact identities at floors
+63%/65%. A required separate comparison of the 167 other fixtures, including
+the valid value declaration, retains the previous three/two identities and
+63%/67% floors; it measured 1548/2424 and 236/351 nodes respectively. Both
+comparisons are fixture-revision-bound and must pass. The exception is limited
+to recovery shape and does not make the reserved name valid.
+
+Against Flix commit `0c641c73c4635dee992d01c4364f224ea56d9a46`, the library
+and examples corpus has 420 files: all 420 parse without errors or text loss,
+with no crashes or exclusions. It excludes intentionally invalid test sources.
+
 ## Flix 0.79 migration — 2026-11-09
 
-The current data/runner/plugin pin is the exact, SHA-256-qualified published
-`0.79.0-20261109.125843-3` snapshot described in `conformance/README.md`.
+The 0.79 data/runner/plugin pin was the exact, SHA-256-qualified published
+`0.79.0-20261109.125843-3` snapshot documented in the 0.79 migration.
 It is not a claim that stable 0.79 artifacts are available.
 
 The grammar accepts full type expressions in all three schema/extensible tails.

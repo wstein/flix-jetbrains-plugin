@@ -192,15 +192,15 @@ jobs:
       - name: Download qualified runner for fault injection
         shell: bash
         run: |
-          RUNNER="$RUNNER_TEMP/flix-spec-runner-0.79.0-20261109.125843-3.jar"
+          RUNNER="$RUNNER_TEMP/flix-spec-runner-0.80.0-20261115.222714-1.jar"
           curl --fail --location --retry 3 \
-            https://wstein.github.io/flix-spec/maven/io/github/wstein/flix-spec-runner/0.79.0-SNAPSHOT/flix-spec-runner-0.79.0-20261109.125843-3.jar \
+            https://wstein.github.io/flix-spec/maven/io/github/wstein/flix-spec-runner/0.80.0-SNAPSHOT/flix-spec-runner-0.80.0-20261115.222714-1.jar \
             --output "$RUNNER"
-          echo "989d4117462ddd7b3a5d8de57e21e0ca5c82f121e9e5d2fdc239c7ccbfa0f1ed  $RUNNER" | sha256sum --check
+          echo "467c7cf746799366dce795890b52dbb8f7423f98d800b1756fe8efcb3df4fa8a  $RUNNER" | sha256sum --check
       - name: Fault-inject the consumer gate
         run: >-
           bash scripts/verify-conformance-gate.sh
-          "$RUNNER_TEMP/flix-spec-runner-0.79.0-20261109.125843-3.jar"
+          "$RUNNER_TEMP/flix-spec-runner-0.80.0-20261115.222714-1.jar"
           "$PWD/conformance/build/flix-spec/spec" "$PWD/language/build/flix-spec-projection"
       - uses: actions/upload-artifact@v7
         if: always()

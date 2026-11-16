@@ -1,0 +1,17 @@
+{
+  "consumer": "flix-jetbrains-plugin",
+  "fixtureRevision": "ba965a8489db14bf219158f9b46fa6a39097fd25a595142eb54762352b1477f9",
+  "review": "Historical fixtures plus valid val declaration; exact pre-existing identities remain binding. See docs/conformance-migration.md.",
+  "lanes": {
+    "oracle_conformance": [
+      "declarations__law-declarations-and-lawful-modifier-are-rejected.json|fixtures/negative/declarations__law-declarations-and-lawful-modifier-are-rejected.flix|arity",
+      "declarations__trait-and-instance-with-an-operator-signature.json|fixtures/negative/declarations__trait-and-instance-with-an-operator-signature.flix.Root[0]|arity",
+      "declarations__uses-and-imports.json|fixtures/positive/declarations__uses-and-imports.flix.Root[0]|arity"
+    ],
+    "recovery_conformance": [
+      "declarations__law-declarations-and-lawful-modifier-are-rejected.json|fixtures/negative/declarations__law-declarations-and-lawful-modifier-are-rejected.flix|arity",
+      "lexical__unterminated-string-interpolation.json|fixtures/negative/lexical__unterminated-string-interpolation.flix|arity"
+    ],
+    "diagnostic_conformance": []
+  }
+}

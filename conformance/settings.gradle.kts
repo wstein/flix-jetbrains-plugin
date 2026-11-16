@@ -1,9 +1,9 @@
 pluginManagement {
     repositories {
         ivy {
-            name = "qualifiedFlixSpec079"
+            name = "qualifiedFlixSpec080"
             url = uri("https://wstein.github.io/flix-spec/maven/io/github/wstein/")
-            patternLayout { artifact("[artifact]/0.79.0-SNAPSHOT/[artifact]-[revision].[ext]") }
+            patternLayout { artifact("[artifact]/0.80.0-SNAPSHOT/[artifact]-[revision].[ext]") }
             metadataSources { artifact() }
         }
     }
